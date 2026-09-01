@@ -1,0 +1,16 @@
+# 嵌套 git 仓库（DiffSynth-Studio 有独立上游仓库，不纳入本仓库）
+DiffSynth-Studio/
+
+# 生成产物
+outputs/
+runs/checkpoints/
+runs/*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.idea/
+.vscode/
