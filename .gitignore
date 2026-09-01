@@ -6,6 +6,9 @@ outputs/
 runs/checkpoints/
 runs/*.log
 
+# 每日 AI 日报产物
+ai_daily_reports/
+
 # Python
 __pycache__/
 *.py[cod]
