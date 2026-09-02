@@ -1,0 +1,24 @@
+10-second cinematic sci-fi video, ultra-detailed, 4K, 24fps. 
+Nighttime futuristic city, light rain, neon holographic signs, volumetric fog, wet street reflections. 
+Camera slowly pushes in toward a floating holographic terminal in a dark alley. 
+
+The holographic terminal screen displays multiple lines of clearly legible glowing cyan text. 
+Embedded screen text must be exactly spelled and readable, no gibberish:
+- Large title: "NEXUS-7"
+- Subtitle: "QUANTUM LINK ACTIVE"
+- Data line: "SECTOR: 07G / STATUS: BREACH"
+- Warning line: "WARNING: UNAUTHORIZED ACCESS DETECTED"
+- Coordinates: "LAT 31.2304° N, LON 121.4737° E"
+- Timestamp: "TIME: 2077-11-23 03:47:59"
+
+Background holographic billboards show additional legible text:
+"NEURAL NET UPLINK 98.7%", "BIOMETRIC SCAN REQUIRED", "MEMORY MARKET", "CYBER DYNASTY".
+
+All text is sharp, correctly spelled, no distorted characters, no random symbols, no overlapping letters. 
+The embedded text is part of the diegetic scene, with slight perspective, glow, and reflections.
+
+At the bottom of the frame, a clean overlay subtitle appears, separate from the scene UI:
+"2077年，新上海。人类与人工智能的界限正在消失。"
+The subtitle is flat, thin sans-serif Chinese font, white with subtle black outline, placed in the lower third safe area, not affected by scene lighting, not mixed with holographic UI.
+
+Cinematic lighting, shallow depth of field, sci-fi atmosphere, blue and cyan color palette, film grain, high contrast.

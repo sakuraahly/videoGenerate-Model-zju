@@ -4,7 +4,28 @@ DiffSynth-Studio/
 # 生成产物
 outputs/
 runs/checkpoints/
-runs/*.log
+runs/**/*.log
+/*.mp4
+
+# 本机配置（含远程主机绝对路径；公开示例见 config/pipeline.example.json）
+config/pipeline.json
+
+# 每次运行的审计目录（运行期生成，不入库）
+workflows/h3_*/
+
+# 断点/运行期状态文件（断点重连与单实例锁用，运行期临时生成）
+last_prompt_id.txt
+last_job.json
+.run.lock
+.tunnel.json
+
+# 运行日志
+logs/
+
+# 临时自检目录
+.test_tmp/
+.ps_check_tmp/
+.ps_check.ps1
 
 # 每日 AI 日报产物
 ai_daily_reports/

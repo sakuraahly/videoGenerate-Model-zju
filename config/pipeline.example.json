@@ -1,0 +1,88 @@
+{
+  "_comment": "pipeline.json 公开示例（本机真实配置 config/pipeline.json 不入库）。复制为 config/pipeline.json 后，把 <用户名> 替换为远程主机上的实际用户名。流水线/多工作流注册表：default_stage 决定 run.bat/menu 默认阶段；template 为 config/templates 下模板文件名（扁平 API 直接提交；ComfyUI UI 格式由引擎在线转扁平 API）；builtin=h3_t2v 为内置本地生成器。手动/界面使用说明见 docs/manual-use-6-workflows.md。注意：文件是否能“本地模型”跑，以你的 ComfyUI 实例实际执行为准（若节点弹出登录/Unauthorized 属该节点插件实现，非本程序限制）。",
+  "default_stage": "t2v",
+  "templates_dir": "config/templates",
+  "remote_workflow_templates": {
+    "_comment": "远程主机上已部署的工作流（绝对路径，ssh 可达）。api_* 为 Comfy API 云端节点；video_* 为本地 H3 节点（r2v 为开放图可直接用；t2v/i2v 为子图封装）。",
+    "api_minimax_h3_t2v.json": "/home/<用户名>/ai/ComfyUI/user/default/workflows/api_minimax_h3_t2v.json",
+    "api_minimax_h3_r2v.json": "/home/<用户名>/ai/ComfyUI/user/default/workflows/api_minimax_h3_r2v.json",
+    "api_minimax_h3_flf2v.json": "/home/<用户名>/ai/ComfyUI/user/default/workflows/api_minimax_h3_flf2v.json",
+    "video_minimax_h3_t2v.json": "/home/<用户名>/ai/ComfyUI/user/default/workflows/video_minimax_h3_t2v.json",
+    "video_minimax_h3_i2v.json": "/home/<用户名>/ai/ComfyUI/user/default/workflows/video_minimax_h3_i2v.json",
+    "video_minimax_h3_r2v.json": "/home/<用户名>/ai/ComfyUI/user/default/workflows/video_minimax_h3_r2v.json"
+  },
+  "stages": {
+    "t2v": {
+      "description": "文生视频 T2V：默认用内置本地 H3 T2V 生成器（远程本地推理，无需登录任何云端）；video t2v 为子图封装，解组后可切换",
+      "kind": "video",
+      "template": "",
+      "template_kind": "api",
+      "builtin": "h3_t2v",
+      "prompt_files": {
+        "positive": "prompts/positive_prompts.txt",
+        "negative": "prompts/negative_prompts.txt"
+      },
+      "default_images": []
+    },
+    "i2v": {
+      "description": "图生视频 I2V：本地图封装为子图(video_minimax_h3_i2v.json)；CLI 暂需先解组子图后再跑",
+      "kind": "video",
+      "template": "video_minimax_h3_i2v.json",
+      "template_kind": "ui_subgraph",
+      "builtin": null,
+      "prompt_files": {
+        "positive": "prompts/positive_prompts.txt",
+        "negative": "prompts/negative_prompts.txt"
+      },
+      "default_images": []
+    },
+    "r2v": {
+      "description": "多参考图生视频 R2V：本地 H3 开放图(video_minimax_h3_r2v.json，含 MiniMaxH3ReferenceToVideo)，CLI 可转 API 后本地跑；需要参考图（模板内 LoadImage 指向远程 input 下的图，或用占位符/--image 覆盖）",
+      "kind": "video",
+      "template": "video_minimax_h3_r2v.json",
+      "template_kind": "ui",
+      "builtin": null,
+      "prompt_files": {
+        "positive": "prompts/positive_prompts.txt",
+        "negative": "prompts/negative_prompts.txt"
+      },
+      "default_images": []
+    },
+    "flf2v": {
+      "description": "首帧+末帧生视频 FLF2V：api_minimax_h3_flf2v.json 为 Comfy API 云端节点，需 Comfy 账号登录；本地实现待模板子图解组",
+      "kind": "video",
+      "template": "api_minimax_h3_flf2v.json",
+      "template_kind": "api_cloud",
+      "builtin": null,
+      "prompt_files": {
+        "positive": "prompts/positive_prompts.txt",
+        "negative": "prompts/negative_prompts.txt"
+      },
+      "default_images": []
+    },
+    "character": {
+      "description": "SDXL 人物形象图（模板待放入 config/templates 后启用）",
+      "kind": "image",
+      "template": "api_sdxl_character.json",
+      "template_kind": "api",
+      "builtin": null,
+      "prompt_files": {
+        "positive": "prompts/positive_prompts.txt",
+        "negative": "prompts/negative_prompts.txt"
+      },
+      "default_images": []
+    },
+    "keyframes": {
+      "description": "SDXL+IP-Adapter 分镜关键帧（模板待放入 config/templates 后启用）",
+      "kind": "image",
+      "template": "api_sdxl_ipadapter_keyframes.json",
+      "template_kind": "api",
+      "builtin": null,
+      "prompt_files": {
+        "positive": "prompts/positive_prompts.txt",
+        "negative": "prompts/negative_prompts.txt"
+      },
+      "default_images": []
+    }
+  }
+}

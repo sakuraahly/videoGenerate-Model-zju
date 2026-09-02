@@ -1,0 +1,6 @@
+{
+  "_comment": "工作流上传与“使用指定工作流”设置。由 workflow_setup.bat / shell/transfer_setup.ps1 交互修改；remote_upload_dir 必须是 spark 上的绝对路径（以 / 开头）。",
+  "remote_upload_dir": "",
+  "active_workflow_dir": "",
+  "use_active_workflow": false
+}

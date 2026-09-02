@@ -1,0 +1,17 @@
+{
+  "remote_host": "spark",
+  "remote_comfyui_dir": "~/ai/ComfyUI",
+  "remote_python": "~/ai/venv/bin/python",
+  "tmux_session": "comfyui",
+  "remote_output_dir": "~/ai/ComfyUI/output",
+  "comfyui_port": 8188,
+  "local_port": 8188,
+  "ssh_connect_timeout_seconds": 20,
+  "server_alive_interval_seconds": 15,
+  "server_alive_count_max": 4,
+  "comfyui_health_timeout_seconds": 90,
+  "python_exe": "python",
+  "max_attempts": 3,
+  "retry_delay_seconds": 5,
+  "scp_attempts": 3
+}

@@ -1,0 +1,3 @@
+# 视频生成参数配置文件
+resolution=360p
+seconds=5
