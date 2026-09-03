@@ -8,6 +8,8 @@
 > Full operator guide: `docs/user-guide.md` · Workflow & prompt selection (with/without a local
 > LLM): `docs/workflow-and-prompt.md` · Architecture/how-to-extend:
 > `docs/robustness-and-modularity.md` · Prompt rules: `skills/h3-prompt-engineering.md`.
+> Deploy modes (win-remote vs spark-local): `docs/deploy-modes.md`; switch with
+> `python runs/h3/deploy.py --set <win-remote|spark-local>` (or `bats\config\mode.bat` on Windows).
 > Capability registry (single source of what the project can do): `config/capabilities.json` —
 > regenerate `docs/capabilities-ai.md` with `python runs/h3/capabilities.py --doc`; model-facing
 > digest via `--digest`.

@@ -567,6 +567,57 @@ class TestCapabilities(unittest.TestCase):
             self.assertIn(wid, md)
 
 
+class TestDeploy(unittest.TestCase):
+    """运行形态 deploy.json：读取/校验/切换 + llm.json base_url 同步。"""
+
+    RUNS = Path(__file__).resolve().parent.parent.parent
+    ROOT = RUNS.parent
+
+    def test_current_site_and_props(self):
+        from h3 import deploy
+        d = deploy.load_deploy(self.ROOT)
+        self.assertIn(d.get("site"), ("win-remote", "spark-local"))
+        p = deploy.site_props(d, deploy.current_site(self.ROOT))
+        self.assertIn("tunnel", p)
+        self.assertIn(p.get("fetch"), ("scp", "local_cp"))
+
+    def test_set_site_switches_and_syncs_llm(self):
+        from h3 import deploy
+        import json as _json
+        td = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(td, ignore_errors=True))
+        cfg = td / "config"
+        cfg.mkdir()
+        base = {
+            "site": "win-remote",
+            "sites": {
+                "win-remote": {"label": "A", "tunnel": True, "fetch": "scp",
+                               "llm_base_url": "http://127.0.0.1:8011/v1"},
+                "spark-local": {"label": "B", "tunnel": False, "fetch": "local_cp",
+                                "llm_base_url": "http://127.0.0.1:8000/v1"},
+            },
+        }
+        (cfg / "deploy.json").write_text(_json.dumps(base), encoding="utf-8")
+        (cfg / "llm.json").write_text(_json.dumps({"base_url": "http://127.0.0.1:8011/v1"}),
+                                     encoding="utf-8")
+        site, props, old = deploy.set_site(td, "spark-local")
+        self.assertEqual(site, "spark-local")
+        self.assertFalse(props["tunnel"])
+        self.assertEqual(deploy.current_site(td), "spark-local")
+        llm = _json.loads((cfg / "llm.json").read_text(encoding="utf-8"))
+        self.assertEqual(llm["base_url"], "http://127.0.0.1:8000/v1")
+        self.assertTrue((cfg / "llm.json.bak").exists())
+        # 回切
+        deploy.set_site(td, "win-remote")
+        llm2 = _json.loads((cfg / "llm.json").read_text(encoding="utf-8"))
+        self.assertEqual(llm2["base_url"], "http://127.0.0.1:8011/v1")
+
+    def test_invalid_site_rejected(self):
+        from h3 import deploy
+        with self.assertRaises(ValueError):
+            deploy.set_site(self.ROOT, "mars")
+
+
 # ---------------------------------------------------------------------------
 # 输出文件解析 / 远程路径
 # ---------------------------------------------------------------------------

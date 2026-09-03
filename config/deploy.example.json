@@ -1,0 +1,22 @@
+{
+  "_comment": "deploy.json 公开示例（与真实文件一致，无敏感信息）。site: win-remote | spark-local。切换：bats\\config\\mode.bat 或 python runs\\h3\\deploy.py --set <site>",
+  "site": "win-remote",
+  "sites": {
+    "win-remote": {
+      "label": "本地 Windows + 远程 spark",
+      "tunnel": true,
+      "comfy_probe": "via_ssh_tunnel",
+      "fetch": "scp",
+      "llm_base_url": "http://127.0.0.1:8011/v1",
+      "notes": "需 ssh 免密；生成前自动建/复用隧道；产物 scp 下载到 outputs\\；LLM 经 8011→8000 隧道。"
+    },
+    "spark-local": {
+      "label": "整体部署在 spark（交付形态）",
+      "tunnel": false,
+      "comfy_probe": "local_http",
+      "fetch": "local_cp",
+      "llm_base_url": "http://127.0.0.1:8000/v1",
+      "notes": "ComfyUI/LLM 与本仓库同机；直接 python CLI 或本机服务管理；下载=本机复制到 outputs/；LLM 直连 8000。"
+    }
+  }
+}

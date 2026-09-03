@@ -1,0 +1,22 @@
+{
+  "_comment": "运行形态（部署模式）切换配置。site=win-remote：项目在 Windows 本机、经 ssh 隧道访问 spark 的 ComfyUI/模型（现状/默认）；site=spark-local：项目整体部署在 spark（交付形态），ComfyUI 与本地模型同机直连、无需隧道，供 spark 上的本地模型直接调用本项目出图/出片。用 bats\\config\\mode.bat 或 python runs\\h3\\deploy.py --set <site> 切换。示例文件 deploy.example.json 与此一致（无敏感信息可入库）。",
+  "site": "win-remote",
+  "sites": {
+    "win-remote": {
+      "label": "本地 Windows + 远程 spark",
+      "tunnel": true,
+      "comfy_probe": "via_ssh_tunnel",
+      "fetch": "scp",
+      "llm_base_url": "http://127.0.0.1:8011/v1",
+      "notes": "需 ssh 免密；生成前自动建/复用隧道；产物 scp 下载到 outputs\\；LLM 经 8011→8000 隧道。"
+    },
+    "spark-local": {
+      "label": "整体部署在 spark（交付形态）",
+      "tunnel": false,
+      "comfy_probe": "local_http",
+      "fetch": "local_cp",
+      "llm_base_url": "http://127.0.0.1:8000/v1",
+      "notes": "ComfyUI/LLM 与本仓库同机；直接 python CLI 或本机服务管理；下载=本机复制到 outputs/；LLM 直连 8000。"
+    }
+  }
+}

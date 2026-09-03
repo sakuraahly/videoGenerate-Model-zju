@@ -160,6 +160,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - `workflow-and-prompt.md`（⭐ 怎么指定"工作流"与"提示词"：有/无本地通用模型两种情形）
 - `user-guide.md` 操作指南（入口/配置/流程/多工作流/日志）
 - `capabilities-ai.md`（项目能力注册表可读版——由 config/capabilities.json 生成，勿手改）
+- `deploy-modes.md`（运行形态 win-remote / spark-local 手册：切换/副作用/交付用法）
 - `manual-use-6-workflows.md` 6 个工作流逐文件手动步骤（GUI+脚本）
 - `robustness-and-modularity.md` 架构/断点/隧道/扩展/测试；§9 工作流分类与占位符
 - `h3-troubleshooting.md`、`h3-manual-operations.md`(legacy)、`comfyui-startup-and-access.md`、
@@ -240,6 +241,13 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - **下载监听策略（2026-09-03，写入 skill 1.5b）**：状态等待仅保留 wait_for 自适应轮询；
   产物“完成即一次性拉取”（完成标记/job.json state=completed/spark inotify 触发），失败用
   有界指数退避；长下载等进程/日志标记而非采样轮询；断线重建隧道续传不重跑。
+- **运行形态切换（2026-09-03）**：新增 `config/deploy.json`（site: win-remote 现状 /
+  spark-local 交付形态）+ `runs/h3/deploy.py`（--show/--set，自动同步 llm.json base_url
+  8011↔8000 并备份 .bak）；入口 `bats\config\mode.bat`。`generate_video.ps1` 按形态分支：
+  spark-local 跳隧道、本机 HTTP 探活、产物本机复制（Download-RemoteVideo -LocalCopy）；
+  finally 中 spark-local 不清理隧道。文档 `docs/deploy-modes.md`（双形态手册），+3 单测
+  （套件 86）。spark-local 交付用法：仓库移到 spark → --set spark-local → python CLI +
+  本地模型(Qwen 8000)直调 → 同机 ComfyUI 出片，无需隧道。
 - 镜像同步：`sync_remote_workflows.ps1` 拉齐 6/6（当时 4 份过期）。
 - **第 4 步：Qwen3.8-27B vLLM 部署与 AI 桥打通（2026-09-03）**：
   - 安装：`~/Qwen3.8-27B/vllm-venv` 用**清华镜像**装 vLLM 0.28.0（aarch64 wheel 308MB；

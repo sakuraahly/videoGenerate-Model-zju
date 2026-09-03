@@ -75,20 +75,29 @@ Set-TunnelContext -BasePort $LocalPort -RecordFile $TunnelRecordFile `
 
 # ------------------------------- 辅助函数 ---------------------------------
 function Download-RemoteVideo {
-    param([string]$RemotePath, [string]$LocalPath)
+    param([string]$RemotePath, [string]$LocalPath, [switch]$LocalCopy)
     for ($i = 1; $i -le $ScpAttempts; $i++) {
-        scp "${RemoteHost}:${RemotePath}" $LocalPath 2>$null
-        if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $LocalPath)) {
+        if ($LocalCopy) {
+            # 部署形态 spark-local：产物与仓库同机，直接复制（展开 ~ 为本机主目录）
+            $src = $RemotePath -replace '^~', $HOME
+            Copy-Item -LiteralPath $src -Destination $LocalPath -Force -ErrorAction SilentlyContinue
+            $copyOk = (Test-Path -LiteralPath $LocalPath)
+        }
+        else {
+            scp "${RemoteHost}:${RemotePath}" $LocalPath 2>$null
+            $copyOk = ($LASTEXITCODE -eq 0)
+        }
+        if ($copyOk -and (Test-Path -LiteralPath $LocalPath)) {
             $size = (Get-Item -LiteralPath $LocalPath).Length
             if ($size -gt 0) {
                 Write-Info "下载成功（$size 字节）。"
                 return $true
             }
-            Write-Warn '下载到的文件为空，清理后重试...'
+            Write-Warn '取到的文件为空，清理后重试...'
             Remove-Item -LiteralPath $LocalPath -Force -ErrorAction SilentlyContinue
         }
         else {
-            Write-Warn "scp 下载失败（第 ${i}/${ScpAttempts} 次）。"
+            Write-Warn "产物拉取失败（第 ${i}/${ScpAttempts} 次，方式: $(if ($LocalCopy) { '本机复制' } else { 'scp' })）。"
         }
         if ($i -lt $ScpAttempts) { Start-Sleep -Seconds $RetryDelaySeconds }
     }
@@ -122,9 +131,26 @@ $runLog = Initialize-RunLog -ProjectRoot $ProjectRoot
 $env:H3_LOG_FILE = $runLog
 Write-Host "[INFO] 运行日志: $runLog"
 
+# 0b) 部署形态：win-remote（默认，Windows + ssh 隧道） | spark-local（整体在 spark，同机直连）
+$DeploySite = 'win-remote'
+$DeployFetch = 'scp'
+try {
+    $dp = Get-Content -LiteralPath (Join-Path $ProjectRoot 'config\deploy.json') -Raw -Encoding UTF8 |
+        ConvertFrom-Json
+    if ($dp -and $dp.site -in @('win-remote', 'spark-local')) { $DeploySite = [string]$dp.site }
+    $sprops = $dp.sites.($DeploySite)
+    if ($sprops -and $sprops.fetch) { $DeployFetch = [string]$sprops.fetch }
+}
+catch { }
+
 Write-Info '=============================================='
 Write-Info ' MiniMax H3 视频生成（断点可恢复版）'
-Write-Info " 远程主机: $RemoteHost  本地隧道端口: $LocalPort"
+if ($DeploySite -eq 'spark-local') {
+    Write-Info " 部署形态: spark-local（同机直连 ComfyUI/模型，无需隧道）"
+}
+else {
+    Write-Info " 部署形态: win-remote  远程主机: $RemoteHost  本地隧道端口: $LocalPort"
+}
 Write-Info '=============================================='
 
 # 0) 工作流传输/使用配置（workflow_setup.bat 维护）
@@ -172,22 +198,31 @@ try {
     # 1) 单实例运行锁
     $lock = New-ProjectLock -Path $LockPath
 
-    # 2) 确保远程 ComfyUI 在运行（仅检查/启动一次）
-    Write-Info '检查远程 ComfyUI 状态...'
-    if (Test-RemoteComfyUI) {
-        Write-Info 'ComfyUI 已在运行。'
+    # 2) 确保 ComfyUI 可访问（按部署形态：远程经隧道 / spark-local 同机直连）
+    if ($DeploySite -eq 'spark-local') {
+        Write-Info '部署形态 spark-local：检查本机 ComfyUI...'
+        if (-not (Test-HttpEndpoint -Port $LocalPort)) {
+            Write-ErrorExit '本机 ComfyUI 未运行（127.0.0.1:8188）。请先启动 ComfyUI 后重试（spark-local 不需要隧道）。'
+        }
+        $env:COMFYUI_URL = "http://127.0.0.1:${LocalPort}"
+        Write-Info "ComfyUI 访问地址: $env:COMFYUI_URL（本机直连）"
     }
     else {
-        Start-RemoteComfyUI
+        # 3) 确保 SSH 隧道可用（复用/自愈/自动换端口）—— win-remote 形态
+        Write-Info '检查远程 ComfyUI 状态...'
+        if (Test-RemoteComfyUI) {
+            Write-Info 'ComfyUI 已在运行。'
+        }
+        else {
+            Start-RemoteComfyUI
+        }
+        if (-not (Ensure-Tunnel)) {
+            Write-ErrorExit '无法建立可用的 SSH 隧道。请检查网络、远程主机与本地端口占用情况。'
+        }
+        # 让 Python 客户端使用实际本地端口（自动换端口时与默认不同）
+        $env:COMFYUI_URL = "http://127.0.0.1:${LocalPortUsed}"
+        Write-Info "ComfyUI 访问地址: $env:COMFYUI_URL"
     }
-
-    # 3) 确保 SSH 隧道可用（复用/自愈/自动换端口）
-    if (-not (Ensure-Tunnel)) {
-        Write-ErrorExit '无法建立可用的 SSH 隧道。请检查网络、远程主机与本地端口占用情况。'
-    }
-    # 让 Python 客户端使用实际本地端口（自动换端口时与默认不同）
-    $env:COMFYUI_URL = "http://127.0.0.1:${LocalPortUsed}"
-    Write-Info "ComfyUI 访问地址: $env:COMFYUI_URL"
 
     # 4) 断点状态决策
     $state = Get-JobState -ProjectRoot $ProjectRoot
@@ -285,11 +320,13 @@ try {
         }
     }
     $localVideoPath = Join-Path $OutputDir ("video_" + ($maxNum + 1) + '.mp4')
-    Write-Info "远程视频: $remoteVideoPath"
-    Write-Info "下载到:   $localVideoPath"
+    Write-Info "产物路径: $remoteVideoPath"
+    Write-Info "保存到:   $localVideoPath"
 
-    if (-not (Download-RemoteVideo -RemotePath $remoteVideoPath -LocalPath $localVideoPath)) {
-        Write-ErrorExit "视频下载失败。断点已保留，重新运行 run.bat 将直接重试下载。"
+    $dlArgs = @('-RemotePath', $remoteVideoPath, '-LocalPath', $localVideoPath)
+    if ($DeployFetch -eq 'local_cp') { $dlArgs += '-LocalCopy' }
+    if (-not (Download-RemoteVideo @dlArgs)) {
+        Write-ErrorExit "产物拉取失败。断点已保留，重新运行 run.bat 将直接重试。"
     }
 
     # 7) 成功 -> 清理断点
@@ -299,6 +336,6 @@ try {
 finally {
     if (Test-Path Env:COMFYUI_URL) { Remove-Item Env:COMFYUI_URL -ErrorAction SilentlyContinue }
     if (Test-Path Env:H3_LOG_FILE) { Remove-Item Env:H3_LOG_FILE -ErrorAction SilentlyContinue }
-    Stop-Tunnel
+    if ($DeploySite -ne 'spark-local') { Stop-Tunnel }   # spark-local 无隧道
     Release-ProjectLock -Handle $lock -Path $LockPath
 }
