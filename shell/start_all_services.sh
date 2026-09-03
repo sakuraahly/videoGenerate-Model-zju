@@ -41,7 +41,7 @@ if [ "$START_COMFYUI" = true ]; then
         log "ComfyUI not running"
     fi
     # Also kill any stray ComfyUI processes
-    pkill -f "ComfyUI/main.py" 2>/dev/null || true
+    pkill -f "main.py.*--port 8188" 2>/dev/null || true
     sleep 2
 fi
 
@@ -87,7 +87,7 @@ if [ "$START_COMFYUI" = true ]; then
     log "Starting ComfyUI..."
     tmux new-session -d -s "$COMFYUI_TMUX" \
         "cd $COMFYUI_DIR && source $HOME/ai/venv/bin/activate && \
-         python main.py --listen 127.0.0.1 --port 8188 2>&1 | tee $HOME/comfyui.log"
+         python main.py --listen 127.0.0.1 --port 8188 --disable-auto-launch --reserve-vram 12 --enable-manager 2>&1 | tee $HOME/comfyui.log"
     # Wait for ComfyUI
     for i in $(seq 1 60); do
         if curl -sf http://127.0.0.1:8188/ >/dev/null 2>&1; then
