@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     工作流提示词向导（bats\prompts\prompts.bat 启动）。
     选择工作流（槽位）→ 查看/记事本/从 default 复制/覆盖新词/追加注入/AI 生成。
@@ -171,7 +171,7 @@ function Run-SlotMenu {
                 Write-Host '请输入提示词内容（粘贴后空行回车结束）：'
                 $lines = @()
                 while ($true) {
-                    $ln = Read-Host ''
+                    $ln = Read-Host
                     if (-not $ln) { if ($lines.Count -gt 0) { break } else { continue } }
                     $lines += $ln
                 }
@@ -182,7 +182,7 @@ function Run-SlotMenu {
                 Write-Host '请输入要注入的新提示词（粘贴后空行回车结束）：'
                 $lines = @()
                 while ($true) {
-                    $ln = Read-Host ''
+                    $ln = Read-Host
                     if (-not $ln) { if ($lines.Count -gt 0) { break } else { continue } }
                     $lines += $ln
                 }
