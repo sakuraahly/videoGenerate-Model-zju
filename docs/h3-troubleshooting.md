@@ -30,11 +30,13 @@
 ssh spark 'curl -s http://127.0.0.1:8188/object_info/MiniMaxH3ImageToVideo | head -c 100'
 ```
 If empty or error, wait 30 seconds and retry. If still failing, check ComfyUI logs
-(ComfyUI 在本环境是 **手动/tmux 进程，不是 systemd 服务**；只有你确实以 systemd
-运行时才改用 `journalctl --user -u comfyui ...`):
+(ComfyUI 本环境**自 2026-09-03 起是 systemd 服务 `comfyui.service`**，日志用 journalctl；
+历史上是 tmux/裸进程，判断一律按端口探测 `ss -ltn | grep :8188`):
 ```bash
-# 看 tmux 会话输出（本套程序/文档约定的会话名为 comfyui）
-ssh spark 'tmux capture-pane -pt comfyui -S -200 2>/dev/null || echo "无 tmux 会话；若手动启动请查看你的启动终端/日志文件"'
+# 看 systemd 服务日志（sudo 只能人工交互执行）
+ssh spark 'journalctl -u comfyui.service --no-pager | tail -n 100'
+# 或看 tmux 会话输出（若确为 tmux 形态）
+ssh spark 'tmux capture-pane -pt comfyui -S -200 2>/dev/null || echo "无 tmux 会话"'
 ```
 
 ---
@@ -135,10 +137,22 @@ ssh spark 'cat /tmp/h3_submit.log'
 
 ## ComfyUI queue is stuck
 
+> ⚠️ 2026-09-03 的重要澄清：本环境曾出现“任务提交后长时间无响应”的假卡死。
+> 查证后发现客户端格式**没有问题**——真正原因是 ① ComfyUI 以 `--enable-manager` 启动，
+> 启动后向 GitHub 拉取列表超时（journal 大量 `asyncio TimeoutError` /
+> `switching to local mode`，可达 ~7 分钟）；② 个别任务本身执行极慢
+> （实测一次 360p/5s i2v 从提交到出片 **~101 分钟**，客户端 timeout=3600s 先放弃，
+> 但 ComfyUI 实际完成并产出 mp4，见 `docs/session-summary.md §12`）。
+> 所以看到“卡住”时：先看 ComfyUI 是否仍在执行（`system_stats` 的 `queue_remaining`），
+> 再对比 journal 的 `Prompt executed in …` 与提交时间；客户端超时后**无参数重跑
+> h3_submit 会自动续传**，不会重复生成。
+
 ```bash
 # Clear the queue
 ssh spark 'curl -s -X POST http://127.0.0.1:8188/interrupt'
 
-# Restart ComfyUI if needed（手动/tmux 进程；若确为 systemd 服务才用 systemctl）
+# Restart ComfyUI if needed（现行 = systemd 服务 comfyui.service；sudo 需人工交互密码）
+ssh spark 'sudo systemctl restart comfyui.service'   # 人工在 spark 终端执行
+# 历史（tmux 形态，仅供参考）：
 ssh spark 'pkill -f "main.py --listen 127.0.0.1 --port 8188"; sleep 3; tmux new-session -d -s comfyui "cd ~/ai/ComfyUI && ~/ai/venv/bin/python main.py --listen 127.0.0.1 --port 8188 --disable-auto-launch"'
 ```

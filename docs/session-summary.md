@@ -26,7 +26,7 @@ shell\                       PowerShell 引擎（程序模块，非入口）
 runs\h3\                    Python 引擎包
   h3_submit.py  CLI 入口（stage/template/workflow-file/断点/日志）
   workflow.py params.py comfy.py templates.py uiapi.py subgraph.py stage.py jobstate.py prompts.py idea2prompts.py
-  tests\test_h3.py          74 项单测
+  tests\test_h3.py          87 项单测
 config\ environment.json llm.json(.example) pipeline.json pipeline.example.json
         minimax_h3_models.json prompt_blueprints.json transfer.json
 prompts\ manifest.json positive/negative_prompts.txt workflows\<slot>.positive/.negative.txt
@@ -63,9 +63,13 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
      覆盖本地 FLF2V（首帧 drama_asset_hero / 末帧 drama_asset_alley，已实跑出片，见 §8）。
 3. 本地内置 T2V（`--stage t2v` / run.bat 默认）走 spark **本地推理**，无需登录任何云端，
    是当前稳定可出片的路径。
-4. spark 上 ComfyUI 可能由 **tmux 会话 comfyui** 或**裸进程**运行（本机看到的裸进程已被
-   `bats\service\StartComfyUI.bat` 重新纳管为 tmux）。判断“是否在跑”一律按**端口探测**
-   （`ss -ltn | grep :8188`），不要假设 tmux 一定存在。
+4. **ComfyUI 运行形态（2026-09-03 起）：systemd 服务 `comfyui.service`**（`ExecStart=…
+   main.py --listen 127.0.0.1 --port 8188 --disable-auto-launch --reserve-vram 12
+   --enable-manager`，root 属主，随开机自启）。历史上有 tmux/裸进程两种形态，一律按
+   **端口探测**（`ss -ltn | grep :8188`）判断是否在跑，不要假设 tmux 一定存在；
+   重启/看日志用 `ssh spark 'sudo systemctl restart comfyui.service'` /
+   `journalctl -u comfyui.service`（注意：**sudo 需交互密码，自动化改配置不可行**）。
+   ⚠️ `--enable-manager` 仍在（用户决定保留，勿擅动；其 GitHub 拉取超时是“假卡死”来源之一，见 §12）。
 
 ## 4. 入口与常规流程
 - 环境自检：`bats\generate\menu.bat → [5]`（本地依赖、ssh、ComfyUI、4 模型，缺失可自动下载）。
@@ -349,3 +353,77 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   - SYSTEM_MESSAGE 重写：从「强制读取」改为「已内嵌 + 可选 read_doc 深入参考」。
   - TOOL_NAMES 新增 'read_doc'，scheduler.py import 同步更新。
   - 安全测试 13/13 通过（原有测试未受影响）。
+
+---
+
+## 12. 2026-09-03 晚间会话：ComfyUI “假卡死”诊断 + 日志系统退化修复（本会话）
+
+### 12.1 重要：用户撤销了 ComfyUI 配置修改
+- 之前诊断建议“去掉 comfyui.service 的 `--enable-manager`”（选项 A）**已被用户明确撤回**：
+  **禁止修改 ComfyUI 配置**（`/etc/systemd/system/comfyui.service` 保持原样，用户要查的
+  其实不是那次 systemd 日志里的“第二次”，而是更早“人类工作流用猫图生成视频”的那次）。
+- 结论：**ComfyUI 未做任何改动**；如需重启/改配置只能由用户人工操作（sudo 要交互密码）。
+
+### 12.2 时间线换算提醒（易错点！）
+- **日志文件名/内容 = 北京时间（UTC+8，由本地 Windows 生成）**；spark 的
+  `ls -l` / `journalctl` / `date` 显示 **UTC**。同一时刻两者相差 8 小时。
+- 例：spark 日志 `Sep 3 09:19 Utc` = 北京 `17:19`；`run_20260903_153644_675.log`（北京 15:36 启动）
+  的 spark mtime 显示为 `Sep 3 07:36`。**跨端比对时间必须先换算。**
+
+### 12.3 诊断结论一：猫图 i2v 那次“卡住”其实成功了，只是超慢
+- 现场记录（北京时）：
+  - `15:38:13` 本地提交 i2v（prompt_id `0504cacd-e95f-497d-8805-f24f00d69a10`，
+    608×352@360p，5s→124f@24fps，timeout=3600s），任务目录
+    `workflows/h3_20260903_153813_525/`（job.json state=timed_out）。
+  - `16:38:46` 客户端 `timed_out`（等满 1 小时放弃）；**ComfyUI 实际继续执行**，
+    到 `17:19` 产出 `~/ai/ComfyUI/output/video/MiniMax_H3_00024_.mp4`（5.9MB）——
+    **全过程约 101 分钟，任务其实是成功的**，只是远超客户端 1h 等待上限。
+- 教训与修复的关系：客户端超时后**断点保留**（root_state 仍有 prompt_id），期间再开新任务
+  会被“断点拦截”挡住 → 用户看到“卡住/无响应”+ 只有两行的粗略日志。三者叠加造成“假卡死”。
+- 处置建议：**无参数重跑 h3_submit 即自动续传**，能马上定位
+  `MiniMax_H3_00024_.mp4`（无需重新生成）。
+
+### 12.4 诊断结论二：“粗略日志”= 提前退出路径不落日志（已修复 ✅）
+- 现象：`logs/run_*.log` 从 15:30 起出现多份**只有 95B、两行**的文件
+  （`run start` + `start argv=`），没有 task/submitted/interrupted/timed_out/错误行。
+- 根因：`runs/h3_submit.py` 多条提前退出路径（断点拦截、`--workflow-file` 参数混用、
+  `ParamError`、顶层异常兜底）**只 `_err()` 打印到 stderr、从不 `_log_event`**；
+  且 CLI 直跑时 `argv=None`，`start argv=` 记的是空串。
+- 修复（本地提交 `20f89ae`，spark 提交 `a6c8f01`，两文件哈希一致）：
+  1. `_err()` 现在同步写运行日志（`py: err …`）→ 所有失败路径统一留痕；
+  2. `start argv=` 记录真实命令行（`sys.argv[1:]`）；
+  3. `__main__` 顶层 `ParamError`/内部异常兜底也落日志；
+  4. 断点拦截提示增强：显示断点 prompt_id，并提示“可直接无参重跑自动续传继续等待”。
+  5. 回归测试 `test_err_writes_log_too`（+1 单测，套件 87 全过）。
+- 证据/日志事件规范（完整链条）：`start argv=…` → `task mode=.. stage=.. …` →
+  `workflow_saved dir=…` → `submitted prompt_id=…` → 结束行
+  `completed / interrupted / timed_out / task_error`（含 `elapsed=Ns`）或新的
+  `err …`（提前退出）。
+
+### 12.5 残留缺陷 / 待办（给新对话）
+1. **ComfyUI 为何 360p/5s 跑了 ~101 分钟仍未查明**（正常约 4-6 分钟/480p/124f）。
+   已知线索：`--enable-manager` 实例启动后做 GitHub fetch 超时（journal 见大量
+   `asyncio TimeoutError` + `[ComfyUI-Manager] Due to a network error, switching to local mode`，
+   09:04-09:11 UTC 一段），且有一次 `Prompt executed in 00:16:48`；journal 还有
+   `ModuleNotFoundError: No module named 'nvvfx'`（08:59 UTC，疑似无害）。
+   用户暂不想动 ComfyUI 配置；下次复现时优先看 `journalctl -u comfyui.service` 的
+   “Prompt executed in …”行两侧（真正执行时长 vs 排队/Manager 阻塞），并对比
+   `system_stats`/`nvidia-smi`。
+2. **ComfyUI 本机自动化无法重启**：改配置/重启需用户手动（sudo 密码无法非交互）。
+   文档 §3 已同步为“systemd 服务”现状（旧 troubleshooting 文档仍写 tmux，需随下次
+   会话一并更正——见 §9 文档地图，可只读参考）。
+3. **spark 侧 git 提交需内联身份**：`git -c user.name=Developer -c user.email=dev@spark
+   commit …`（仓库未配置 user.name/email，直接 commit 会报
+   `unable to auto-detect email address`）。
+4. **本地领先 GitHub 1 个提交**：本地 master=20f89ae，origin/master=8fc1027，
+   未 push（原计划是本地推 GitHub；spark 只保留本地 git 记录，永不推 GitHub）。
+5. 提示词残留：`prompts/workflows/video_i2v.positive.txt` 仍含注入过的 cat 提示词段，
+   待用 `bats\prompts\prompts.bat` 的 `[N]` 手动清理（历史遗留，非本次引入）。
+6. 老文档中 ComfyUI “tmux 进程”叙述（h3-troubleshooting.md 等）已过时：
+   现行 = systemd `comfyui.service`（§3 与 §12.1）。
+
+### 12.6 本会话改动的文件清单
+- `runs/h3_submit.py`（日志修复，commit `20f89ae`）
+- `runs/h3/tests/test_h3.py`（+1 回归测试；套件 87）
+- `docs/session-summary.md`（本文件更新）
+（以上均已通过 scp 同步 spark 并各自提交；transferred 时遵循“不含 .git”约定。）
