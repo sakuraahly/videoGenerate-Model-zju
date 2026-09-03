@@ -47,6 +47,8 @@ def _should_exclude(info: tarfile.TarInfo) -> bool:
     rel = "/".join(rel_parts)
     if rel in EXCLUDE_FILES:
         return True
+    if len(rel_parts) == 1 and rel_parts[0].lower().endswith((".mp4", ".tar", ".bak")):
+        return True  # 项目根的大产物/临时包（与 .gitignore /*.mp4 语义一致）
     return False
 
 
