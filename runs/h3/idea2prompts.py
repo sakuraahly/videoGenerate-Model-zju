@@ -100,6 +100,20 @@ def chat_once(cfg: dict, messages: list) -> str:
     return content
 
 
+def _extract_json_object(text: str):
+    """从文本中提取第一个完整 JSON 对象（容忍前后杂讯/围栏/思考文本）。无则返回 None。"""
+    for i, ch in enumerate(text):
+        if ch != "{":
+            continue
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(text[i:])
+            if isinstance(obj, dict):
+                return obj
+        except (json.JSONDecodeError, ValueError):
+            continue
+    return None
+
+
 def parse_prompt_json(text: str, slot: str) -> dict:
     t = text.strip()
     if t.startswith("```"):
@@ -107,17 +121,33 @@ def parse_prompt_json(text: str, slot: str) -> dict:
     if t.startswith("```json"):
         t = t[7:]
     t = t.strip().strip("`").strip()
+    obj = None
     try:
         obj = json.loads(t)
     except json.JSONDecodeError:
-        # 允许纯文本回退：当作 positive
-        return {"positive": t, "negative": ""}
-    if not isinstance(obj, dict):
-        raise ParamError(f"槽位 {slot} 的 AI 输出不是 JSON 对象。")
-    return {
-        "positive": str(obj.get("positive") or ""),
-        "negative": str(obj.get("negative") or ""),
-    }
+        obj = _extract_json_object(t)
+    if obj is not None:
+        if not isinstance(obj, dict):
+            raise ParamError(f"槽位 {slot} 的 AI 输出不是 JSON 对象。")
+        return {
+            "positive": str(obj.get("positive") or ""),
+            "negative": str(obj.get("negative") or ""),
+        }
+    # 无 JSON：若文本是“角色/指令/思考类”杂讯（常见于 max_tokens 截断后模型只吐出
+    # 复述或思考文本），写进槽位文件会污染提示词——直接报错，绝不静默回退写入。
+    if t.startswith(("{", "[")):
+        raise ParamError(
+            f"槽位 {slot} 的 AI 输出是以 {{/[ 开头的非完整 JSON（疑似被 max_tokens 截断）。"
+            "未写入任何文件；请调大 config/llm.json 的 max_tokens（建议 ≥4096）后重试。")
+    junk_markers = ("你是一个", "用户要求", "职责边界", "只输出一个", "请为该槽位",
+                    "系统提示", "禁止 markdown", "有效输出示例", "目标提示词槽位")
+    if any(m in t for m in junk_markers):
+        raise ParamError(
+            f"槽位 {slot} 的 AI 输出不是 JSON 且含角色/指令类文本（疑似输出被截断或未"
+            "遵循格式）。未写入任何文件；请调大 config/llm.json 的 max_tokens"
+            "（建议 ≥4096）后重试。")
+    # 允许纯文本回退：当作 positive（模型偶尔以散文形式给出可读提示词）
+    return {"positive": t, "negative": ""}
 
 
 def slot_list(project_dir: Path) -> list:

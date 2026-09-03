@@ -7,5 +7,5 @@
   "model": "deepseek-chat",
   "temperature": 0.7,
   "timeout_seconds": 120,
-  "max_tokens": 500
+  "max_tokens": 4096
 }
