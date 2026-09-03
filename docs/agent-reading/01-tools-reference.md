@@ -1,23 +1,29 @@
 # Agent 工具参考
 
-## 1. call_comfyui — 提交视频生成任务
+## 1. call_comfyui — 提交视频生成任务（提交/等待分离）
 
 ```
 call_comfyui(stage, prompt, negative_prompt, image, image2,
-             resolution, seconds, seed, dry_run, force_new, workflow_file)
+             resolution, seconds, seed, dry_run, force_new, wait_until_done)
 ```
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
 | stage | str | t2v / i2v / r2v / flf2v |
 | prompt | str | 正向提示词（需遵循提示词工程规则） |
-| negative_prompt | str | 负向提示词（可选） |
-| image | str | 输入图片路径（i2v/r2v/flf2v 需要） |
-| image2 | str | 第二张图片（r2v 可选 / flf2v 末帧） |
 | resolution | str | 360p-768p，默认 720p |
 | seconds | float | 时长，默认 5 |
 | dry_run | bool | true=只验证不提交 |
-| force_new | bool | true=忽略断点续传 |
+| force_new | bool | true=忽略遗留断点 |
+| wait_until_done | bool | 默认 **false**：提交即返回 prompt_id（后台运行）；true=阻塞等待完成（数分钟） |
+
+**重要（提交/等待分离）**：默认调用只负责“提交”，立即返回
+`TASK_SUBMITTED: <prompt_id>`，**不会**长时间阻塞，也不会出现“任务其实在跑却被
+超时误报”的情况。生成在 ComfyUI 后台进行：
+- 需要完成结果时，用 **run_script** 运行 `runs/h3_submit.py`（**不带任何参数**）——
+  会自动续传等待原任务直到完成，输出 `REMOTE_VIDEO_PATH:` 与（spark-local 下）
+  `LOCAL_OUTPUT:`（视频已保存到项目 outputs/）。
+- 若任务仍在生成，续传会一直等到出片为止（长任务可分多次询问进度）。
 
 **返回值**：成功返回任务信息（含 prompt_id），失败返回错误消息。
 

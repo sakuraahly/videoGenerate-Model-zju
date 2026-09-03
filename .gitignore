@@ -9,6 +9,7 @@ runs/**/*.log
 
 # 本机配置（含远程主机绝对路径；公开示例见 config/pipeline.example.json）
 config/pipeline.json
+config/autosync.json
 
 # 每次运行的审计目录（运行期生成，不入库）
 workflows/h3_*/

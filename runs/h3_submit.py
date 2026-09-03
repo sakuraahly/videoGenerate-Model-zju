@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import time
 import traceback
@@ -59,6 +60,57 @@ def _keep_breakpoint() -> bool:
     → 未注入该开关时，成功后立即清断点，断点只服务于“进行中/超时/中断”的恢复。
     """
     return os.environ.get(_KEEP_ENV, "").strip().lower() not in ("", "0", "false", "no")
+
+
+def _site(project_dir) -> str:
+    """读取 config/deploy.json 的运行形态（win-remote 默认 / spark-local）。"""
+    try:
+        cfg = json.loads((Path(project_dir) / "config" / "deploy.json")
+                         .read_text(encoding="utf-8-sig"))
+        return str(cfg.get("site") or "win-remote")
+    except Exception:  # noqa: BLE001 读不到按 win-remote（历史默认）
+        return "win-remote"
+
+
+def _next_output_name(outputs_dir: Path) -> str:
+    """outputs/video_N.mp4 下一个不冲突编号（与 PowerShell 下载命名一致）。"""
+    highest = 0
+    try:
+        for p in outputs_dir.glob("video_*.mp4"):
+            core = p.name[len("video_"):-len(".mp4")]
+            if core.isdigit():
+                highest = max(highest, int(core))
+    except OSError:
+        pass
+    return f"video_{highest + 1}.mp4"
+
+
+def _finalize_local_outputs(project_dir, remote_paths) -> None:
+    """spark-local 直跑（无外层下载器）：产物本机复制直接保存到程序文件夹 outputs/。
+
+    仅由无人负责下载的直跑路径调用；编排层（H3_KEEP_BREAKPOINT=1）自行下载，不重复。
+    """
+    outputs_dir = Path(project_dir) / "outputs"
+    try:
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return
+    base = _next_output_name(outputs_dir)
+    for i, rp in enumerate(remote_paths):
+        src = Path(str(rp).replace("~", str(Path.home())))
+        if not src.exists():
+            continue
+        if i == 0:
+            dst = outputs_dir / base
+        else:
+            stem, suffix = Path(base).stem, Path(base).suffix
+            dst = outputs_dir / f"{stem}_{i}{suffix}"
+        try:
+            shutil.copy2(src, dst)
+            print(f"LOCAL_OUTPUT: outputs/{dst.name}", flush=True)
+            _log_event(f"local_output file={dst.name} bytes={dst.stat().st_size}")
+        except OSError as e:
+            _log_event(f"local_output_failed file={dst.name} err={e}")
 
 
 def _err(msg: str) -> None:
@@ -188,6 +240,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="不保存工作流文件（测试用）")
     p.add_argument("--dry-run", action="store_true",
                    help="Prepare/print workflow without submitting or uploading")
+    p.add_argument("--submit-only", action="store_true",
+                   help="提交后立即返回（打印 TASK_SUBMITTED: prompt_id），不轮询等待；"
+                        "提交/等待分离：任务在后台运行，完成状态由后续无参重跑/续传查询")
     return p
 
 
@@ -562,6 +617,13 @@ def main(argv: Optional[list] = None) -> int:
         print(f"prompt_id: {resume_id}\n", flush=True)
         _log_event(f"submitted stage={stage_id} prompt_id={resume_id}")
 
+        if args.submit_only:
+            # 提交/等待分离：立即返回，任务在 ComfyUI 后台继续；断点保留供后续
+            # 无参重跑/续传查询完成状态（不再出现“600s 超时误报+丢 prompt_id”）。
+            print(f"TASK_SUBMITTED: {resume_id}", flush=True)
+            _log_event(f"submitted_only prompt_id={resume_id} (task running in background)")
+            return EXIT_OK
+
     # ------------------------------------------------------------ 轮询等待
     timeout = _wait_timeout(args, task_folder, gp)
     poll_start = time.monotonic()
@@ -617,7 +679,8 @@ def main(argv: Optional[list] = None) -> int:
 
     file_info = files[0]
     remote_base = str(env.get("remote_output_dir") or "~/ai/ComfyUI/output")
-    remote_path = comfy.build_remote_path(remote_base, file_info)
+    all_remote = [comfy.build_remote_path(remote_base, f) for f in files]
+    remote_path = all_remote[0]
     print(f"Output file: {file_info['filename']}", flush=True)
 
     # 更新断点（写入 remote_path，外层下次可直接下载、免重复轮询）
@@ -630,19 +693,25 @@ def main(argv: Optional[list] = None) -> int:
         )
 
     # 机器可读标记：外层 PowerShell 依赖此行
-    print(f"REMOTE_VIDEO_PATH: {remote_path}", flush=True)
-    for extra in files[1:]:
-        extra_path = comfy.build_remote_path(remote_base, extra)
-        print(f"REMOTE_VIDEO_PATH: {extra_path}", flush=True)
+    for rp in all_remote:
+        print(f"REMOTE_VIDEO_PATH: {rp}", flush=True)
     _log_event(f"completed prompt_id={resume_id} remote={remote_path} files={len(files)} "
                f"elapsed={int(time.monotonic() - poll_start)}s status={status_str}")
     host = str(env.get("remote_host") or "spark")
-    print(f"\nTo download:")
-    print(f"  scp {host}:{remote_path} {args.output}/", flush=True)
 
-    # 无人负责下载（未注入 H3_KEEP_BREAKPOINT）→ 成功后立即清断点，
-    # 防止“已完成任务残留断点”把下一次新任务错误续传成旧任务。
-    if not _keep_breakpoint():
+    if _keep_breakpoint():
+        # 编排层会负责下载（H3_KEEP_BREAKPOINT=1）：只给 scp 提示
+        print(f"\nTo download:")
+        print(f"  scp {host}:{remote_path} {args.output}/", flush=True)
+    else:
+        # 直跑（CLI/agent，无外层下载器）：spark-local → 产物直接保存到 outputs/；
+        # win-remote → 保持 scp 提示（由外层/人工经隧道下载）。
+        if _site(project_dir) == "spark-local":
+            _finalize_local_outputs(project_dir, all_remote)
+        else:
+            print(f"\nTo download:")
+            print(f"  scp {host}:{remote_path} {args.output}/", flush=True)
+        # 成功后立即清断点，防止“已完成任务残留断点”把下一次新任务错误续传成旧任务。
         jobstate.clear_root_state(project_dir)
         _log_event(f"root_state_cleared prompt_id={resume_id} (no outer downloader)")
     return EXIT_OK

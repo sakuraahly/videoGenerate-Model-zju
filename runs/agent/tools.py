@@ -116,7 +116,24 @@ class RunScript(BaseTool):
                 )
             return f'执行成功 (exit 0)\nstdout: {stdout}'
 
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
+            partial = _truncate(
+                ((e.stdout or '') + '\n' + (e.stderr or '')).strip()
+            )
+            pid_line = next(
+                (ln.strip() for ln in (e.stdout or '').splitlines()
+                 if ln.startswith(('TASK_SUBMITTED:', 'prompt_id:'))),
+                '',
+            )
+            note = f'任务已提交并在后台继续运行：{pid_line}。' if pid_line else ''
+            if partial:
+                return (
+                    f'执行超时 ({_SCRIPT_TIMEOUT}s)：{note}'
+                    f'（进程被限时中断，但 ComfyUI 上的任务不受影响）\n'
+                    f'partial output:\n{partial}\n'
+                    f'下一步：再次无参运行 h3_submit.py 续传查询，直到返回 '
+                    f'REMOTE_VIDEO_PATH / LOCAL_OUTPUT。'
+                )
             return f'错误：脚本执行超时 ({_SCRIPT_TIMEOUT}s)'
         except Exception as e:
             return f'错误：{e}'
@@ -206,9 +223,14 @@ class ModifyWorkflow(BaseTool):
 @register_tool('call_comfyui')
 class CallComfyUI(BaseTool):
     description = (
-        '通过 h3_submit 引擎提交视频/图片生成任务到 ComfyUI。'
-        '支持阶段：t2v(文生视频)、i2v(图生视频)、r2v(参考图生视频)、flf2v(首尾帧)。'
-        '可用 dry_run 验证参数而不消耗 GPU。'
+        '通过 h3_submit 引擎向 ComfyUI 提交视频/图片生成任务。'
+        '阶段：t2v(文生视频)、i2v(图生视频)、r2v(参考图生视频)、flf2v(首尾帧)。'
+        '默认“提交即返回”（wait_until_done=false）：任务在后台运行，工具立即返回 '
+        'TASK_SUBMITTED: prompt_id，不会长时间阻塞；之后用 run_script 运行 '
+        'runs/h3_submit.py（不带参数）即可查询/续传直到完成并取回产物。'
+        '设置 wait_until_done=true 才会在本调用内等待完成（视频生成通常数分钟）。'
+        'dry_run=true 只校验参数不消耗 GPU。spark-local 下完成后视频会自动保存到'
+        '项目 outputs/ 目录（输出含 LOCAL_OUTPUT 行）。'
     )
     parameters = {
         'type': 'object',
@@ -234,6 +256,17 @@ class CallComfyUI(BaseTool):
             'dry_run': {
                 'type': 'boolean',
                 'description': '仅验证参数不实际生成',
+            },
+            'wait_until_done': {
+                'type': 'boolean',
+                'description': (
+                    '默认 false=提交即返回 prompt_id（任务后台运行，稍后用 run_script '
+                    '无参跑 h3_submit.py 查询/取回）；true=在本调用内阻塞等待至完成'
+                ),
+            },
+            'force_new': {
+                'type': 'boolean',
+                'description': 'true=忽略遗留断点强制开新任务',
             },
             'prompt': {
                 'type': 'string',
@@ -261,15 +294,22 @@ class CallComfyUI(BaseTool):
             cmd.extend(['--seed', str(params['seed'])])
         if params.get('dry_run'):
             cmd.append('--dry-run')
+        elif not params.get('wait_until_done'):
+            # 提交/等待分离：默认提交即返回，任务后台运行（不阻塞、不误报超时）
+            cmd.append('--submit-only')
+        if params.get('force_new'):
+            cmd.append('--force-new')
         if params.get('prompt'):
             cmd.extend(['--prompt', params['prompt']])
+
+        tool_timeout = 600 if params.get('wait_until_done') else 180
 
         try:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=tool_timeout,
                 cwd=PROJECT_ROOT,
             )
             stdout = _truncate(result.stdout)
@@ -282,8 +322,24 @@ class CallComfyUI(BaseTool):
                 )
             return f'提交成功\n{stdout}'
 
-        except subprocess.TimeoutExpired:
-            return '错误：提交超时 (600s)'
+        except subprocess.TimeoutExpired as e:
+            partial = _truncate(
+                ((e.stdout or '') + '\n' + (e.stderr or '')).strip()
+            )
+            pid_line = next(
+                (ln.strip() for ln in (e.stdout or '').splitlines()
+                 if ln.startswith(('TASK_SUBMITTED:', 'prompt_id:'))),
+                '',
+            )
+            note = f'任务已提交并在后台继续运行：{pid_line}。' if pid_line else ''
+            if partial:
+                return (
+                    f'调用等待超时：{note}（生成通常需数分钟）\n'
+                    f'partial output:\n{partial}\n'
+                    f'下一步：用 run_script 运行 h3_submit.py（不带参数）无参重跑续传，'
+                    f'直到返回 REMOTE_VIDEO_PATH / LOCAL_OUTPUT。'
+                )
+            return f'错误：提交超时（{tool_timeout}s）'
         except Exception as e:
             return f'错误：{e}'
 
