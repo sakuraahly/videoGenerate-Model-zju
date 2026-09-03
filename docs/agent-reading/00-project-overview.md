@@ -15,6 +15,7 @@ Spark 上运行 ComfyUI + H3 视频模型 + Qwen3.8-27B (SGLang) + Qwen-Agent + 
 | 图生视频 | call_comfyui(stage="i2v") | 首帧图 → 视频 |
 | 参考图生视频 | call_comfyui(stage="r2v") | 1-2张参考图 → 连贯视频 |
 | 首末帧生视频 | call_comfyui(stage="flf2v") | 首帧+末帧 → 视频 |
+| 参考素材管理 | list_references / run_script("h3/refimage.py") | 选 ComfyUI 已存图/上传文件作参考图（list/promote/use） |
 | 文生图 | run_script("h3_text2img.py") | H3模型生成5帧视频取中间帧 |
 | 提示词生成 | run_script("h3/idea2prompts.py") | 创意 → 各槽位提示词JSON |
 | 修改工作流 | modify_workflow(...) | 调整工作流JSON参数 |

@@ -349,6 +349,44 @@ _ALLOWED_DOC_DIRS = [
 ]
 
 
+@register_tool('list_references')
+class ListReferences(BaseTool):
+    description = (
+        '列出可作参考的素材：ComfyUI 已保存的图片（历次生成产物）、input 图库、'
+        '以及 Open WebUI 上传收件箱里的文件。返回素材 id 列表。'
+        '选择参考图时：先调本工具看有哪些可用素材，再用 run_script 运行 '
+        'runs/h3/refimage.py promote --name <id|文件名>（放进 ComfyUI input）或 '
+        'use --name <id|文件名> --stage r2v（把该图设为某阶段模板的参考图）。'
+        '参考图视频生成用 call_comfyui(stage="r2v" / "i2v" / "flf2v")。'
+    )
+    parameters = {
+        'type': 'object',
+        'properties': {},
+        'required': [],
+    }
+
+    def call(self, params: Union[str, dict], **kwargs) -> str:
+        script = os.path.join(PROJECT_ROOT, 'runs', 'h3', 'refimage.py')
+        if not os.path.isfile(script):
+            return f'错误：refimage.py 不存在于 {script}'
+        try:
+            result = subprocess.run(
+                [sys.executable, script, 'list'],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=PROJECT_ROOT,
+            )
+            out = _truncate((result.stdout or '') + (result.stderr or ''))
+            if result.returncode != 0:
+                return f'列出素材失败 (exit {result.returncode})\n{out}'
+            return f'可用参考素材：\n{out}'
+        except subprocess.TimeoutExpired:
+            return '错误：列出素材超时'
+        except Exception as e:
+            return f'错误：{e}'
+
+
 @register_tool('read_doc')
 class ReadDoc(BaseTool):
     description = (
@@ -395,7 +433,8 @@ class ReadDoc(BaseTool):
 
 # ---- 工具调用审计日志（透明包装：不改变 schema/行为；调用统一落 logs/run_*.log） ----
 _TOOL_NAMES = {RunScript: 'run_script', ModifyWorkflow: 'modify_workflow',
-               CallComfyUI: 'call_comfyui', ReadDoc: 'read_doc'}
+               CallComfyUI: 'call_comfyui', ReadDoc: 'read_doc',
+               ListReferences: 'list_references'}
 
 
 def _log_tool(name, event, **fields):
@@ -433,5 +472,5 @@ def _wrap_call(cls):
     cls.call = wrapped
 
 
-for _cls in (RunScript, ModifyWorkflow, CallComfyUI, ReadDoc):
+for _cls in (RunScript, ModifyWorkflow, CallComfyUI, ReadDoc, ListReferences):
     _wrap_call(_cls)

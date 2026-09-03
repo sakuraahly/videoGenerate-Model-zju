@@ -42,6 +42,9 @@ run_script(script, args)
 - `h3_submit.py` — 视频生成（同 call_comfyui 的底层实现）
 - `h3_text2img.py` — 文生图：`--prompt "描述" --output 名称 [--resolution 720p]`
 - `h3/idea2prompts.py` — 提示词生成：`--idea "创意" [--workflow 类型] [--force]`
+- `h3/refimage.py` — 参考素材：`list` / `promote --name <id>` /
+  `use --name <id> --stage r2v`（把选中素材设为某阶段模板的参考图）/
+  `use --undo`（还原模板）
 
 **安全限制**：
 - 只允许 .py 文件

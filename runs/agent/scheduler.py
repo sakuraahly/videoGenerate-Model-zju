@@ -24,7 +24,8 @@ os.environ['VIDEOGEN_PROJECT_ROOT'] = _PROJECT_ROOT
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from runs.agent.tools import RunScript, ModifyWorkflow, CallComfyUI, ReadDoc  # noqa: E402, F401
+from runs.agent.tools import (RunScript, ModifyWorkflow, CallComfyUI, ReadDoc,  # noqa: E402, F401
+                              ListReferences)
 
 LLM_CFG = {
     'model': 'Qwen3.8-27B',
@@ -53,6 +54,9 @@ SYSTEM_MESSAGE = """\
     · h3/idea2prompts.py — 提示词生成: --idea "创意" [--workflow 类型]
   - modify_workflow(workflow_path, changes) — 修改工作流 JSON 节点
   - read_doc(filename) — 读取 docs/agent-reading/ 下的参考文档
+  - list_references() — 列出可作参考的素材（ComfyUI 已保存图/input 图库/上传收件箱），
+    配合 run_script 运行 h3/refimage.py 使用：refimage.py list / promote --name <id>
+    / use --name <id> --stage r2v（把选中图设为模板参考图）
 
 【硬性限制 — 必须遵守】
   ✗ 不能执行 shell 命令、管理服务（ComfyUI/SGLang/tmux 等）
@@ -85,7 +89,8 @@ SYSTEM_MESSAGE = """\
 请用中文回答。
 """
 
-TOOL_NAMES = ['run_script', 'modify_workflow', 'call_comfyui', 'read_doc']
+TOOL_NAMES = ['run_script', 'modify_workflow', 'call_comfyui', 'read_doc',
+               'list_references']
 
 
 def _detect_project_root() -> str:
