@@ -45,9 +45,10 @@ run_script(script, args)
 - `h3/refimage.py` — 参考素材：
   - `list [--pool in|up|out] [--name 关键字] [--limit N]`（默认仅图片、按池限量，
     不会像以前那样被 out 池刷屏截断）
-  - `use --name <id|文件名> --stage r2v --slot 0|1`（**r2v 有两个参考图槽位**
-    slot0/slot1，人物与场景/道具分开放；用 `use --info --stage r2v` 查看槽位映射；
-    i2v/flf2v 为单槽，默认 slot 0）
+  - `use --name <id|文件名> --stage r2v --slot N`（**r2v 支持多张参考图**：本地模板
+    默认 8 个槽位 slot0..7，人物/场景/道具各占一个；未用槽位为禁用占位，
+    use 自动启用并接线。用 `use --info --stage r2v` 查看槽位与状态；还要更多槽用
+    `grow --stage r2v --total N` 扩。i2v/flf2v 为单槽，默认 slot 0）
   - `promote --name <id|文件名>`；`use --undo`（git 还原模板）
 
 **安全限制**：

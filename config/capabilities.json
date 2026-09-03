@@ -42,10 +42,10 @@
   "workflows": [
     {"id": "video_t2v", "engine": "local", "purpose": "text-to-video (official standard template)", "needs_images": "none", "slot": "video_t2v"},
     {"id": "video_i2v", "engine": "local", "purpose": "image-to-video: animate from one first frame", "needs_images": "1 first-frame image", "slot": "video_i2v"},
-    {"id": "video_r2v", "engine": "local", "purpose": "reference-to-video: keep 1-2 reference images (character/scene) consistent", "needs_images": "1-2 reference images", "slot": "video_r2v"},
+    {"id": "video_r2v", "engine": "local", "purpose": "reference-to-video: multiple reference images (character/scene/props; local template has 8 slots, grow-able via refimage grow)", "needs_images": "multiple reference images (8 slots default)", "slot": "video_r2v"},
     {"id": "video_flf2v", "engine": "local", "purpose": "first-frame + last-frame video (local extension of i2v)", "needs_images": "2 images (first, last)", "slot": "video_flf2v"},
     {"id": "api_t2v", "engine": "comfy-cloud", "purpose": "text-to-video via MiniMax Hailuo official API (Comfy cloud login required)", "needs_images": "none", "slot": "api_t2v"},
-    {"id": "api_r2v", "engine": "comfy-cloud", "purpose": "reference-to-video via Hailuo API (Comfy cloud login required)", "needs_images": "1-2 reference images", "slot": "api_r2v"},
+    {"id": "api_r2v", "engine": "comfy-cloud", "purpose": "reference-to-video via Hailuo API (Comfy cloud login required)", "needs_images": "multiple reference images", "slot": "api_r2v"},
     {"id": "api_flf2v", "engine": "comfy-cloud", "purpose": "first+last frame via Hailuo API (Comfy cloud login required)", "needs_images": "2 images (self-provided example)", "slot": "api_flf2v"}
   ],
   "prompt_slots": {

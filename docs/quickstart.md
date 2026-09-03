@@ -79,7 +79,7 @@ Soft rain sound, gentle ambient music. No text, no watermark, no cuts.
 |---|---|---|
 | 纯文字 → 一段画面（快速，最稳） | **t2v** | 只写剧本 |
 | 一张图 → 让图动起来 | **i2v** | 1 张起始图（首帧） |
-| 一张"角色图"+一张"场景图" → 生成连贯故事镜头 | **r2v** | 1–2 张参考图 |
+| 角色/场景/道具图 → 生成连贯故事镜头（可多张） | **r2v** | 1 张起，模板支持多张（默认 8 槽） |
 | 一张"开头图"+一张"结尾图" → AI 补中间过程 | **flf2v** | 2 张图（首帧、末帧） |
 
 对应文件在 `workflows\remote_workflows\`：`video_minimax_h3_t2v.json`（文生视频，官方标准模板）、

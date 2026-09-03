@@ -814,6 +814,36 @@
             "name": "length"
           },
           "link": 275
+        },
+        {
+          "name": "ref_images.ref_image_3",
+          "type": "IMAGE",
+          "link": null,
+          "widget": null
+        },
+        {
+          "name": "ref_images.ref_image_4",
+          "type": "IMAGE",
+          "link": null,
+          "widget": null
+        },
+        {
+          "name": "ref_images.ref_image_5",
+          "type": "IMAGE",
+          "link": null,
+          "widget": null
+        },
+        {
+          "name": "ref_images.ref_image_6",
+          "type": "IMAGE",
+          "link": null,
+          "widget": null
+        },
+        {
+          "name": "ref_images.ref_image_7",
+          "type": "IMAGE",
+          "link": null,
+          "widget": null
         }
       ],
       "outputs": [
@@ -974,6 +1004,216 @@
       ],
       "color": "#222",
       "bgcolor": "#000"
+    },
+    {
+      "id": 141,
+      "type": "LoadImage",
+      "pos": [
+        -930,
+        5630
+      ],
+      "size": [
+        290,
+        330
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "drama_asset_company.png",
+        "image"
+      ]
+    },
+    {
+      "id": 142,
+      "type": "LoadImage",
+      "pos": [
+        -930,
+        6050
+      ],
+      "size": [
+        290,
+        330
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "drama_asset_father.png",
+        "image"
+      ]
+    },
+    {
+      "id": 143,
+      "type": "LoadImage",
+      "pos": [
+        -930,
+        6470
+      ],
+      "size": [
+        290,
+        330
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "drama_asset_mother.png",
+        "image"
+      ]
+    },
+    {
+      "id": 144,
+      "type": "LoadImage",
+      "pos": [
+        -930,
+        6890
+      ],
+      "size": [
+        290,
+        330
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "drama_asset_living.png",
+        "image"
+      ]
+    },
+    {
+      "id": 145,
+      "type": "LoadImage",
+      "pos": [
+        -930,
+        7310
+      ],
+      "size": [
+        290,
+        330
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "character.png",
+        "image"
+      ]
+    },
+    {
+      "id": 146,
+      "type": "LoadImage",
+      "pos": [
+        -930,
+        7730
+      ],
+      "size": [
+        290,
+        330
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "scene_00001_.png",
+        "image"
+      ]
     }
   ],
   "links": [

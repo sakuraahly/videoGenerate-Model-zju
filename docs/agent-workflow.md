@@ -106,7 +106,7 @@ call_comfyui(stage="i2v"/"r2v"/"flf2v", prompt=…)  → §4 流程出片
 - 素材 id 形如 `out:3`（out 池第 4 项）；win-remote 下 refimage 自动 ssh 委托 spark。
 - agent 可直接 `list_references` 看素材，再经 `run_script("h3/refimage.py", …)`
   选用；参考图视频生成用 `call_comfyui(stage="r2v")`。
-- 语义：`video_minimax_h3_i2v.json`=首帧图动起来；`r2v`=1-2 张参考图保连贯；
+- 语义：`video_minimax_h3_i2v.json`=首帧图动起来；`r2v`=多张参考图（人物/场景/道具，模板默认 8 槽、可 grow 扩）；
   `flf2v`=首帧+末帧（本地双帧变体）。api_* 三份为 Comfy 云模板（需登录，本地不用）。
 
 ## 6. 提示词工作链（AI 创意桥）

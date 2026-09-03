@@ -9,7 +9,7 @@
 |---|---|---|---|---|
 | `video_t2v` | text-to-video (official standard template) | `local` | none | `video_t2v` |
 | `video_i2v` | image-to-video: animate from one first frame | `local` | 1 first-frame image | `video_i2v` |
-| `video_r2v` | reference-to-video: keep 1-2 reference images (character/scene) consistent | `local` | 1-2 reference images | `video_r2v` |
+| `video_r2v` | reference-to-video: multiple reference images (character/scene/props; local template has 8 slots, grow-able via refimage grow) | `local` | multiple reference images (8 slots default) | `video_r2v` |
 | `video_flf2v` | first-frame + last-frame video (local extension of i2v) | `local` | 2 images (first, last) | `video_flf2v` |
 
 

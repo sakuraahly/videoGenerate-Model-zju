@@ -53,7 +53,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
      `api_flf2v` 示例图（angel-warrior…）不在 spark input，**需自备**。
    - `video_minimax_h3_t2v.json`：文生视频：文字→一段视频（**官方标准模板**，本地 H3）；
    - `video_minimax_h3_i2v.json`：图生视频：一张**首帧图**→延续它动起来（本地 H3）；
-   - `video_minimax_h3_r2v.json`：多参考图生视频：1–2 张参考图（角色/场景）→保证连贯地生成
+   - `video_minimax_h3_r2v.json`：多参考图生视频：多张参考图（角色/场景/道具；本地模板默认 8 槽、refimage grow 可扩）→保证连贯地生成
      （本地 H3 开放图，含 `MiniMaxH3ReferenceToVideo`）；
    - `video_minimax_h3_t2v/i2v` 为 **UUID 子图封装**（type=`4c314f31-ecda-4b08-ae98-faaba1bf613f`，
      图体在 `definitions.subgraphs`）——已实现自动解组（`runs/h3/subgraph.py`，uiapi 转换前

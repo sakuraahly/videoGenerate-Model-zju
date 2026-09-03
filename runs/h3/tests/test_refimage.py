@@ -1,6 +1,7 @@
 """
 refimage 素材池逻辑单测：三池扫描 / 选择解析 / promote 复制（纯本地，不碰真库）。
 """
+import json
 import os
 import sys
 import tempfile
@@ -82,6 +83,34 @@ class TestRows(unittest.TestCase):
         rows = refimage._rows(self.dirs)
         with self.assertRaises(ValueError):
             refimage._resolve_sel(rows, "nope.png")
+
+
+class TestTemplateSlots(unittest.TestCase):
+    """真实 r2v 镜像模板的槽位结构（只读；模板扩为 8 槽 0/1 激活、其余禁用占位）。"""
+
+    def test_real_r2v_template_slots(self):
+        tpl = refimage._stage_template("r2v")
+        self.assertTrue(tpl.exists())
+        slots = refimage.template_slots(tpl)
+        self.assertGreaterEqual(len(slots), 8, "模板至少 8 个参考槽位")
+        for entry in slots:
+            self.assertEqual(len(entry), 4, "槽位记录=(idx, 图名, 启用, 节点id)")
+        self.assertTrue(all(enabled for _i, _n, enabled, _id in slots[:2]),
+                        "前两个槽位应处于启用状态")
+        # 2..7 为禁用占位（mode=4）
+        if len(slots) > 2:
+            self.assertTrue(not any(enabled for _i, _n, enabled, _id in slots[2:8]),
+                            "2..7 槽位应为禁用占位")
+        # 槽位序号连续
+        self.assertEqual([s[0] for s in slots], list(range(len(slots))))
+
+    def test_owner_rows_finds_ref_images(self):
+        tpl = refimage._stage_template("r2v")
+        data = json.loads(tpl.read_text(encoding="utf-8-sig"))
+        tgt, rows = refimage._owner_rows(data, "MiniMaxH3ReferenceToVideo",
+                                         "ref_images.ref_image_")
+        self.assertIsNotNone(tgt)
+        self.assertGreaterEqual(len(rows), 8)
 
 
 if __name__ == "__main__":

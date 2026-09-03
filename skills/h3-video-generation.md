@@ -162,7 +162,7 @@ UUID subgraphs (`runs/h3/subgraph.py`) then converts UI→flat API on the fly (`
 |---|---|---|
 | `video_minimax_h3_t2v.json` | 文生视频：文字 → 一段视频（官方标准模板） | 本地（spark GPU），CLI `--stage t2v` / GUI |
 | `video_minimax_h3_i2v.json` | 图生视频：一张**首帧图** → 延续它动起来 | 本地，CLI `--stage i2v` / GUI（首帧 LoadImage） |
-| `video_minimax_h3_r2v.json` | 多参考图生视频：1–2 张参考图（角色/场景）→ 保证连贯 | 本地，CLI `--stage r2v` / GUI |
+| `video_minimax_h3_r2v.json` | 多参考图生视频：多张参考图（角色/场景/道具，模板 8 槽可扩）→ 保证连贯 | 本地，CLI `--stage r2v` / GUI（refimage use --slot N 设置） |
 | `video_minimax_h3_flf2v.json` | 本地双帧变体（本地扩展，非 spark 原文件） | 本地，CLI `--stage flf2v`（首/末帧） |
 | `api_minimax_h3_t2v.json` | **T2V 的 API 格式**：扁平、无 subgraph 坑，命令行用更稳 | **Comfy 云通道**：MiniMax Hailuo 官方 API，需登录 Comfy 账号 |
 | `api_minimax_h3_r2v.json` | **R2V 的 API 格式**：团队《于勒》15 镜以它做内核 | 同上（登录后可用作管线内核） |

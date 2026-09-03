@@ -15,8 +15,13 @@ i2v / r2v / flf2v 的参考图）。
                            [--as <filename>] 指定进入 input 后的文件名
   use --name <sel> --stage <i2v|r2v|flf2v> [--slot N]
                            设置参考图：把该 stage 本地镜像模板的第 N 个 LoadImage
-                           指向选中素材（r2v 有两个槽位 0/1；不带 --slot 默认槽 0）。
-  use --info --stage r2v   查看模板的参考图槽位映射（不改动）
+                           指向选中素材并自动启用/接线（r2v 节点 ref_images 为
+                           autogrow，默认 8 槽 0..7，未用槽位处于禁用占位态；
+                           不带 --slot 默认槽 0）。
+  use --info --stage r2v   查看模板的参考图槽位映射（含禁用态，不改动）
+  grow --stage r2v --total 12
+                           把模板参考槽位扩到任意数量（自动补 ref_image_N 行 +
+                           禁用 LoadImage 占位；配合 use --slot 使用）
   use --undo               恢复本地镜像模板（git checkout 还原，仅适用已入库镜像）
   where                    打印三个池目录位置
 
@@ -31,6 +36,8 @@ i2v / r2v / flf2v 的参考图）。
   python runs/h3/refimage.py promote --name up:0
   python runs/h3/refimage.py use --name up:0 --stage r2v --slot 0   # 角色参考
   python runs/h3/refimage.py use --name up:1 --stage r2v --slot 1   # 第二张参考
+  python runs/h3/refimage.py use --name up:2 --stage r2v --slot 2   # 第三张…（自动启用）
+  python runs/h3/refimage.py grow --stage r2v --total 12            # 扩到 12 槽
   python runs/h3/refimage.py use --info --stage r2v
   python runs/h3/refimage.py use --undo
 """
@@ -219,7 +226,11 @@ def _stage_template(stage: str) -> Path:
 
 
 def template_slots(tpl: Path) -> list:
-    """返回模板中 LoadImage 槽位：[(槽位序号, 当前图名), ...]（按节点顺序）。"""
+    """返回模板 LoadImage 槽位：[(序号, 当前图名, 是否启用), ...]（按节点顺序）。
+
+    未启用槽位 = UI mode 4(bypass) 的占位 LoadImage（引擎跳过、不参与生成），
+    由 use --slot N 启用并接线。
+    """
     data = json.loads(tpl.read_text(encoding="utf-8-sig"))
     nodes = data.get("nodes") if isinstance(data, dict) else None
     if not isinstance(nodes, list):
@@ -228,7 +239,9 @@ def template_slots(tpl: Path) -> list:
     for n in nodes:
         if isinstance(n, dict) and n.get("type") == "LoadImage":
             vals = n.get("widgets_values") or []
-            slots.append((len(slots), str(vals[0]) if vals else ""))
+            enabled = int(n.get("mode", 0) or 0) == 0
+            slots.append((len(slots), str(vals[0]) if vals else "",
+                          enabled, n.get("id")))
     return slots
 
 
@@ -239,8 +252,90 @@ def _print_slots(tpl: Path) -> None:
         print(f"[错误] {e}", file=sys.stderr)
         return
     print(f"模板 {tpl.name} 参考图槽位（共 {len(slots)} 个，0 起编号）：")
-    for idx, cur in slots:
-        print(f"  slot {idx}: {cur or '(空)'}")
+    for idx, cur, enabled, _nid in slots:
+        state = "" if enabled else "（禁用，use --slot 启用）"
+        print(f"  slot {idx}: {cur or '(空)'} {state}")
+
+
+def _clone_loadimage(nodes: list, slot: int, defaults: list, y_offset: int = 420) -> dict:
+    """克隆一个 LoadImage 节点为禁用占位（mode=4，无接线），返回新节点。"""
+    src = next((n for n in nodes if isinstance(n, dict) and n.get("type") == "LoadImage"), None)
+    if src is None:
+        raise ValueError("模板中没有可克隆的 LoadImage 节点")
+    import copy
+    new = copy.deepcopy(src)
+    max_id = max(int(n.get("id", 0)) for n in nodes)
+    new["id"] = max_id + 1
+    new["widgets_values"] = [defaults[slot % len(defaults)], "image"]
+    pos = new.get("pos") or [0, 0]
+    new["pos"] = [pos[0], pos[1] + slot * y_offset]
+    new["mode"] = 4  # bypass：占位不参与生成，use --slot N 时自动启用
+    for o in new.get("outputs", []):
+        o["links"] = []
+    nodes.append(new)
+    return new
+
+
+def grow_slots(tpl: Path, total: int, defaults: list = None) -> int:
+    """把模板参考槽位扩到 total 个（仅本地镜像模板）。返回现有/新增槽位数。
+
+    目标节点输入采用 COMFY_AUTOGROW_V3（ref_images.* 每行一张），本函数补
+    ref_image_{cur..total-1} 行 + 禁用 LoadImage 占位；新增槽位在 use --slot 后生效。
+    """
+    import copy as _copy  # noqa: F401
+    if defaults is None:
+        defaults = ["drama_asset_hero.png", "drama_asset_alley.png",
+                    "drama_asset_company.png", "drama_asset_father.png",
+                    "drama_asset_mother.png", "drama_asset_living.png",
+                    "character.png", "scene_00001_.png"]
+    data = json.loads(tpl.read_text(encoding="utf-8-sig"))
+    nodes = data.get("nodes", [])
+    tgt, _rows = _owner_rows(data, "MiniMaxH3ReferenceToVideo", "ref_images.ref_image_")
+    if tgt is None:
+        raise ValueError(f"{tpl.name} 中没有承载 ref_images.* 的目标节点")
+    cur = len(template_slots(tpl))
+    added = 0
+    for slot in range(cur, total):
+        names = {str(i.get("name") or "") for i in tgt.get("inputs", [])}
+        if f"ref_images.ref_image_{slot}" not in names:
+            tgt.setdefault("inputs", []).append({
+                "name": f"ref_images.ref_image_{slot}", "type": "IMAGE",
+                "link": None, "widget": None})
+        _clone_loadimage(nodes, slot, defaults)
+        added += 1
+    if added:
+        tpl.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return cur + added
+
+
+def _owner_rows(data: dict, target_type: str, prefix: str) -> tuple:
+    """找到承载 ref_images.* 输入的目标节点及其行列表。"""
+    for n in data.get("nodes", []):
+        if not (isinstance(n, dict) and n.get("type") == target_type):
+            continue
+        rows = [i for i in (n.get("inputs") or [])
+                if str(i.get("name") or "").startswith(prefix)]
+        if rows:
+            return n, rows
+    return None, []
+
+
+def _wire_slot(data: dict, tgt: dict, row: dict, load_id: int) -> None:
+    """把目标节点的 autogrow 输入行接到 LoadImage 输出（生成新 link）。"""
+    links = data.get("links", [])
+    max_link = max((int(l[0]) for l in links), default=0)
+    node = next(n for n in data.get("nodes", [])
+                if isinstance(n, dict) and n.get("id") == load_id)
+    if row.get("link") is not None:
+        return  # 已接线（复用时直接改 widgets 即可）
+    slot_idx = next(i for i, x in enumerate(tgt.get("inputs", [])) if x is row)
+    new_link = max_link + 1
+    links.append([new_link, load_id, 0, tgt.get("id"), slot_idx, "IMAGE"])
+    row["link"] = new_link
+    for o in node.get("outputs", []):
+        if (o.get("name") or "").upper() in ("IMAGE", ""):
+            o.setdefault("links", []).append(new_link)
+            break
 
 
 def cmd_use(dirs: dict, sel: str, stage: str, targets: str, slot: int,
@@ -293,27 +388,46 @@ def cmd_use(dirs: dict, sel: str, stage: str, targets: str, slot: int,
     # 2) 改写本地镜像模板的 LoadImage（--slot N 精确槽位 / --first 第一个 / --all-loads 全部）
     data = json.loads(tpl.read_text(encoding="utf-8-sig"))
     nodes = data.get("nodes")
-    patched = 0
-    for n in nodes:
-        if not (isinstance(n, dict) and n.get("type") == "LoadImage"):
-            continue
-        if targets.startswith("slot:"):
-            if patched != int(targets.split(":", 1)[1]):
-                patched += 1
-                continue
+    tgt, tgt_rows = _owner_rows(data, "MiniMaxH3ReferenceToVideo", "ref_images.ref_image_")
+    patched_nodes = []
+
+    def _apply(n: dict, idx: int) -> None:
         vals = n.get("widgets_values") or []
         if not vals:
             vals = [""]
             n["widgets_values"] = vals
         vals[0] = name
-        patched += 1
-        if targets in ("first",) or targets.startswith("slot:"):
+        n["mode"] = 0  # 启用（禁用占位槽位 use 后生效）
+        patched_nodes.append((idx, n))
+
+    # 按槽位顺序遍历（与 template_slots 一致），选定目标后启用+接线
+    current = 0
+    for n in nodes:
+        if not (isinstance(n, dict) and n.get("type") == "LoadImage"):
+            continue
+        hit = False
+        if targets.startswith("slot:"):
+            hit = current == int(targets.split(":", 1)[1])
+        elif targets == "first":
+            hit = current == 0
+        else:  # all
+            hit = True
+        if hit:
+            _apply(n, current)
+        current += 1
+        if targets != "all" and hit:
             break
-    if patched == 0:
-        print(f"[错误] 未能定位要修改的 LoadImage 槽位", file=sys.stderr)
+
+    if not patched_nodes:
+        print("[错误] 未能定位要修改的 LoadImage 槽位", file=sys.stderr)
         return 3
+    # 为启用槽位接线（autogrow 行 link=None → 生成 link；已接线仅换图）
+    if tgt is not None and tgt_rows:
+        for idx, n in patched_nodes:
+            if idx < len(tgt_rows):
+                _wire_slot(data, tgt, tgt_rows[idx], n.get("id"))
     tpl.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"已把 {stage} 模板 {tpl.name} 的 LoadImage 指向: {name}（target={targets}）")
+    print(f"已把 {stage} 模板 {tpl.name} 的 LoadImage 指向: {name}（target={targets}，已启用）")
     _print_slots(tpl)
     print("提示：槽位提示词由 prompts/workflows/ 对应文件控制；恢复模板请执行 use --undo。")
     _log(f"use stage={stage} image={name} targets={targets}")
@@ -351,6 +465,11 @@ def main(argv=None) -> int:
     p_use.add_argument("--undo", action="store_true", help="git 还原模板")
     p_use.add_argument("--info", action="store_true",
                        help="只打印模板参考图槽位映射，不改动")
+    p_grow = sub.add_parser("grow")
+    p_grow.add_argument("--stage", default="r2v",
+                        choices=["i2v", "r2v", "flf2v"])
+    p_grow.add_argument("--total", type=int, default=12,
+                        help="目标总槽位数（默认 12）")
     sub.add_parser("where")
     args = ap.parse_args(argv)
 
@@ -381,6 +500,24 @@ def main(argv=None) -> int:
             return 3
         return cmd_use(dirs, args.name, args.stage, args.targets,
                        args.slot, args.undo, False)
+    if args.cmd == "grow":
+        tpl = _stage_template(args.stage)
+        if not tpl.exists():
+            print(f"[错误] 该 stage 无本地镜像模板: {tpl}", file=sys.stderr)
+            return 3
+        if args.total < 1:
+            print("[错误] --total 至少为 1", file=sys.stderr)
+            return 3
+        try:
+            now = grow_slots(tpl, args.total)
+        except ValueError as e:
+            print(f"[错误] {e}", file=sys.stderr)
+            return 3
+        print(f"已把 {args.stage} 模板扩到 {now} 个参考槽位（新增禁用占位，"
+              f"use --slot N 启用）")
+        _print_slots(tpl)
+        _log(f"grow stage={args.stage} total={now}")
+        return 0
     if args.cmd == "where":
         return cmd_where(dirs)
     return 0
