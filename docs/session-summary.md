@@ -468,3 +468,15 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
     每轮 sync_merge 逐文件取新、冲突留人工 `--resolve`；config/autosync.json
     两端各自维护（不入库/不参与同步）。实测：submit-only→续传→出片并 LOCAL_OUTPUT
     直存 outputs/video_4.mp4（fox 演示）；两端基线已重建。
+- **参考素材池（ComfyUI 已存图 / Open WebUI 上传件，commit 9e05368）**：
+  - `runs/h3/refimage.py`：三池（in=ComfyUI input / out=ComfyUI output 递归产物 /
+    up=上传收件箱 uploads/）list / promote / use(--stage i2v|r2v|flf2v 改写镜像模板
+    LoadImage) / use --undo；win-remote 自动经 ssh 委托 spark 执行。
+  - `runs/h3/upload_watch.py`：Open WebUI 上传看门狗（数据目录实测
+    `~/.cache/open-webui`）→ 归档 uploads/YYYYMMDD/ + log.jsonl 去重，图片镜像到
+    ComfyUI input/user_uploads/；spark 上 tmux `upload-watch` 已在跑。
+  - agent 新增第 5 工具 `list_references`（调度器已注册，重启生效）。
+- **sync_to_spark 排除机器配置/产物（commit dc01831/0ff0689）**：整仓 tar 不再携带
+  deploy.json/llm.json/pipeline/transfer/autosync/upload_watch/.sync-state、logs/
+  outputs/workflows/h3_*、根目录 *.mp4 —— 两端机器文件各自维护，spark-local 形态
+  不会被同步覆盖（此前实测被覆盖后 refimage 误判发起 ssh 自我委托）。

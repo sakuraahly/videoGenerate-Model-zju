@@ -168,6 +168,10 @@ def main(argv=None) -> int:
     # watch / daemon
     print(f"[upload_watch] watch 启动（interval={interval}s，Ctrl+C 退出）")
     try:
+        sys.stdout.reconfigure(line_buffering=True)  # tee/管道下日志即时可见
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         while True:
             try:
                 scan_once(str(cfg["openwebui_data_dir"]))
