@@ -50,3 +50,6 @@ config/llm.json
 docs/agent-communication/inbox/
 docs/agent-communication/*.jsonl
 docs/agent-communication/state.yaml
+
+# 两端同步基线（sync_merge.py 用；各端各自维护，不入库）
+.sync-state.json

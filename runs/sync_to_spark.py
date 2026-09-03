@@ -25,7 +25,9 @@ EXCLUDE_DIRS = {".git", ".test_tmp", "__pycache__", ".pytest_cache"}
 
 def pack(project_root: Path) -> Path:
     """把项目打成 tar（排除 EXCLUDE_DIRS 顶层目录），返回临时文件路径。"""
-    tmp = Path(tempfile.mkstemp(suffix=".tar", prefix="proj2spark_")[1])
+    _fd, _fp = tempfile.mkstemp(suffix=".tar", prefix="proj2spark_")
+    os.close(_fd)  # 立即关 fd，防 Windows 句柄占用导致后续删除失败
+    tmp = Path(_fp)
     parent = project_root.parent
     name = project_root.name
 

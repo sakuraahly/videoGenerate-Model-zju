@@ -85,3 +85,21 @@ python runs/h3_submit.py --stage video_r2v --force-new
   本地配置如 `config/llm.json`、产物；本仓库同步默认保留这些，故用上面的 tarfile 工具）。
 - 更新代码更推荐：`ssh spark "git -C ~/videoGenerate-Model-zju pull origin master"`
   （需远端已配置 remote 与认证）。
+
+## 6. 两端 Git + 文件同步协议（spark 只保留本地 git 记录，不依赖 GitHub 推送）
+
+背景：spark 无法向 GitHub 推送，但不应因此放弃版本控制——**spark 端 git 仅作本地历史**
+（可 commit/回滚）；跨端代码合并不走 git push，而是文件级“逐文件取新 + 显式冲突”。
+
+- 工具：`python runs\sync_merge.py`（远端同路径已部署）。
+- 范围：排除 `.git/.test_tmp/__pycache__/outputs/logs、workflows/h3_*` 与机器相关文件
+  （`config/llm.json、config/deploy.json、config/pipeline.json` 等两端本就不同，不参与同步）。
+- 基线：两端各存 `.sync-state.json`（已 gitignore）。判定（相对基线）：
+  - 一端=基线另一端≠ → 单向修改/新增 → **自动**（`--pull-auto` 远端新→本地；`--push-auto` 本地新→远端）；
+  - 两端都≠基线 → **冲突**：`--status` 列出，`--resolve <文件> --from local|remote` 人工选边后执行；
+  - 删除：只提示（`delete_note`），不自动执行——确认后手动 `rm`（防误删）。
+- 日常流程：
+  1. 改动后两端各自 `git add -A && git commit`（spark 用本地 user 配置提交，不推送 GitHub）；
+  2. 需要合并时跑 `sync_merge.py --status` → 自动应用单项（或 resolve 冲突）；
+  3. 收敛后两端 `--make-base` 重建基线；本地照常 `git push origin master` 同步 GitHub。
+- 冲突经验：同一文件两端各改时不要盲目覆盖——`--resolve` 前先用编辑器/`git diff` 看清哪端改动更该保留，或人工合并后 `--resolve --from local` 推合并结果。
