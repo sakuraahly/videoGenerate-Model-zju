@@ -2,14 +2,20 @@
 
 MiniMax H3（Hailuo-03）视频生成自动化工具集：本地 Windows 编排层 + 远程 Linux GPU 主机上的 ComfyUI 本地推理。输入一段场景描述，产出带原生立体声音轨的视频（`outputs/video_N.mp4`）。
 
+> **运行形态**（同一份仓库，`config/deploy.json` 切换，见 `docs/deploy-modes.md`）：
+> `win-remote`（Windows 本机 + ssh 隧道连 spark，默认/现状）与 `spark-local`（仓库整体部署在
+> spark，ComfyUI 与本地模型同机直连、无需隧道——交付形态，供 spark 上的本地模型直接调用本项目出片）。
+
 ## 功能
 
-- **一条命令生成**：`bats\generate\run.bat` 立即用当前参数生成；`bats\generate\menu.bat` 提供交互菜单（立即 / 定时 HH:MM / 延迟 N 分钟 / 改参数 / 环境自检 / 工作流工具）
+- **一条命令生成**：`bats\generate\run.bat` 立即用当前参数生成；`bats\generate\menu.bat` 提供交互菜单（立即 / 定时 HH:MM / 延迟 N 分钟 / 改参数 / 环境自检 / 工作流工具）；`bats\config\mode.bat` 切换运行形态
 - **多种生成阶段**：文生视频（t2v）、图生视频（i2v）、多参考图生视频（r2v）、首尾帧生视频（flf2v），支持本地模板与已保存工作流提交
-- **UI→API 自动转换**：ComfyUI UI 格式工作流在线扁平化为 API 格式（`runs/h3/uiapi.py`），无需手工改 JSON
+- **UI→API 自动转换**：ComfyUI UI 格式工作流在线扁平化为 API 格式（`runs/h3/uiapi.py`），UUID 子图自动解组（`runs/h3/subgraph.py`）
+- **文生图参考**：FLUX.1-dev 生成本地参考图（`runs/h3_text2img_flux.py`，落 spark input 供视频模板用）
+- **AI 创意桥**：一句话创意 → 本地通用模型（Qwen3.8-27B vLLM）为各工作流槽位生成正/负提示词（`idea2prompts.py`）；本地模型带职责护栏（只做提示词生成，拒绝服务器控制类指令）
 - **断点续传**：网络中断自动恢复（`last_job.json`），绝不重复生成
 - **SSH 隧道自愈**：自动重连包装器 + keepalive，应对 NAT 空闲断连
-- **运行审计**：每次运行落盘 `workflows/h3_<时间戳>/`（API/UI 工作流 + job.json 运行记录）
+- **运行审计**：每次运行落盘 `workflows/h3_<时间戳>/`（API/UI 工作流 + job.json 运行记录）与 `logs/run_*.log`（毫秒命名，与任务双向可查）
 
 ## 快速开始
 
@@ -47,7 +53,11 @@ outputs/      生成产物（不入库）
 
 | 文档 | 内容 |
 |---|---|
+| `docs/quickstart.md` | ⭐ 新手快速上手（三步出片 + 模板/参考图选择） |
+| `docs/workflow-and-prompt.md` | 指定工作流与提示词：有/无本地模型两种情形 |
+| `docs/deploy-modes.md` | 运行形态 win-remote / spark-local（spark 交付用法） |
 | `docs/user-guide.md` | 用户手册：入口、配置、常见流程、断点恢复 |
+| `docs/session-summary.md` | 项目状态与待办（跨 Agent 事实源，先读它） |
 | `docs/robustness-and-modularity.md` | 架构分层、扩展方法、可靠性设计 |
 | `docs/h3-workflow-architecture.md` | 14 节点 API 工作流、模型文件、帧数网格 |
 | `docs/h3-troubleshooting.md` | 故障排查手册 |
@@ -55,9 +65,13 @@ outputs/      生成产物（不入库）
 | `docs/manual-use-6-workflows.md` | 6 个官方工作流模板的手动使用法 |
 | `docs/h3-manual-operations.md` | 全手动 SSH 操作流程（备用） |
 | `docs/long-term-maintenance.md` | 长期维护：清理、更新、巡检 |
+| `docs/capabilities-ai.md` | 项目生成能力注册表（由 config/capabilities.json 生成） |
 | `skills/h3-video-generation.md` | AI agent 生成任务技能卡 |
 | `skills/h3-prompt-engineering.md` | H3 提示词工程规则 |
 
 ## 说明
 
-本仓库只包含编排与自动化代码，**不含**模型权重与视频产物。生成在远程 ComfyUI 上本地推理完成，不依赖任何云端 API。
+本仓库只包含编排/自动化代码与部署脚本，**不含**模型权重与视频产物。生成在（本机或远程
+spark 的）ComfyUI 上本地推理完成，默认不依赖云端；`api_*` 三份工作流为可选的 Comfy 云模板
+（需登录 Comfy 账号），本地同语义由 `video_*` 覆盖。AI 创意桥接入的是 spark 本地部署的
+通用模型（Qwen3.8-27B vLLM，OpenAI 兼容），该模型被严格限制为"提示词生成器"。

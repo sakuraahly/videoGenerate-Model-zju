@@ -84,6 +84,12 @@ def markdown_doc(cap: dict) -> str:
 
 ## 给 LLM 的提示
 {cap.get('note_for_llm', '')}
+
+## LLM 职责边界（强约束，勿绕过）
+{cap.get('llm_role_guard', '')}
+
+## 产物拉取策略
+{cap.get('download_policy', '')}
 """
 
 

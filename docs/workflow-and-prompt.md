@@ -158,5 +158,6 @@ python runs\h3_submit.py --stage r2v --force-new --seed 2026
 - `docs/user-guide.md` 完整命令与机制
 - `docs/manual-use-6-workflows.md` 每模板 GUI+脚本细步骤
 - `docs/capabilities-ai.md` 项目生成能力注册表（由 config/capabilities.json 生成）
+- `docs/deploy-modes.md` 运行形态切换（win-remote / spark-local 交付）
 - `skills/h3-prompt-engineering.md` 提示词写法规则
 - `config/llm.spark-qwen3.example.json` AI 桥配置示例（情形 B 前提）

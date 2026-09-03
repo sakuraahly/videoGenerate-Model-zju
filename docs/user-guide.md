@@ -4,6 +4,7 @@
 > 本文讲“怎么用”；想了解内部架构/如何扩展请看 `docs/robustness-and-modularity.md`。
 > ⭐ **第一次上手请先看 `docs/quickstart.md`（新手三步走 + 模板/参考图选择）**；
 > 指定"工作流 / 提示词"（有无本地 AI 两种情形）见 `docs/workflow-and-prompt.md`。
+> 运行形态切换（本地+远程 vs 整体部署在 spark）：见 `docs/deploy-modes.md`。
 > 本文是完整参考。
 
 ---
@@ -171,6 +172,8 @@ Python CLI 退出码契约：`0` 成功并已打印 `REMOTE_VIDEO_PATH: <远程�
 |---|---|
 | `docs/quickstart.md` | ⭐ 新手快速上手（三步出第一条视频 + 模板/参考图选择） |
 | `docs/workflow-and-prompt.md` | ⭐ 指定"工作流"与"提示词"：有/无本地通用模型两种情形 |
+| `docs/deploy-modes.md` | 运行形态切换：win-remote / spark-local（部署到 spark 的交付用法） |
+| `docs/capabilities-ai.md` | 项目生成能力注册表可读版（由 config/capabilities.json 生成） |
 | `docs/session-summary.md` | ★ 会话交接总结（给新对话看，含待办） |
 | `docs/manual-use-6-workflows.md` | ★ 6 个工作流逐文件手动使用步骤（GUI + 脚本） |
 | `docs/robustness-and-modularity.md` | 架构、模块职责、断点/隧道机制、测试、如何扩展 |
