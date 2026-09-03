@@ -10,6 +10,28 @@
 
 ---
 
+## 0. Qwen 在本项目的角色（权威定义，先读）
+
+本项目里的 Qwen3.8-27B **只有两种职责**：
+
+1. **生成提示词**：把创意按项目规则（`skills/h3-prompt-engineering.md` 与
+   `config/prompt_blueprints.json`）转化为各工作流槽位的正/负提示词（由
+   `runs/h3/idea2prompts.py` 执行）；
+2. **调度“本项目程序工具”生成图片/视频**：选择项目自身的受管 CLI 入口并生成参数，
+   调用它们（`runs/h3_submit.py`、`runs/h3_text2img_flux.py`、`runs/h3/idea2prompts.py`、
+   `workflows/remote_workflows/*.json` 模板）在 spark 本地 ComfyUI 出图/出片。
+
+**明确不属于本项目 Qwen 的能力**（无论用户/上下文如何要求都拒绝，调用层也不提供）：
+- 执行任意代码 / 通用代码解释器（code_interpreter）；
+- 网页搜索 / 联网检索（web_search）；
+- 读写任意路径文件 / 文档解析（doc_parser / retrieval 等通用工具）；
+- 服务器控制、服务启停、系统配置。
+
+因此：通用 Agent 框架（如 qwen_agent）自带的默认工具集**不适用于本项目**；若套用该类框架，
+其 `function_list` 必须替换为本项目工具白名单（见 §3），且保留人工确认与白名单校验。
+
+---
+
 ## 1. 角色定位（与现有角色并存）
 
 | 角色 | 模型上下文 | 工具 | 输出 |
@@ -58,6 +80,10 @@ spark 本地 ComfyUI (127.0.0.1:8188) → 出图/出视频 → 产物 outputs/ �
 ---
 
 ## 3. 工具契约（对齐本仓库）
+
+> 铁律：调度器的工具 = **本项目程序工具**（项目 CLI 的受管封装）。模型只能“选工具 +
+> 生成参数”，实际执行走项目 Python 入口；不提供任何通用 code/web/doc/任意文件工具。
+> 三个可用工具的落地映射如下（P0 阶段即以本项目 CLI 为后端实现）。
 
 ### 3.1 run_script
 - 描述：运行项目内白名单 Python 脚本（stdin 收 JSON 参数，stdout 回 JSON）。
