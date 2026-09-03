@@ -157,6 +157,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 ## 9. 文档地图（docs/）
 - `session-summary.md`（本文件）
 - `quickstart.md`（⭐ 新手快速上手：三步出片 + 模板/参考图选择，小白先读这个）
+- `workflow-and-prompt.md`（⭐ 怎么指定"工作流"与"提示词"：有/无本地通用模型两种情形）
 - `user-guide.md` 操作指南（入口/配置/流程/多工作流/日志）
 - `manual-use-6-workflows.md` 6 个工作流逐文件手动步骤（GUI+脚本）
 - `robustness-and-modularity.md` 架构/断点/隧道/扩展/测试；§9 工作流分类与占位符

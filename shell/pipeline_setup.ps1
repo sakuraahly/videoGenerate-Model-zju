@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     流水线/多工作流 设置控制台（由 pipeline_setup.bat 启动）。
     管理 config/pipeline.json 的默认生成阶段，并检查各阶段模板就位情况。
@@ -41,7 +41,7 @@ function Get-StageRows {
         if ($tName) {
             if (Test-Path -LiteralPath $tPath) { $status = '模板就绪' } else { $status = '模板缺失' }
         }
-        if ([string]$s.template_kind -eq 'ui') { $status += '(UI,CLI不可用)' }
+        if ([string]$s.template_kind -eq 'ui') { $status += '（UI→自动转API，CLI可跑）' }
         $rows += [pscustomobject]@{
             Id          = $prop.Name
             Description = [string]$s.description

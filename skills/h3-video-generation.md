@@ -5,7 +5,8 @@
 > using a saved workflow, or chaining multiple workflow types.
 > **Audience**: AI agents or operators on the Windows workstation that owns this repo.
 >
-> Full operator guide: `docs/user-guide.md` · Architecture/how-to-extend:
+> Full operator guide: `docs/user-guide.md` · Workflow & prompt selection (with/without a local
+> LLM): `docs/workflow-and-prompt.md` · Architecture/how-to-extend:
 > `docs/robustness-and-modularity.md` · Prompt rules: `skills/h3-prompt-engineering.md`.
 
 ---
@@ -60,6 +61,23 @@ Available `resolution`: 360p (lowest) … 768p (max). `seconds` 0.1–600 (warn 
   (missing negative → treated as empty, never blocks).
 - **Always** route the user's raw idea through the prompt-engineering rules in
   `skills/h3-prompt-engineering.md` before running — never pass raw text straight to H3.
+
+### 1.3b Prompt source when a local LLM is configured (idea2prompts / AI bridge)
+
+If `config/llm.json` has `enabled: true` (local vLLM endpoint, `api_key` empty is fine — see
+`config/llm.spark-qwen3.example.json`), generate per-workflow prompts from one idea, then pick
+the workflow and run:
+
+```bash
+# All slots (default + video_t2v/i2v/r2v/flf2v + api_*) or a single slot
+python runs\h3\idea2prompts.py --idea "<创意>" --force           # every slot
+python runs\h3\idea2prompts.py --idea "<创意>" --workflow video_r2v --force
+python runs\h3\idea2prompts.py --idea "<创意>" --dry-run         # preview, no request
+python runs\h3_submit.py --stage r2v --force-new                 # then run that workflow
+```
+
+Without a configured LLM (`enabled=false`), still offer `--dry-run`, and fill the slot files
+manually (human mode — see `docs/workflow-and-prompt.md` §2).
 
 ### 1.4 Multi-workflow (stage/template) runs
 

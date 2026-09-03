@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     一键生成 MiniMax H3 视频（模块化编排入口，Windows PowerShell 5.1+）
 
@@ -42,6 +42,15 @@ $SubmitScript       = Join-Path $ProjectRoot 'runs\h3_submit.py'
 $OutputDir          = Join-Path $ProjectRoot 'outputs'
 $LockPath           = Join-Path $ProjectRoot '.run.lock'
 $TunnelRecordFile   = Join-Path $ProjectRoot '.tunnel.json'
+
+# 读取 config/pipeline.json 的默认阶段（决定 run.bat/菜单[1-3] 走“经典提示词”还是“组合工作流”）
+$DefaultStage = 't2v'
+try {
+    $pj = Get-Content -LiteralPath (Join-Path $ProjectRoot 'config\pipeline.json') -Raw -Encoding UTF8 |
+        ConvertFrom-Json
+    if ($pj -and $pj.default_stage) { $DefaultStage = [string]$pj.default_stage }
+}
+catch { }
 
 # ------------------------------- 环境配置 ---------------------------------
 $envCfg = Read-EnvConfig -Path (Join-Path $ProjectRoot 'config\environment.json')
@@ -140,6 +149,15 @@ if (-not (Assert-PreflightBasics -ProjectRoot $ProjectRoot -SkipPromptChecks:$us
 }
 
 # 当前参数提示（仅展示；真正解析以 Python 端为准，避免逻辑重复；工作流模式无参数文件需求）
+if ($useWorkflowFile) {
+    Write-Info '运行模式：指定工作流原样提交（跳过提示词/参数）'
+}
+elseif ($DefaultStage -eq 't2v') {
+    Write-Info "运行模式：经典提示词（内置 T2V；正向/负向文件 + parameters\video.txt）"
+}
+else {
+    Write-Info "运行模式：组合工作流 --stage $DefaultStage（提示词用 prompts\workflows\<该模板槽位>）"
+}
 $params = Read-KeyValueFile -Path $ParametersFile
 if (-not $useWorkflowFile) {
     if ($params['resolution']) { Write-Info "当前参数: 分辨率=$($params['resolution'])" }
@@ -209,10 +227,14 @@ try {
             # “使用指定工作流”模式：直接提交选中的 API 工作流
             $pythonArgs += @('--workflow-file', $activeWorkflowApi)
         }
-        else {
-            # 默认：提示词 + parameters/video.txt 动态构建
+        elseif ($DefaultStage -eq 't2v') {
+            # 经典提示词模式（默认阶段 t2v）：正向/负向提示词文件 + parameters\video.txt
             $pythonArgs += @('--prompt-file', $PositivePromptFile,
                              '--negative-prompt-file', $NegativePromptFile)
+        }
+        else {
+            # 组合工作流模式：跑默认阶段的模板，提示词自动用该模板的槽位文件
+            $pythonArgs += @('--stage', $DefaultStage)
         }
 
         $result = Invoke-H3Submit -ArgsList $pythonArgs
