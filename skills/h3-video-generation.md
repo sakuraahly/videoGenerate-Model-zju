@@ -14,13 +14,13 @@
 
 Local Windows repo + remote `spark` (ComfyUI + H3 models). The toolbox:
 
-- `menu.bat` – interactive console (run now / timed HH:MM / delay N min / edit params /
+- `bats\generate\menu.bat` – interactive console (run now / timed HH:MM / delay N min / edit params /
   env+model check / workflow tools).
-- `run.bat` – immediate run with current params.
-- `edit.bat` – set `parameters\video.txt` (resolution, seconds).
-- `workflow_setup.bat` – scp-upload workflows to a spark absolute dir; activate a saved
+- `bats\generate\run.bat` – immediate run with current params.
+- `bats\config\edit.bat` – set `parameters\video.txt` (resolution, seconds).
+- `bats\workflow\workflow_setup.bat` – scp-upload workflows to a spark absolute dir; activate a saved
   workflow so generation submits it verbatim.
-- `pipeline_setup.bat` – multi-stage/template registry (`config/pipeline.json`): default
+- `bats\workflow\pipeline_setup.bat` – multi-stage/template registry (`config/pipeline.json`): default
   stage, template status, dry-run validation.
 
 ---
@@ -29,7 +29,7 @@ Local Windows repo + remote `spark` (ComfyUI + H3 models). The toolbox:
 
 ### 1.1 Preflight (do NOT skip)
 
-Best done by the user via `menu.bat → [5]` (`shell/check_environment.ps1`) which verifies:
+Best done by the user via `bats\generate\menu.bat → [5]` (`shell/check_environment.ps1`) which verifies:
 
 - local tools/files (python, ssh, scp, folders, prompts)
 - `ssh spark` reachability + remote ComfyUI process
@@ -44,12 +44,12 @@ its early errors (preflight runs first and fails fast).
 
 | Goal | Command / action |
 |---|---|
-| Default single text→video run (H3 T2V, params from `parameters\video.txt`) | `run.bat` or `menu.bat [1]` |
+| Default single text→video run (H3 T2V, params from `parameters\video.txt`) | `bats\generate\run.bat` or `bats\generate\menu.bat [1]` |
 | Same, for an agent / terminal | `powershell -File shell\generate_video.ps1` |
 | Direct Python stage (dry-run safe, prints JSON) | `python runs\h3_submit.py --stage t2v --prompt "…" [--dry-run]` |
 | Reference-image run (R2V/I2V/FLF2V template or saved workflow) | `python runs\h3_submit.py --stage r2v --image a.png [--image b.png]` |
 | Submit an already-saved API workflow verbatim | `python runs\h3_submit.py --workflow-file workflows\h3_xxx\workflow_api.json` |
-| Timed / delayed | `menu.bat [2]/[3]` |
+| Timed / delayed | `bats\generate\menu.bat [2]/[3]` |
 
 Parameters precedence: CLI flags override `parameters/video.txt` overrides built-in defaults.
 Available `resolution`: 360p (lowest) … 768p (max). `seconds` 0.1–600 (warn >60).
@@ -70,18 +70,30 @@ auto-substituted: `{{prompt}} {{negative_prompt}} {{seed}} {{width}} {{height}}
 {{seconds}} {{length}} {{fps}} {{steps}}` and input images `{{image0}} {{image1}} …`
 (uploaded first, then replaced with the remote filename).
 
-**Template reality check**: official `api_minimax_h3_*.json` fetched from
-`spark:~/ai/ComfyUI/user/default/workflows/` are **UI format** (nodes/links), and their
-`MinimaxHailuo03*` nodes call the **Comfy API cloud** — they need a Comfy account login /
-API key and fail with `Unauthorized: Please login first` otherwise. The engine now converts
-UI templates to flat API on the fly (`runs/h3/uiapi.py`, uses live `/object_info`;
-dynamic-combo children are emitted as `model.prompt`/`model.resolution`/… keys, string node
-refs) — conversion passes `/prompt` validation. If Comfy API is not authenticated, prefer the
-built-in local H3 graph (default `t2v` stage, local inference on spark, no cloud dependency).
-The colleague `video_minimax_h3_r2v.json` is an open **local** graph (converts cleanly to ~20 API
-nodes incl. `MiniMaxH3ReferenceToVideo`) — usable once reference images exist on spark `input/`.
-`video_minimax_h3_t2v/i2v.json` are local graphs wrapped as UUID subgraphs (unwrapping pending).
-Each run also writes `logs\run_<timestamp>.log` (PS steps + Python events in one file).
+**Template reality check — 6 colleague workflows in two families** (`video_*` local inference on
+spark GPU vs `api_*` cloud-channel), plus the local `flf2v` extension. The engine auto-ungroups
+UUID subgraphs (`runs/h3/subgraph.py`) then converts UI→flat API on the fly (`runs/h3/uiapi.py`).
+
+| File | 用途（团队实际使用语义） | 执行方式 |
+|---|---|---|
+| `video_minimax_h3_t2v.json` | 文生视频：文字 → 一段视频（官方标准模板） | 本地（spark GPU），CLI `--stage t2v` / GUI |
+| `video_minimax_h3_i2v.json` | 图生视频：一张**首帧图** → 延续它动起来 | 本地，CLI `--stage i2v` / GUI（首帧 LoadImage） |
+| `video_minimax_h3_r2v.json` | 多参考图生视频：1–2 张参考图（角色/场景）→ 保证连贯 | 本地，CLI `--stage r2v` / GUI |
+| `video_minimax_h3_flf2v.json` | 本地双帧变体（本地扩展，非 spark 原文件） | 本地，CLI `--stage flf2v`（首/末帧） |
+| `api_minimax_h3_t2v.json` | **T2V 的 API 格式**：扁平、无 subgraph 坑，命令行用更稳 | **Comfy 云通道**：MiniMax Hailuo 官方 API，需登录 Comfy 账号 |
+| `api_minimax_h3_r2v.json` | **R2V 的 API 格式**：团队《于勒》15 镜以它做内核 | 同上（登录后可用作管线内核） |
+| `api_minimax_h3_flf2v.json` | 首帧+末帧（锁定起止画面，控制更精确）；**示例图需自备** | 同上（示例图 angel-warrior… 不在 spark input） |
+
+Facts to remember:
+- `api_minimax_h3_*.json` nodes (`comfy_api_nodes` `MinimaxHailuo03*`) go through the Comfy
+  cloud proxy → MiniMax **Hailuo** official API. Without a Comfy account login they fail with
+  `Unauthorized: Please login first`. Once the Comfy UI is logged in, they are usable as
+  lightweight flat API-style templates for CLI/pipeline runs (no subgraph to unwrap) — the
+  team's 15-shot piece 《于勒》 was built on `api_minimax_h3_r2v`.
+- `video_*` = local H3 inference (no login needed). For fully local semantics use
+  `--stage t2v/i2v/r2v/flf2v` (all verified, real videos produced).
+- Each run writes `logs\run_<timestamp>_<ms>.log` (PS steps + Python events in one file;
+  task folder `job.json` records `log_file` for two-way lookup).
 
 ### 1.5 Reliability built in
 
@@ -131,8 +143,10 @@ path, status) — the modern replacement for manual run logs.
 7. If you need to reset to text-driven default behavior, set `default_stage: t2v` in
    `config/pipeline.json` (or just never pass `--stage`).
 8. Official `MinimaxHailuo03*` UI templates call the **Comfy API cloud**: without a Comfy
-   account login/API key the node fails `Unauthorized`. For unattended runs use the built-in
-   H3 T2V graph, or an official template only after the Comfy UI is logged in.
+   account login/API key the node fails `Unauthorized`. After the Comfy UI is logged in they
+   become usable lightweight flat-API templates (no subgraph; team's 《于勒》 used
+   `api_minimax_h3_r2v` as its core). For unattended **local** runs use the `video_*` templates
+   or the built-in H3 T2V graph.
 
 ---
 

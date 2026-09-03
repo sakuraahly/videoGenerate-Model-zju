@@ -30,7 +30,7 @@
 
 - [ ] **Step 1: 创建 prompt 文件**
 
-用 Write 工具创建 `D:\MY_CODING_PROGRAM\videoGenerate_Model&zju\prompts\ai-daily-report.md`，内容如下（自动化会话不继承对话历史，prompt 必须完整自包含）：
+用 Write 工具创建 `D:\MY_CODING_PROGRAM\videoGenerate-Model-zju\prompts\ai-daily-report.md`，内容如下（自动化会话不继承对话历史，prompt 必须完整自包含）：
 
 ````markdown
 # AI 每日日报
@@ -39,7 +39,7 @@
 
 ## 任务
 采集**过去 24 小时**的泛 AI 全领域新闻（中英文信息源混合），整理成带中文摘要的 Markdown 日报，保存为文件：
-`D:\MY_CODING_PROGRAM\videoGenerate_Model&zju\ai_daily_reports\YYYY-MM-DD.md`（YYYY-MM-DD 用当天日期；目录不存在则先创建）。
+`D:\MY_CODING_PROGRAM\videoGenerate-Model-zju\ai_daily_reports\YYYY-MM-DD.md`（YYYY-MM-DD 用当天日期；目录不存在则先创建）。
 
 ## 执行步骤
 1. 用 WebSearch 多轮搜索，每轮 1-2 个关键词，至少完成以下轮次：
@@ -115,7 +115,7 @@ git commit -m "feat: add AI daily report automation prompt"
   "name": "AI 每日日报",
   "schedule": { "kind": "cron", "expression": "0 8 * * *", "timeZone": "Asia/Shanghai" },
   "prompt": "<prompts/ai-daily-report.md 的完整内容>",
-  "cwd": "D:\\MY_CODING_PROGRAM\\videoGenerate_Model&zju",
+  "cwd": "D:\\MY_CODING_PROGRAM\\videoGenerate-Model-zju",
   "outputMode": "independent",
   "executionAuthorization": true
 }
@@ -146,7 +146,7 @@ Expected: 会话完成，不再处于运行中。
 - [ ] **Step 3: 检查日报文件生成**
 
 ```bash
-ls -la "D:\MY_CODING_PROGRAM\videoGenerate_Model&zju\ai_daily_reports"
+ls -la "D:\MY_CODING_PROGRAM\videoGenerate-Model-zju\ai_daily_reports"
 ```
 Expected: 存在 `2026-09-01.md`。
 
@@ -202,7 +202,7 @@ Expected: 任务恢复 enabled，每天 08:00 自动运行。
 
 - [ ] **Step 1: .gitignore 追加日报产物目录**
 
-在 `D:\MY_CODING_PROGRAM\videoGenerate_Model&zju\.gitignore` 的「生成产物」段落后追加：
+在 `D:\MY_CODING_PROGRAM\videoGenerate-Model-zju\.gitignore` 的「生成产物」段落后追加：
 
 ```
 # 每日 AI 日报产物

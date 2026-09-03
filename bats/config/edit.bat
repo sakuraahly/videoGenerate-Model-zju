@@ -1,19 +1,16 @@
 @echo off
+chcp 65001 >nul
 setlocal enabledelayedexpansion
-
-REM 设置项目根目录（当前目录）
-set "PROJECT_DIR=%~dp0"
-set "PARAM_FILE=%PROJECT_DIR%parameters\video.txt"
+rem 修改生成参数（bats\config\edit.bat）
+set "ROOT=%~dp0..\.."
+set "PARAM_FILE=%ROOT%\parameters\video.txt"
 
 echo ============================================
 echo   视频生成参数快速设置工具
 echo ============================================
 echo.
+if not exist "%ROOT%\parameters" mkdir "%ROOT%\parameters"
 
-REM 检查参数目录是否存在
-if not exist "%PROJECT_DIR%parameters" mkdir "%PROJECT_DIR%parameters"
-
-REM ---------- 选择分辨率 ----------
 echo 请选择视频分辨率（输入数字后回车）：
 echo 1. 360p  (608x352)
 echo 2. 480p  (864x480)
@@ -30,12 +27,10 @@ if "%RES_CHOICE%"=="3" set "RESOLUTION=540p"
 if "%RES_CHOICE%"=="4" set "RESOLUTION=720p"
 if "%RES_CHOICE%"=="5" set "RESOLUTION=768p"
 
-REM ---------- 输入视频时长 ----------
 echo.
 set /p SECONDS=请输入视频时长（秒，建议 5-30），默认 5: 
 if "%SECONDS%"=="" set "SECONDS=5"
 
-REM ---------- 写入参数文件 ----------
 echo.
 echo 正在更新参数文件...
 (

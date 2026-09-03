@@ -29,12 +29,14 @@ import argparse
 import json
 import os
 import sys
+import time
 import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
 from h3 import comfy, jobstate, params as h3params, workflow as h3workflow
+from h3 import prompts as h3prompts
 from h3 import stage as h3stage
 
 EXIT_OK = 0
@@ -49,8 +51,33 @@ def _err(msg: str) -> None:
     print(f"[错误] {msg}", file=sys.stderr, flush=True)
 
 
+def _ensure_run_log(project_dir: Path):
+    """确保本次运行有日志文件可追加，返回 (path, created)。
+
+    - 外层 PowerShell 已注入 H3_LOG_FILE（generate_video.ps1 同文件日志）→ 沿用；
+    - 否则 CLI 直跑时自动在 <项目根>/logs/ 建 run_<时间戳>_<毫秒>.log（不再丢日志）。
+    毫秒后缀保证同秒多次运行不撞名，且与任务目录 h3_<时间戳>_<毫秒> 秒段对齐。
+    """
+    existing = os.environ.get(_LOG_ENV, "").strip()
+    if existing:
+        return existing, False
+    log_dir = Path(project_dir) / "logs"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        now = datetime.now()
+        name = f"run_{now.strftime('%Y%m%d_%H%M%S')}_{now.microsecond // 1000:03d}.log"
+        path = log_dir / name
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+                    f"py: === MiniMax H3 run start ===\n")
+        os.environ[_LOG_ENV] = str(path)
+        return str(path), True
+    except OSError:
+        return "", False
+
+
 def _log_event(msg: str) -> None:
-    """追加运行日志（文件路径由外层 PowerShell 经 H3_LOG_FILE 注入）。"""
+    """追加运行日志（路径：PS 注入或 Python 自举，见 _ensure_run_log）。"""
     path = os.environ.get(_LOG_ENV, "")
     if not path:
         return
@@ -59,6 +86,36 @@ def _log_event(msg: str) -> None:
             f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] py: {msg}\n")
     except OSError:
         pass
+
+
+def _adopt_task_log(project_dir: Path, task_folder: Optional[Path]) -> None:
+    """续传（--resume）时沿用原任务日志：job.json 记有 log_file 则切换过去，
+    并把本次会话自举新日志的起始行并入原日志，保证“一个任务一份完整日志”。"""
+    if task_folder is None:
+        return
+    try:
+        job = jobstate.read_json(jobstate.task_job_path(project_dir, task_folder))
+    except OSError:
+        return
+    lf = str((job or {}).get("log_file") or "")
+    if not lf:
+        return
+    orig = Path(project_dir) / "logs" / Path(lf).name
+    if not orig.exists():
+        return
+    cur = os.environ.get(_LOG_ENV, "")
+    if cur and Path(cur) != orig:
+        try:
+            with open(cur, encoding="utf-8") as f:
+                head = f.read()
+            if head:
+                with open(orig, "a", encoding="utf-8") as f:
+                    f.write(head)
+            os.environ.pop(_LOG_ENV, None)
+            Path(cur).unlink(missing_ok=True)
+        except OSError:
+            pass
+    os.environ[_LOG_ENV] = str(orig)
 
 
 class _CliParser(argparse.ArgumentParser):
@@ -237,14 +294,30 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
     stage = dict(stage)
     stage["_id"] = stage_id
 
-    # 提示词：显式文本/文件优先，其次阶段默认提示词文件
-    pos_path, neg_path = h3stage.gather_prompt_paths(
-        project_dir, stage, args.prompt_file, args.negative_prompt_file)
-    prompt = _read_text_source(args.prompt, pos_path if args.prompt_file else None,
-                               pos_path, "正向提示词")
-    negative = _read_text_source(args.negative_prompt,
-                                 neg_path if args.negative_prompt_file else None,
-                                 neg_path, "负向提示词")
+    # 提示词：CLI(--prompt/--prompt-file) > 该工作流槽位文件 > 阶段默认文件 > 默认文件
+    tname_for_slot = Path(args.template).name if args.template else str(stage.get("template") or "")
+    slot_tpl = Path(tname_for_slot) if tname_for_slot else None
+    pp, np = h3prompts.pick_prompt_paths(project_dir, stage, slot_tpl, None, None)
+
+    explicit_pos_file = Path(args.prompt_file).resolve() if args.prompt_file else None
+    if explicit_pos_file and not explicit_pos_file.exists():
+        raise h3params.ParamError(f"正向提示词文件不存在: {explicit_pos_file}")
+    if args.prompt is not None:
+        prompt = args.prompt
+    elif explicit_pos_file:
+        prompt = h3prompts.read_text_path(explicit_pos_file, "正向提示词")
+        if not prompt:
+            raise h3params.ParamError(f"正向提示词文件为空: {explicit_pos_file}")
+    else:
+        prompt = h3prompts.read_text_path(pp, "正向提示词")
+
+    explicit_neg_file = Path(args.negative_prompt_file).resolve() if args.negative_prompt_file else None
+    if args.negative_prompt is not None:
+        negative = args.negative_prompt
+    elif explicit_neg_file:
+        negative = h3prompts.read_text_path(explicit_neg_file, "负向提示词")
+    else:
+        negative = h3prompts.read_text_path(np, "负向提示词")
 
     images = h3stage.gather_images(project_dir, stage, args.image)
     gp = _resolve_gp_text(args, project_dir, prompt, negative)
@@ -286,6 +359,11 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
         # 模板缺失 -> 尝试内置生成器；无内置时由 build_builtin_workflow 报错
         used_builtin = True
         wf = h3stage.build_builtin_workflow(stage, gp, images)
+
+    # 关键：把本地提示词自动注入工作流（覆盖模板内嵌 prompt；内置生成器幂等）
+    changed = h3prompts.inject_local_prompts(wf, prompt, negative)
+    if changed:
+        print(f"[提示] 已用本地提示词覆盖工作流内嵌字段（{changed} 处）。", flush=True)
     return wf, gp, stage_id, used_builtin
 
 
@@ -323,6 +401,13 @@ def main(argv: Optional[list] = None) -> int:
     project_dir = h3params.project_root_from_file(Path(__file__))
     env = h3params.load_environment(project_dir)
 
+    # 运行日志：PS 注入则沿用；CLI 直跑自动在 logs\ 建 run_<ts>.log
+    run_log, log_created = _ensure_run_log(project_dir)
+    if run_log:
+        if log_created:
+            print(f"[INFO] 运行日志: {run_log}", flush=True)
+        _log_event(f"start argv={' '.join(argv) if argv is not None else ''}")
+
     base_url = args.comfyui_url or comfy.DEFAULT_COMFYUI_URL
     client = comfy.ComfyClient(base_url=base_url)
     root_state = jobstate.load_root_state(project_dir)
@@ -347,8 +432,9 @@ def main(argv: Optional[list] = None) -> int:
 
     if resume_id:
         print(f"恢复任务: prompt_id={resume_id}（跳过提交，直接轮询原任务）", flush=True)
-        _log_event(f"resume prompt_id={resume_id}")
         task_folder = _task_folder_for_prompt(project_dir, resume_id)
+        _adopt_task_log(project_dir, task_folder)
+        _log_event(f"resume prompt_id={resume_id}")
     else:
         # ---- 模式选择 ----
         if args.workflow_file and (args.prompt or args.prompt_file
@@ -395,8 +481,16 @@ def main(argv: Optional[list] = None) -> int:
             print(f"Resolution: {gp.width}x{gp.height} ({gp.resolution})")
             print(f"Duration: {gp.seconds}s -> {gp.length} frames @ {gp.fps}fps")
             print(f"Seed: {gp.seed}   Steps: {gp.steps}   Timeout: {gp.timeout}s", flush=True)
+            _log_event(
+                f"task mode={mode} stage={stage_id} source={label} "
+                f"resolution={gp.width}x{gp.height}({gp.resolution}) "
+                f"duration={gp.seconds}s->{gp.length}f@{gp.fps}fps "
+                f"seed={gp.seed} steps={gp.steps} timeout={gp.timeout}s "
+                f"prompt_len={len(gp.prompt or '')} neg_len={len(gp.negative_prompt or '')}")
 
         if args.dry_run:
+            _log_event(f"dry_run mode={mode} stage={stage_id} "
+                       f"nodes={len(wf) if isinstance(wf, dict) else 0} (预览，未提交)")
             print(json.dumps(wf, indent=2, ensure_ascii=False))
             return EXIT_OK
 
@@ -411,6 +505,7 @@ def main(argv: Optional[list] = None) -> int:
                 "prompt_id": "",
                 "stage": stage_id,
                 "params": gp.workflow_dict() if gp else {},
+                "log_file": os.path.basename(run_log) if run_log else "",
                 "prompt_files": {
                     "positive": args.prompt_file or "",
                     "negative": args.negative_prompt_file or "",
@@ -422,6 +517,7 @@ def main(argv: Optional[list] = None) -> int:
             })
             # 机器可读标记：外层 PowerShell 解析后把该任务的工作流 scp 上传到 spark
             print(f"WORKFLOW_SAVED_DIR: {task_folder}", flush=True)
+            _log_event(f"workflow_saved dir={task_folder.name} nodes={len(wf)}")
 
         # 提交
         print("\nSubmitting...", flush=True)
@@ -446,11 +542,13 @@ def main(argv: Optional[list] = None) -> int:
 
     # ------------------------------------------------------------ 轮询等待
     timeout = _wait_timeout(args, task_folder, gp)
+    poll_start = time.monotonic()
     try:
         kind, entry = client.wait_for(resume_id, timeout=timeout)
     except comfy.ComfyUnreachable as e:
+        el = int(time.monotonic() - poll_start)
         _err(f"与 ComfyUI 的连接中断: {e}")
-        _log_event(f"interrupted prompt_id={resume_id} err={e}")
+        _log_event(f"interrupted prompt_id={resume_id} elapsed={el}s err={e}")
         print("断点仍保留，网络恢复后重新运行 run.bat / 本脚本将自动续传，不会重复生成。",
               file=sys.stderr, flush=True)
         if task_folder:
@@ -458,8 +556,9 @@ def main(argv: Optional[list] = None) -> int:
         return EXIT_RECOVERABLE
 
     if kind == "timeout":
+        el = int(time.monotonic() - poll_start)
         _err("等待任务超时。任务可能仍在远程执行。")
-        _log_event(f"timed_out prompt_id={resume_id}")
+        _log_event(f"timed_out prompt_id={resume_id} elapsed={el}s")
         print("断点仍保留，稍后重新运行即可继续等待。", file=sys.stderr, flush=True)
         if task_folder:
             jobstate.update_task_record(project_dir, task_folder, {"state": "timed_out"})
@@ -471,8 +570,9 @@ def main(argv: Optional[list] = None) -> int:
     print(f"\nStatus: {status_str or 'unknown'}", flush=True)
 
     if kind == "error" or status_str == "error":
+        el = int(time.monotonic() - poll_start)
         _err("任务在 ComfyUI 中执行失败（不可恢复），已清除断点。")
-        _log_event(f"task_error prompt_id={resume_id}")
+        _log_event(f"task_error prompt_id={resume_id} elapsed={el}s status={status_str}")
         jobstate.clear_root_state(project_dir)
         if task_folder:
             jobstate.update_task_record(project_dir, task_folder, {"state": "failed"})
@@ -512,7 +612,8 @@ def main(argv: Optional[list] = None) -> int:
     for extra in files[1:]:
         extra_path = comfy.build_remote_path(remote_base, extra)
         print(f"REMOTE_VIDEO_PATH: {extra_path}", flush=True)
-    _log_event(f"completed prompt_id={resume_id} remote={remote_path} files={len(files)}")
+    _log_event(f"completed prompt_id={resume_id} remote={remote_path} files={len(files)} "
+               f"elapsed={int(time.monotonic() - poll_start)}s status={status_str}")
     host = str(env.get("remote_host") or "spark")
     print(f"\nTo download:")
     print(f"  scp {host}:{remote_path} {args.output}/", flush=True)

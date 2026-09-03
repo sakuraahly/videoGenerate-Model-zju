@@ -37,7 +37,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "angel-warrior-demon-battle-start.png",
+        "drama_asset_hero.png",
         "image"
       ]
     },
@@ -74,7 +74,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "angel-warrior-demon-battle-end.png",
+        "drama_asset_alley.png",
         "image"
       ]
     },

@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 # shell/lib/utils.ps1 — 通用工具库（被 generate_video.ps1 dot-source 引入）
 # 依赖注入：调用方需先定义 $script: 级变量后再调用；本文件函数不持有全局状态。
 # ============================================================================
@@ -17,7 +17,8 @@ function Write-FileLog {
 
 function Initialize-RunLog {
     <#
-    .SYNOPSIS 在项目根 logs\ 下创建 run_<时间戳>.log 并记录起始行；返回日志路径。
+    .SYNOPSIS 在项目根 logs\ 下创建 run_<时间戳>_<毫秒>.log 并记录起始行；返回日志路径。
+    毫秒后缀与任务目录 h3_<时间戳>_<毫秒> 对齐，避免同秒多次运行撞名。
     #>
     param([string]$ProjectRoot)
     if ($script:RunLogPath) { return $script:RunLogPath }
@@ -25,7 +26,7 @@ function Initialize-RunLog {
     if (-not (Test-Path -LiteralPath $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
-    $script:RunLogPath = Join-Path $dir ('run_' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '.log')
+    $script:RunLogPath = Join-Path $dir ('run_' + (Get-Date -Format 'yyyyMMdd_HHmmss_fff') + '.log')
     Write-FileLog "=== MiniMax H3 run start $(Get-Date -Format o) ==="
     return $script:RunLogPath
 }

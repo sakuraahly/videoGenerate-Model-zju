@@ -4,7 +4,7 @@
 
 ## 任务
 采集**过去 24 小时**的泛 AI 全领域新闻（中英文信息源混合），整理成带中文摘要的 Markdown 日报，保存为文件：
-`D:\MY_CODING_PROGRAM\videoGenerate_Model&zju\ai_daily_reports\YYYY-MM-DD.md`（YYYY-MM-DD 用当天日期；目录不存在则先创建）。
+`D:\MY_CODING_PROGRAM\videoGenerate-Model-zju\ai_daily_reports\YYYY-MM-DD.md`（YYYY-MM-DD 用当天日期；目录不存在则先创建）。
 
 ## 执行步骤
 1. 用 WebSearch 多轮搜索，每轮 1-2 个关键词，至少完成以下轮次：

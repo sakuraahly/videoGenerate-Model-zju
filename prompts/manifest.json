@@ -1,0 +1,27 @@
+{
+  "_comment": "提示词仓库配置。slots=提示词槽；workflow_files=把镜像工作流文件名映射到槽。每个槽可用独立 positive/negative 文件；文件不存在或为空时回退 default 槽。路径相对项目根。",
+  "prompt_dir": "prompts/workflows",
+  "default": {
+    "label": "默认（内置 T2V / 未指定槽时的回退）",
+    "positive": "prompts/positive_prompts.txt",
+    "negative": "prompts/negative_prompts.txt"
+  },
+  "slots": {
+    "video_t2v":  { "label": "同事 video_minimax_h3_t2v（本地，子图，GUI）",      "positive": "prompts/workflows/video_t2v.positive.txt",  "negative": "prompts/workflows/video_t2v.negative.txt" },
+    "video_i2v":  { "label": "同事 video_minimax_h3_i2v（本地，子图，GUI）",      "positive": "prompts/workflows/video_i2v.positive.txt",  "negative": "prompts/workflows/video_i2v.negative.txt" },
+    "video_r2v":  { "label": "同事 video_minimax_h3_r2v（本地开放图，CLI 可跑）", "positive": "prompts/workflows/video_r2v.positive.txt",  "negative": "prompts/workflows/video_r2v.negative.txt" },
+    "video_flf2v": { "label": "本地 FLF2V（首帧+末帧；由 i2v 扩展的双帧变体，CLI 可跑）", "positive": "prompts/workflows/video_flf2v.positive.txt", "negative": "prompts/workflows/video_flf2v.negative.txt" },
+    "api_t2v":    { "label": "api_minimax_h3_t2v（Hailuo 封装）",                  "positive": "prompts/workflows/api_t2v.positive.txt",    "negative": "prompts/workflows/api_t2v.negative.txt" },
+    "api_r2v":    { "label": "api_minimax_h3_r2v（Hailuo 封装）",                  "positive": "prompts/workflows/api_r2v.positive.txt",    "negative": "prompts/workflows/api_r2v.negative.txt" },
+    "api_flf2v":  { "label": "api_minimax_h3_flf2v（Hailuo 封装）",                "positive": "prompts/workflows/api_flf2v.positive.txt",  "negative": "prompts/workflows/api_flf2v.negative.txt" }
+  },
+  "workflow_files": {
+    "video_minimax_h3_t2v.json": "video_t2v",
+    "video_minimax_h3_i2v.json": "video_i2v",
+    "video_minimax_h3_r2v.json": "video_r2v",
+    "video_minimax_h3_flf2v.json": "video_flf2v",
+    "api_minimax_h3_t2v.json": "api_t2v",
+    "api_minimax_h3_r2v.json": "api_r2v",
+    "api_minimax_h3_flf2v.json": "api_flf2v"
+  }
+}

@@ -14,7 +14,7 @@
   - outputMode：`independent`（每次运行一个独立会话）
   - executionAuthorization：`true`（Full Access，允许写文件和联网）
 - **执行体**：自动化会话中的 agent，使用 WebSearch / WebFetch 采集信息，用 Write / Bash 写入日报文件
-- **产物**：`D:\MY_CODING_PROGRAM\videoGenerate_Model&zju\ai_daily_reports\YYYY-MM-DD.md`
+- **产物**：`D:\MY_CODING_PROGRAM\videoGenerate-Model-zju\ai_daily_reports\YYYY-MM-DD.md`
 
 ## 组件
 

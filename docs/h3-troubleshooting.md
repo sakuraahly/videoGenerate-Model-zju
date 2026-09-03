@@ -1,9 +1,9 @@
 # H3 Video Generation — Troubleshooting
 
-> **Tip**: most day-to-day runs go through the automated pipeline (`menu.bat` /
+> **Tip**: most day-to-day runs go through the automated pipeline (`bats\generate\menu.bat` /
 > `shell/generate_video.ps1`), which already (a) refuses UI-format/subgraph workflows,
 > (b) validates flat API templates & placeholders, (c) retries network hiccups and resumes
-> from breakpoints. Run `menu.bat → [5]` for a full environment/model report first.
+> from breakpoints. Run `bats\generate\menu.bat → [5]` for a full environment/model report first.
 > See `docs/user-guide.md` and `docs/robustness-and-modularity.md`.
 
 ## Error: `Node '4c314f31-ecda-4b08-ae98-faaba1bf613f' not found`
@@ -60,7 +60,7 @@ ssh spark 'kill <PID>'
 
 **Fix**:
 ```bash
-# ComfyUI 是手动/tmux 进程：用 tmux 启动（自动化入口亦可：本机 menu.bat → [1]
+# ComfyUI 是手动/tmux 进程：用 tmux 启动（自动化入口亦可：本机 bats\generate\menu.bat → [1]
 # 会自动检查/启动远程 ComfyUI）
 ssh spark 'tmux new-session -d -s comfyui "cd ~/ai/ComfyUI && ~/ai/venv/bin/python main.py --listen 127.0.0.1 --port 8188 --disable-auto-launch"'
 # Wait 10s
@@ -122,7 +122,7 @@ ssh spark 'cat /sys/class/thermal/thermal_zone0/temp'
 
 **Cause**: Long-running SSH commands may timeout.
 
-**Fix**: 优先使用本机自动化（`run.bat` / `menu.bat [1]`）——它自带隧道自愈与断点续传
+**Fix**: 优先使用本机自动化（`bats\generate\run.bat` / `bats\generate\menu.bat [1]`）——它自带隧道自愈与断点续传
 （--resume），ssh 断开不会丢任务。**不要把 `runs/h3_submit.py` scp 到 spark 运行**：
 它是本机编排 CLI（依赖本地 `runs/h3/` 包与隧道）。确需纯远程提交时，用 curl 放进 tmux：
 ```bash

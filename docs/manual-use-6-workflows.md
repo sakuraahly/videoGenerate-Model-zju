@@ -5,16 +5,22 @@
 > 6 份工作流各跑一次。
 >
 > 6 份文件位于 spark：`/home/<用户名>/ai/ComfyUI/user/default/workflows/`
-> （本工具已把同内容副本放本地 `config/templates/`，二者等同）。
+> （本工具已把同内容副本放本地 `config/templates/` 与镜像 `workflows/remote_workflows/`）。
+>
+> **用途速记（团队实际语义）**：`video_*`=文生/图生/多参考/首尾帧的本地 H3 模板；
+> `api_*`=同一能力的 **API 格式**（扁平、无 subgraph 坑、命令行用更稳），走 Comfy 云
+> 通道（MiniMax Hailuo 官方 API，需 Comfy 账号登录）——团队 15 镜短片《于勒》即以
+> `api_minimax_h3_r2v` 做内核；`api_flf2v` 示例图需自备（angel-warrior… 不在 spark input）。
 
-| 文件 | 类型 | 手动怎么跑（GUI 最稳） |
-|---|---|---|
-| `video_minimax_h3_t2v.json` | 本地图(子图封装) | ComfyUI GUI 打开→填文字→Queue |
-| `video_minimax_h3_i2v.json` | 本地图(子图封装) | GUI 打开→LoadImage 选首帧→Queue |
-| `video_minimax_h3_r2v.json` | 本地图（开放图，20 节点） | GUI 打开→LoadImage 选参考图→Queue；也可用本套程序 CLI 转 API 本地跑 |
-| `api_minimax_h3_t2v.json` | MinimaxHailuo03* 封装节点 | GUI 打开→填文字→Queue（若节点要求登录 Comfy 云则先登录，否则看它的报错） |
-| `api_minimax_h3_r2v.json` | MinimaxHailuo03* 封装节点 | GUI 打开→LoadImage 参考图→Queue |
-| `api_minimax_h3_flf2v.json` | MinimaxHailuo03* 封装节点 | GUI 打开→首帧/末帧 LoadImage→Queue |
+| 文件 | 用途 | 类型 | 手动怎么跑（GUI 最稳） |
+|---|---|---|---|
+| `video_minimax_h3_t2v.json` | 文生视频：文字→一段视频（官方标准模板） | 本地 H3（UUID 子图，已自动解组） | GUI 填文字→Queue；或 CLI `--stage t2v`（已实跑出片） |
+| `video_minimax_h3_i2v.json` | 图生视频：一张**首帧图**→延续它动起来 | 本地 H3（UUID 子图，已自动解组） | GUI 选首帧→Queue；或 CLI `--stage i2v`（首帧当前=drama_asset_hero.png） |
+| `video_minimax_h3_r2v.json` | 多参考图生视频：1–2 张参考图（角色/场景）→连贯 | 本地 H3 开放图 | GUI 选参考图→Queue；或 CLI `--stage r2v`（双参考图已实跑出片） |
+| `video_minimax_h3_flf2v.json` | 首帧+末帧本地双帧（本地扩展，非 spark 原文件） | 本地 H3 双帧变体 | CLI `--stage flf2v`（首 hero/末 alley）或 GUI 打开本文件 |
+| `api_minimax_h3_t2v.json` | **T2V 的 API 格式**（扁平、无 subgraph 坑，命令行更稳） | **Comfy 云模板**（MinimaxHailuo03* 经 Comfy 云代理 MiniMax 官方 API） | GUI 打开→填文字→Queue；需先登录 Comfy 账号，否则 `Unauthorized`（本地同语义用 video t2v） |
+| `api_minimax_h3_r2v.json` | **R2V 的 API 格式**（《于勒》15 镜内核） | 同上（云模板） | GUI LoadImage 参考图→Queue（登录后）；本地同语义用 `--stage r2v` |
+| `api_minimax_h3_flf2v.json` | 首帧+末帧（锁定起止画面，控制更精确）；**示例图需自备** | 同上（云模板） | GUI 首/末帧 LoadImage→Queue（登录后）；本地同语义用 `--stage flf2v` |
 
 ---
 
@@ -31,11 +37,11 @@
    没有输出就先启动（或手动 tmux），也可以用本套程序自动起：
    ```powershell
    cd <仓库根目录>
-   .\menu.bat          # → [5] 环境与远程模型检查（会确认 ssh/ComfyUI/模型）
+   .\bats\generate\menu.bat          # → [5] 环境与远程模型检查（会确认 ssh/ComfyUI/模型）
    ```
 3. 确保本机能访问 ComfyUI 界面（脚本会自建/复用隧道）：
    ```powershell
-   .\menu.bat          # 选 [5] 通过后，浏览器开 http://127.0.0.1:8188 应能出界面
+   .\bats\generate\menu.bat          # 选 [5] 通过后，浏览器开 http://127.0.0.1:8188 应能出界面
    ```
    > 本工具在任何生成动作前都会自动检查并建立隧道（8188 被占会自动换端口）。
 
@@ -45,10 +51,10 @@
 
 ```powershell
 cd <仓库根目录>
-.\menu.bat            # → [1] 立即生成视频
+.\bats\generate\menu.bat            # → [1] 立即生成视频
 ```
 - 参数在 `parameters\video.txt`（分辨率/时长；默认 360p/5s），提示词在
-  `prompts\positive_prompts.txt` / `negative_prompts.txt`（用 edit.bat 或记事本改）。
+  `prompts\positive_prompts.txt` / `negative_prompts.txt`（用 bats\config\edit.bat 或记事本改）。
 - 成功：`outputs\video_N.mp4`；日志 `logs\run_*.log`；审计 `workflows\h3_*\job.json`。
 - 说明：这一步走**本地 H3 内置图**（与 `video_minimax_h3_t2v.json` 同一套本地模型语义），
   用于确认“环境+脚本”能出片；随后再逐个开 6 个工作流。
@@ -72,7 +78,7 @@ cd <仓库根目录>
 |---|---|---|
 | `video_minimax_h3_t2v.json` | 正向文字提示词（子图内 prompt 节点） | 参数/种子通常已在图里 |
 | `video_minimax_h3_i2v.json` | LoadImage 选一张首帧图 | 图片要先传到 spark `~/ai/ComfyUI/input/` 或用界面上传 |
-| `video_minimax_h3_r2v.json` | LoadImage 选参考图（模板默认指向 `red_superboy_on_city_roof.png` / `mecha_dragon_lightning.png`，若不存在就换成已有的，如 `character.png`） | 也可用本套程序 CLI（见 3） |
+| `video_minimax_h3_r2v.json` | LoadImage 选参考图（镜像已同步为 `drama_asset_hero.png`/`drama_asset_alley.png`，都在 spark input；也可换 character.png 等） | 也可用本套程序 CLI（见 3） |
 | `api_minimax_h3_t2v.json` | 节点内的文字提示词 | 若 Queue 后报 Unauthorized → 你的 ComfyUI 需登录 Comfy 云（该节点实现如此）；否则正常 |
 | `api_minimax_h3_r2v.json` | LoadImage 参考图 | 同上 |
 | `api_minimax_h3_flf2v.json` | 首帧+末帧 LoadImage | 同上 |
@@ -94,8 +100,9 @@ python runs\h3_submit.py --template config\templates\api_minimax_h3_t2v.json    
 python runs\h3_submit.py --template config\templates\api_minimax_h3_r2v.json     --dry-run
 python runs\h3_submit.py --template config\templates\api_minimax_h3_flf2v.json   --dry-run
 ```
-- `video_*_r2v` 与 `api_*` 会先在线转换再打印 JSON（能看到“已使用官方模板结构”）；
-- `video_*_t2v/i2v` 若报“子图/UI 不可直接提交”属预期（GUI 用，见 2）。
+- `video_*`（t2v/i2v/r2v）与 `api_*` 会先自动解组（如需）并在线转换再打印 JSON；
+- 本地视频走 `video_*`：`--stage t2v/i2v/r2v/flf2v` 或 `--template video_minimax_h3_*.json`，
+  均已实跑出片；`api_*` 三份 dry-run/转换可用，真正出片需 Comfy 账号登录（云模板）。
 
 ### 3.1 本地模型 + 同事开放图 r2v（`video_minimax_h3_r2v.json`）真正跑一次
 ```powershell
@@ -115,11 +122,14 @@ scp spark:"<第3步打印的 REMOTE_VIDEO_PATH>" outputs\video_r2v.mp4
 `python runs\h3_submit.py --stage r2v`（阶段 r2v 已指向该本地文件；
 缺图时会给出明确提示）。
 
-### 3.2 其它五份“手动跑一次”的落点
-- `video_minimax_h3_t2v.json` / `video_minimax_h3_i2v.json`：子图封装，GUI（2.2）最快；
-  脚本路线是 TODO（解组子图）。
-- `api_minimax_h3_{t2v,r2v,flf2v}.json`：dry-run/转换可用（3.0）；真正出片依赖这些
-  Hailuo03 节点在你实例上可执行（GUI Queue 若报 Unauthorized 即需登录 Comfy 云）。
+### 3.2 其它文件“手动跑一次”的落点
+- `video_minimax_h3_t2v.json` / `video_minimax_h3_i2v.json`：子图封装已自动解组，直接
+  `python runs\h3_submit.py --template <该文件>` 或 `--stage t2v/i2v` 即可（已实跑出片）。
+- `video_minimax_h3_flf2v.json`（本地扩展）：`python runs\h3_submit.py --stage flf2v`
+  （首帧 hero/末帧 alley；改 LoadImage 指向 spark input 其它图即可换内容）。
+- `api_minimax_h3_{t2v,r2v,flf2v}.json`：**Comfy 云模板**——dry-run/转换可用（3.0）；
+  真正出片需这些 Hailuo03 节点在你实例上可执行（GUI Queue 若报 Unauthorized 即需登录
+  Comfy 账号）。本地同语义请用对应 `video_*`（t2v/r2v/flf2v 均已有本地路径）。
 
 ---
 
@@ -127,8 +137,8 @@ scp spark:"<第3步打印的 REMOTE_VIDEO_PATH>" outputs\video_r2v.mp4
 
 | 现象 | 处理 |
 |---|---|
-| `Unauthorized: Please login first` | 该节点是 Comfy 云封装：在 ComfyUI 里登录 Comfy 账号后重试；本地模型请改用 `video_*` 或内置 t2v |
+| `Unauthorized: Please login first` | 该节点是 **Comfy 云模板**（`api_*` 的 MinimaxHailuo03* 经 Comfy 云代理 MiniMax API）：需在 ComfyUI 登录 Comfy 账号；不想上云就用本地对应物 `video_*`（t2v/i2v/r2v/flf2v 全部本地可跑） |
 | “需要在线 object_info / 模板是 UI 格式” | 先让本程序建好隧道（跑一次 `menu [5]`），或 GUI 打开该文件 |
 | LoadImage 图不存在 | `scp` 传图到 `spark:~/ai/ComfyUI/input/`，改模板文件名或用 GUI 上传 |
-| 参数在哪改 | `parameters\video.txt`（resolution/seconds，可用 edit.bat） |
+| 参数在哪改 | `parameters\video.txt`（resolution/seconds，可用 bats\config\edit.bat） |
 | 出片在哪 | `outputs\video_N.mp4`；工作流与审计在 `workflows\h3_*\`；日志 `logs\run_*.log` |

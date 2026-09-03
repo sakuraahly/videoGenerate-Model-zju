@@ -9,11 +9,11 @@
 
 ```
 项目根/
-├── run.bat                      # 小白入口（双击，原样保留：立即生成）
-├── edit.bat                     # 小白改参数（原样保留，只写 resolution/seconds）
-├── menu.bat                     # ★ 统一入口（双击）：立即/定时/延迟/改参/检查/工作流工具
-├── workflow_setup.bat           # ★ 工作流工具入口：设置 spark 上传目录 / 指定生成用工作流
-├── pipeline_setup.bat           # ★ 流水线/多工作流设置：默认阶段、模板状态、dry-run 校验
+├── bats\generate\run.bat                      # 小白入口（双击，原样保留：立即生成）
+├── bats\config\edit.bat                     # 小白改参数（原样保留，只写 resolution/seconds）
+├── bats\generate\menu.bat                     # ★ 统一入口（双击）：立即/定时/延迟/改参/检查/工作流工具
+├── bats\workflow\workflow_setup.bat           # ★ 工作流工具入口：设置 spark 上传目录 / 指定生成用工作流
+├── bats\workflow\pipeline_setup.bat           # ★ 流水线/多工作流设置：默认阶段、模板状态、dry-run 校验
 ├── config/environment.json      # 环境级配置（远程主机/端口/重试/超时）
 ├── config/minimax_h3_models.json# 远程 4 个基础模型清单（modelscope 前缀/大小/SHA-256）
 ├── config/transfer.json         # 工作流上传目录(绝对路径) + 激活工作流设置
@@ -37,12 +37,12 @@
 │       ├── jobstate.py          #   断点状态 + 每任务审计记录（原子写）
 │       └── tests/test_h3.py     #   单元测试（unittest，纯标准库）
 └── shell/                       # PowerShell 侧（模块化）
-    ├── console_menu.ps1         #   交互主菜单（中文 UI，被 menu.bat 启动）
+    ├── console_menu.ps1         #   交互主菜单（中文 UI，被 bats\generate\menu.bat 启动）
     ├── generate_video.ps1       #   编排入口（不写业务细节）
     ├── run_scheduled.ps1        #   定时/延迟：预检 → 倒计时 → 执行 generate_video
     ├── check_environment.ps1    #   环境+远程模型检查（可交互自动下载）
-    ├── transfer_setup.ps1       #   工作流上传/使用设置（被 workflow_setup.bat 启动）
-    ├── pipeline_setup.ps1       #   流水线默认阶段/模板状态/校验（被 pipeline_setup.bat 启动）
+    ├── transfer_setup.ps1       #   工作流上传/使用设置（被 bats\workflow\workflow_setup.bat 启动）
+    ├── pipeline_setup.ps1       #   流水线默认阶段/模板状态/校验（被 bats\workflow\pipeline_setup.bat 启动）
     └── lib/
         ├── utils.ps1            #   日志/键值与 JSON 读取/探活/单实例锁
         ├── state.ps1            #   断点状态读取与清理
@@ -85,10 +85,10 @@
 ```
 提交成功 ──写入 {prompt_id}──────────────┐
         │ 轮询/网络中断(exit 2)          │
-        └──► 断点保留；重跑 run.bat ──► 自动 --resume 原任务（不重复生成）
+        └──► 断点保留；重跑 bats\generate\run.bat ──► 自动 --resume 原任务（不重复生成）
 定位到输出 ──补写 {remote_path} ──────────┘
         │ 下载失败
-        └──► 断点保留；重跑 run.bat ──► 直接 scp 续传（不再跑 Python）
+        └──► 断点保留；重跑 bats\generate\run.bat ──► 直接 scp 续传（不再跑 Python）
 下载成功 ──清除断点
 任务执行失败(exit 3) ──由 Python 清除断点
 ```
@@ -105,7 +105,7 @@
 
 ### 3.3 单实例锁（`.run.lock`）
 
-`run.bat` 被误双击多次时，只有第一个进程能获得独占文件句柄；其余进程直接报错
+`bats\generate\run.bat` 被误双击多次时，只有第一个进程能获得独占文件句柄；其余进程直接报错
 退出。句柄由 OS 在进程退出/崩溃时自动释放，不存在“僵尸锁”。
 
 ### 3.4 Python 请求层（runs/h3/comfy.py）
@@ -162,15 +162,15 @@ PowerShell 库函数通过 `Parser.ParseFile` 语法校验 + 开发期一次性�
 
 ## 6. 使用：统一控制台与定时 / 延迟生成
 
-双击项目根的 **`menu.bat`**（薄启动器）会进入中文交互控制台：
+双击项目根的 **`bats\generate\menu.bat`**（薄启动器）会进入中文交互控制台：
 
 ```
 [1] 立即生成视频            -> shell/console_menu.ps1 -> generate_video.ps1
 [2] 定时生成（HH:MM）       -> run_scheduled.ps1 -AtTime HH:MM
 [3] 延迟生成（N 分钟）      -> run_scheduled.ps1 -DelayMinutes N
-[4] 修改生成参数             -> edit.bat
+[4] 修改生成参数             -> bats\config\edit.bat
 [5] 环境与远程模型检查       -> check_environment.ps1（可自动下载缺失模型）
-[6] 工作流上传/使用指定工作流 -> transfer_setup.ps1（同 workflow_setup.bat）
+[6] 工作流上传/使用指定工作流 -> transfer_setup.ps1（同 bats\workflow\workflow_setup.bat）
 [7] 退出
 ```
 
@@ -182,7 +182,7 @@ PowerShell 库函数通过 `Parser.ParseFile` 语法校验 + 开发期一次性�
   远程模型状态，缺失时可选择自动下载（远程 `curl -fL -C -` 断点续传 + 重试），
   只下载这 4 个文件，不整仓下载。
 - 定时时刻规则：24 小时制 `HH:MM`；若该时刻已过则自动顺延到明天。
-- `run.bat` 仍保留为“立即生成”的极简快捷入口，行为不变。
+- `bats\generate\run.bat` 仍保留为“立即生成”的极简快捷入口，行为不变。
 
 ---
 
@@ -219,7 +219,7 @@ PowerShell 库函数通过 `Parser.ParseFile` 语法校验 + 开发期一次性�
 
 ### 7.3 操作入口
 
-双击 **`workflow_setup.bat`**（或统一控制台 [6]）进入设置工具：
+双击 **`bats\workflow\workflow_setup.bat`**（或统一控制台 [6]）进入设置工具：
 1. 设置 spark 绝对上传目录；
 2. 从 `workflows/` 选择“生成时使用”的工作流（并开启/关闭该模式）；
 3. 立即把某个本地工作流上传到远程目录（scp，含重试提示）；
@@ -237,7 +237,7 @@ PowerShell 库函数通过 `Parser.ParseFile` 语法校验 + 开发期一次性�
 ## 8. 如何扩展新功能（不破坏现有流程）
 
 1. **新增分辨率预设**：改 `runs/h3/workflow.py` 的 `RESOLUTION_PRESETS`（Py 自动生效）；
-   若希望 `edit.bat` 也提供选项，再同步改 `edit.bat` 菜单。
+   若希望 `bats\config\edit.bat` 也提供选项，再同步改 `bats\config\edit.bat` 菜单。
 2. **新增每次任务参数（如 fps/steps/seed）**：在 `parameters/video.txt` 加一行
    `key=value`，在 `runs/h3/params.py` 的解析里读取校验，Python 端自动消费；
    未知键会被保留在 `GenParams.raw` 中供扩展使用，**不报错**。
@@ -266,31 +266,35 @@ PowerShell 库函数通过 `Parser.ParseFile` 语法校验 + 开发期一次性�
 - `default_stage`：默认生成阶段。**默认 t2v 且未显式指定 --stage 时走“经典内置 H3 T2V”路径，与历史版本完全一致**（向后兼容）。
 - `stages.<id>`：每个阶段一条：
   - `template`：`config/templates/` 下的 API(扁平) 模板文件名（t2v/i2v/r2v/flf2v/character/keyframes 等）；
-  - `template_kind`：`api`（可 CLI 提交）或 `ui`（video_*.json 仅供 ComfyUI 界面，CLI 明确拒绝）；
+  - `template_kind`：`api`（扁平 API，可直接 CLI 提交）或 `ui`（UI 格式：引擎自动做
+    **UUID 子图解组** + 在线 UI→API 转换后提交，已覆盖同事全部 video_*）；
   - `builtin`：内置生成器（目前仅 `h3_t2v`）——模板缺失时回退，保证“无模板也能跑”；
   - `prompt_files`：该阶段默认正/负提示词文件（相对项目根）；
   - `default_images`：该阶段默认输入图（i2v/r2v/flf2v 等需要）。
 
 > **真实模板注意（实测）**：官方 `api_minimax_h3_*.json`（位于 spark
-> `~/ai/ComfyUI/user/default/workflows/`）其实是 **ComfyUI UI 格式**（nodes/links），
-> 且其节点（`MinimaxHailuo03*`）走 **Comfy API 云端**，需要 Comfy 账号登录/
-> API key（object_info 含 `auth_token_comfy_org / api_key_comfy_org` 隐藏输入）。
+> `~/ai/ComfyUI/user/default/workflows/`）是 **ComfyUI UI 格式**（nodes/links），且节点
+> `MinimaxHailuo03*` 定义在 ComfyUI 自带 **comfy_api_nodes**（`comfy_api_nodes/nodes_minimax.py`），
+> 走 **Comfy 云代理**（`ApiEndpoint("/proxy/minimax/video_generation", ...)`）转发到
+> **MiniMax Hailuo 官方 API**——执行前提是 Comfy 账号已登录（object_info 含
+> `auth_token_comfy_org / api_key_comfy_org` 隐藏输入），与 spark GPU/本地推理无关。
 > 引擎对模板的策略：
 > 1. 扁平 API 模板 → 直接用 + 占位符替换；
-> 2. **UI 模板 → 引擎已支持在线 UI→API 转换**（`runs/h3/uiapi.py`，依赖在线
->    ComfyUI 的 `/object_info`；动态组合子输入按服务器期望输出为
->    `model.prompt`/`model.resolution`/`model.ratio`/`model.duration` 等键，
->    源节点引用为字符串 id）——实测 `/prompt` 校验通过、可进入执行；
+> 2. **UI 模板 → 引擎自动解组（如有 UUID 子图）并在线 UI→API 转换**（`runs/h3/subgraph.py`
+>    + `uiapi.py`，依赖在线 ComfyUI 的 `/object_info`）——video_* 四份已实测出片；
 > 3. 模板缺失或不可转换 → 有内置生成器则提示并回退内置，否则报错。
-> 说明：官方云端节点的真正生成还需要 Comfy 账号在 ComfyUI 中登录；本机内置
-> H3 图（UNET/VAE 底层节点）是 **spark 本地推理**，不依赖 Comfy API，开箱即用。
+> 说明：**本地同语义推理请用 `video_*`**（Comfy-Org MiniMax-H3 本地节点，spark GPU 执行），
+> 全套 4 类（t2v/i2v/r2v/flf2v）均已打通，不依赖 Comfy API；api_* 仅作"已登录 Comfy 云
+> 账号"时的云端通道。
 
-**同事 6 份工作流的实际构成（实测分类）**：`api_minimax_h3_{t2v,r2v,flf2v}.json` =
-`MinimaxHailuo03*` 封装节点（是否可执行取决于你 ComfyUI 实例是否登录 Comfy 服务；
-GUI 打开最直接，若报 Unauthorized 即该节点插件的登录要求）；`video_minimax_h3_r2v.json`
-= 本地 H3 **开放图**（`MiniMaxH3ReferenceToVideo` 等 20 节点，引擎可 UI→API 转换并本地跑，
-仅需参考图）；`video_minimax_h3_t2v/i2v.json` = 本地图但被 **UUID 子图**封装（CLI 解组为
-TODO，当前 t2v 由内置本地生成器等效覆盖）。
+**同事工作流 + 本地扩展的实际构成（实测分类）**：`api_minimax_h3_{t2v,r2v,flf2v}.json` =
+`MinimaxHailuo03*` **Comfy 云模板**（comfy_api_nodes → Comfy 云代理 MiniMax 官方 API；执行需
+Comfy 账号登录，GUI Queue 报 Unauthorized 即此因）；`video_minimax_h3_r2v.json` = 本地 H3
+**开放图**（`MiniMaxH3ReferenceToVideo` 等，引擎可解组/转换并本地跑，参考图已在 spark input）；
+`video_minimax_h3_t2v/i2v.json` = 本地 H3 **UUID 子图**封装（引擎已自动解组，CLI 可跑，均已
+实跑出片）；`video_minimax_h3_flf2v.json` = **本地新增双帧变体**（由 video i2v 扩展：两个
+LoadImage 接 MiniMaxH3ImageToVideo 的 first/last_frame，覆盖本地 flf2v 语义；仅存本地镜像，
+不上传 spark）。
 > 📖 逐文件手动步骤：`docs/manual-use-6-workflows.md`
 
 ### 9.6 远程模板路径记录（spark）
@@ -329,14 +333,14 @@ python h3_submit.py --workflow-file saved_api.json                      # 原样
 
 ### 9.4 配置工具
 
-双击 **`pipeline_setup.bat`**：查看各阶段与模板状态（内置/就绪/缺失/UI 不可用）、
+双击 **`bats\workflow\pipeline_setup.bat`**：查看各阶段与模板状态（内置/就绪/缺失/UI 不可用）、
 设置默认生成阶段、对某阶段做 dry-run 校验（不提交不上传）。
 每个阶段是否就绪在工具里一目了然；缺模板时把对应 API 文件放进 `config/templates/` 即可。
 
 ### 9.5 流水线逐阶段配合（当前形态与路线图）
 
 当前形态：各阶段作为“独立一次运行”串联 —— 上一阶段产物下载到本地
-（`outputs/` 或 `workflows/<task>/`），再用 `pipeline_setup.bat`/配置文件把该图设为
+（`outputs/` 或 `workflows/<task>/`），再用 `bats\workflow\pipeline_setup.bat`/配置文件把该图设为
 下一阶段 `default_images`，或直接用 `--image` 传入，逐段执行即可覆盖
 “角色图 → 关键帧 → R2V 视频 → 拼接”的生产流程。
 已规划但尚未内置（需按真实模板做节点级映射后再补）：一次 `run` 内自动串联多阶段、

@@ -4,7 +4,7 @@ MiniMax H3（Hailuo-03）视频生成自动化工具集：本地 Windows 编排�
 
 ## 功能
 
-- **一条命令生成**：`run.bat` 立即用当前参数生成；`menu.bat` 提供交互菜单（立即 / 定时 HH:MM / 延迟 N 分钟 / 改参数 / 环境自检 / 工作流工具）
+- **一条命令生成**：`bats\generate\run.bat` 立即用当前参数生成；`bats\generate\menu.bat` 提供交互菜单（立即 / 定时 HH:MM / 延迟 N 分钟 / 改参数 / 环境自检 / 工作流工具）
 - **多种生成阶段**：文生视频（t2v）、图生视频（i2v）、多参考图生视频（r2v）、首尾帧生视频（flf2v），支持本地模板与已保存工作流提交
 - **UI→API 自动转换**：ComfyUI UI 格式工作流在线扁平化为 API 格式（`runs/h3/uiapi.py`），无需手工改 JSON
 - **断点续传**：网络中断自动恢复（`last_job.json`），绝不重复生成
@@ -14,9 +14,9 @@ MiniMax H3（Hailuo-03）视频生成自动化工具集：本地 Windows 编排�
 ## 快速开始
 
 ```bat
-menu.bat        &:: 选 [5] 环境自检（本地工具 + ssh 连通 + 远程模型核对）
-edit.bat        &:: 设置 resolution (360p–768p) 与 seconds
-run.bat         &:: 立即生成，产物在 outputs\
+bats\generate\menu.bat        &:: 选 [5] 环境自检（本地工具 + ssh 连通 + 远程模型核对）
+bats\config\edit.bat        &:: 设置 resolution (360p–768p) 与 seconds
+bats\generate\run.bat         &:: 立即生成，产物在 outputs\
 ```
 
 提示词默认读 `prompts/positive_prompts.txt` 与 `prompts/negative_prompts.txt`。写提示词前请遵循 `skills/h3-prompt-engineering.md` 的规则（时长+镜头开场、物理动作描述、中文字符逐个枚举、音频分层、负面约束收尾）。
@@ -31,7 +31,7 @@ run.bat         &:: 立即生成，产物在 outputs\
 ## 目录结构
 
 ```
-menu.bat / run.bat / edit.bat     入口脚本
+bats\generate\menu.bat / bats\generate\run.bat / bats\config\edit.bat     入口脚本
 shell/        PowerShell 编排层（菜单、生成、定时、自检、隧道）
 runs/         Python CLI 与 h3 引擎（工作流构建、提交、断点、隧道）
 config/       环境配置、模型清单、阶段注册表、模板（pipeline.json 不入库，示例见 pipeline.example.json）

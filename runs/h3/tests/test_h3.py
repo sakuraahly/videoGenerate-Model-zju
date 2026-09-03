@@ -40,7 +40,7 @@ def _cleanup_test_tmp():
 needs_fs = unittest.skipUnless(_WRITES_OK, "沙箱不允许子进程写文件，跳过文件类测试")
 
 
-from h3 import comfy, jobstate, params, stage, templates, workflow  # noqa: E402
+from h3 import comfy, jobstate, params, prompts, stage, templates, workflow  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +262,264 @@ class TestUiLitegraphFormat(unittest.TestCase):
             self.assertEqual(len(node["widgets_values"]), n_widgets)
 
 
+class TestComboNormalize(unittest.TestCase):
+    """uiapi COMBO widget 值规范化（空串/陈旧值 → 枚举内合法值）。"""
+
+    def test_legacy_options_list_format(self):
+        from h3 import uiapi
+        spec = [["match", "max"], {"default": "match"}]
+        opts = uiapi._combo_options_of(spec, spec[1])
+        self.assertEqual(opts, ["match", "max"])
+        self.assertEqual(uiapi._normalize_combo(opts, spec[1], ""), "match")
+        self.assertEqual(uiapi._normalize_combo(opts, spec[1], "max"), "max")
+
+    def test_combo_type_with_options_in_cfg(self):
+        # 新版 spec：["COMBO", {"options": [...], "default": "match"}]
+        from h3 import uiapi
+        cfg = {"options": ["match", "max"], "default": "match"}
+        spec = ["COMBO", cfg]
+        opts = uiapi._combo_options_of(spec, cfg)
+        self.assertEqual(opts, ["match", "max"])
+        self.assertEqual(uiapi._normalize_combo(opts, cfg, ""), "match")
+        self.assertEqual(uiapi._normalize_combo(opts, cfg, "bogus"), "match")
+
+    def test_invalid_value_falls_back_to_first_option(self):
+        from h3 import uiapi
+        cfg = {"options": ["match", "max"]}  # 无 default
+        opts = uiapi._combo_options_of(["COMBO", cfg], cfg)
+        self.assertEqual(uiapi._normalize_combo(opts, cfg, "bogus"), "match")
+        self.assertEqual(uiapi._normalize_combo(opts, cfg, "max"), "max")
+
+    def test_non_combo_spec_returns_none(self):
+        from h3 import uiapi
+        self.assertIsNone(uiapi._combo_options_of(["INT", {}], {}))
+        self.assertIsNone(uiapi._combo_options_of(["IMAGE", {}], {}))
+
+
+class TestIdea2PromptsHttp(unittest.TestCase):
+    """idea2prompts.chat_once：api_key 为空时不发 Authorization（spark 本地 vLLM/Ollama）。"""
+
+    def _fake_resp(self):
+        data = json.dumps({"choices": [{"message": {"content": '{"positive": "x", "negative": ""}'}}]}).encode("utf-8")
+        resp = mock.Mock()
+        resp.read.return_value = data
+        resp.__enter__ = mock.Mock(return_value=resp)
+        resp.__exit__ = mock.Mock(return_value=False)
+        return resp
+
+    def test_no_auth_header_when_key_empty(self):
+        from h3 import idea2prompts
+        cfg = {"kind": "openai_compatible", "base_url": "http://127.0.0.1:8000/v1",
+               "api_key": "", "model": "Qwen/Qwen3-8B", "temperature": 0.7, "timeout": 30}
+        with mock.patch("urllib.request.urlopen", return_value=self._fake_resp()) as m:
+            out = idea2prompts.chat_once(cfg, [{"role": "user", "content": "hi"}])
+        self.assertEqual(out, '{"positive": "x", "negative": ""}')
+        req = m.call_args[0][0]
+        self.assertNotIn("Authorization", req.headers)
+        self.assertTrue(req.full_url.endswith("/v1/chat/completions"))
+
+    def test_auth_header_when_key_present(self):
+        from h3 import idea2prompts
+        cfg = {"kind": "openai_compatible", "base_url": "http://127.0.0.1:8000/v1",
+               "api_key": "sk-local-1", "model": "Qwen/Qwen3-27B", "temperature": 0.7, "timeout": 30}
+        with mock.patch("urllib.request.urlopen", return_value=self._fake_resp()) as m:
+            idea2prompts.chat_once(cfg, [{"role": "user", "content": "hi"}])
+        req = m.call_args[0][0]
+        self.assertEqual(req.headers.get("Authorization"), "Bearer sk-local-1")
+
+
+class TestSubgraphFlatten(unittest.TestCase):
+    """UUID 子图解组：基于真实 remote_workflows 模板（离线，无需 client）。"""
+
+    RUNS = Path(__file__).resolve().parent.parent.parent
+    ROOT = RUNS.parent
+    MIRROR = ROOT / "workflows" / "remote_workflows"
+
+    def _load(self, name):
+        import json as _json
+        return _json.loads((self.MIRROR / name).read_text(encoding="utf-8-sig"))
+
+    def _flat(self, name):
+        from h3 import subgraph
+        return subgraph.flatten_subgraphs(self._load(name))
+
+    def test_t2v_flatten_shape(self):
+        from h3 import subgraph
+        ui = self._load("video_minimax_h3_t2v.json")
+        self.assertTrue(subgraph.collect_subgraph_ids(ui))  # 确有子图
+        flat = subgraph.flatten_subgraphs(ui)
+        self.assertNotEqual(flat, ui)
+        self.assertTrue(flat.get("_flattened_subgraphs"))
+        by_id = {int(n["id"]): n for n in flat["nodes"]}
+        # 无 UUID 残留、无悬空连线
+        self.assertFalse([n for n in flat["nodes"]
+                          if len(str(n["type"])) == 36 and "-" in str(n["type"])])
+        for l in flat["links"]:
+            self.assertIn(int(l[1]), by_id)
+            self.assertIn(int(l[3]), by_id)
+        # 内部真实节点已搬入
+        mini = next(n for n in flat["nodes"] if n["type"] == "MiniMaxH3ImageToVideo")
+        self.assertIn("SaveVideo", {n["type"] for n in flat["nodes"]})
+
+    def test_no_subgraph_returns_same_object(self):
+        from h3 import subgraph
+        ui = self._load("video_minimax_h3_r2v.json")  # 开放图无子图
+        self.assertEqual(subgraph.flatten_subgraphs(ui), ui)
+
+    def test_i2v_first_frame_wired_and_prompt_injected(self):
+        flat = self._flat("video_minimax_h3_i2v.json")
+        mini = next(n for n in flat["nodes"] if n["type"] == "MiniMaxH3ImageToVideo")
+        ins = {i["name"]: i for i in mini["inputs"]}
+        load = next(n for n in flat["nodes"] if n["type"] == "LoadImage")
+        # 首帧来自顶层 LoadImage（drama_asset_hero.png）
+        self.assertIsNotNone(ins["first_frame"]["link"])
+        self.assertEqual(load["widgets_values"][0], "drama_asset_hero.png")
+        # prompt 注入为 UUID 节点 widgets_values[0]
+        uuid_node = next(n for n in self._load("video_minimax_h3_i2v.json")["nodes"]
+                         if len(str(n["type"])) == 36)
+        self.assertEqual(mini["widgets_values"][0], uuid_node["widgets_values"][0])
+        # width/height 仍由 ResolutionSelector 提供（顶层连线优先于陈旧 widget 值）
+        wlink = ins["width"]["link"]
+        src = next(l for l in flat["links"] if l[0] == wlink)[1]
+        src_node = next(n for n in flat["nodes"] if int(n["id"]) == src)
+        self.assertEqual(src_node["type"], "ResolutionSelector")
+
+    def test_t2v_prompt_injected_no_images(self):
+        flat = self._flat("video_minimax_h3_t2v.json")
+        mini = next(n for n in flat["nodes"] if n["type"] == "MiniMaxH3ImageToVideo")
+        ins = {i["name"]: i for i in mini["inputs"]}
+        self.assertIsNone(ins["first_frame"]["link"])
+        self.assertIsNone(ins["last_frame"]["link"])
+        uuid_node = next(n for n in self._load("video_minimax_h3_t2v.json")["nodes"]
+                         if len(str(n["type"])) == 36)
+        self.assertEqual(mini["widgets_values"][0], uuid_node["widgets_values"][0])
+        # duration 注入 PrimitiveFloat
+        pf = next(n for n in flat["nodes"] if n["type"] == "PrimitiveFloat")
+        self.assertEqual(pf["widgets_values"][0], 5)
+
+
+    def test_flf2v_dual_frame_wiring(self):
+        from h3 import subgraph
+        ui = self._load("video_minimax_h3_flf2v.json")
+        flat = subgraph.flatten_subgraphs(ui)
+        mini = next(n for n in flat["nodes"] if n["type"] == "MiniMaxH3ImageToVideo")
+        ins = {i["name"]: i for i in mini["inputs"]}
+        by_id = {int(n["id"]): n for n in flat["nodes"]}
+        imgs = {}
+        for k in ("first_frame", "last_frame"):
+            lk = ins[k]["link"]
+            self.assertIsNotNone(lk, k)
+            src_id = next(l for l in flat["links"] if l[0] == lk)[1]
+            src = by_id[src_id]
+            self.assertEqual(src["type"], "LoadImage")
+            imgs[k] = src["widgets_values"][0]
+        self.assertEqual(imgs["first_frame"], "drama_asset_hero.png")
+        self.assertEqual(imgs["last_frame"], "drama_asset_alley.png")
+        for l in flat["links"]:  # 无悬空
+            self.assertIn(int(l[1]), by_id)
+            self.assertIn(int(l[3]), by_id)
+
+
+class TestPruneDeadNodes(unittest.TestCase):
+    """uiapi.prune_dead_output_nodes：清理无人消费且非输出类的死链节点。"""
+
+    def test_dead_chain_removed_output_kept(self):
+        from h3 import uiapi
+        api = {
+            "1": {"class_type": "LoadImage", "inputs": {"image": "a.png"}},
+            "2": {"class_type": "ImageScaleToTotalPixels", "inputs": {}},  # 缺输入
+            "3": {"class_type": "GetImageSize", "inputs": {"image": ["2", 0]}},
+            "4": {"class_type": "SaveVideo", "inputs": {"video": ["9", 0]}},
+        }
+        out = uiapi.prune_dead_output_nodes(dict(api))
+        # 死链 2→3 整条清除；1 只为死链供图也被清；4 为文件输出类保留
+        self.assertNotIn("1", out)
+        self.assertNotIn("2", out)
+        self.assertNotIn("3", out)
+        self.assertIn("4", out)
+
+    def test_consumed_nodes_kept(self):
+        from h3 import uiapi
+        api = {
+            "1": {"class_type": "LoadImage", "inputs": {"image": "a.png"}},
+            "2": {"class_type": "MiniMax", "inputs": {"image": ["1", 0]}},
+            "3": {"class_type": "SaveVideo", "inputs": {"video": ["2", 0]}},
+        }
+        out = uiapi.prune_dead_output_nodes(dict(api))
+        self.assertEqual(set(out.keys()), {"1", "2", "3"})
+
+
+class TestRunLog(unittest.TestCase):
+    """h3_submit 运行日志：无 H3_LOG_FILE 注入时自动建 logs\\run_*.log，有则沿用。"""
+
+    def setUp(self):
+        self._old = os.environ.get("H3_LOG_FILE")
+        os.environ.pop("H3_LOG_FILE", None)
+        self._td = tempfile.TemporaryDirectory()
+        self.dir = Path(self._td.name)
+
+    def tearDown(self):
+        if self._old is None:
+            os.environ.pop("H3_LOG_FILE", None)
+        else:
+            os.environ["H3_LOG_FILE"] = self._old
+        self._td.cleanup()
+
+    def test_auto_creates_run_log(self):
+        import h3_submit
+        path, created = h3_submit._ensure_run_log(self.dir)
+        self.assertTrue(created)
+        p = Path(path)
+        self.assertEqual(p.parent.name, "logs")
+        self.assertTrue(p.name.startswith("run_") and p.name.endswith(".log"))
+        self.assertIn("run start", p.read_text(encoding="utf-8"))
+        # 二次调用沿用同一文件
+        path2, created2 = h3_submit._ensure_run_log(self.dir)
+        self.assertEqual(path2, path)
+        self.assertFalse(created2)
+
+    def test_env_injected_log_reused(self):
+        import h3_submit
+        f = self.dir / "injected.log"
+        f.write_text("", encoding="utf-8")
+        os.environ["H3_LOG_FILE"] = str(f)
+        path, created = h3_submit._ensure_run_log(self.dir)
+        self.assertFalse(created)
+        self.assertEqual(Path(path), f)
+
+    def test_log_event_writes_py_prefix(self):
+        import h3_submit
+        f = self.dir / "e.log"
+        f.write_text("", encoding="utf-8")
+        os.environ["H3_LOG_FILE"] = str(f)
+        h3_submit._log_event("hello 事件")
+        self.assertIn("py: hello 事件", f.read_text(encoding="utf-8"))
+
+    def test_adopt_task_log_merges_and_switches(self):
+        import json as _json
+        import h3_submit
+        # 本次会话自举的新日志（孤儿）
+        new_log, created = h3_submit._ensure_run_log(self.dir)
+        self.assertTrue(created)
+        h3_submit._log_event("start argv=--resume x")
+        # 原任务日志（job.json 里记录过）
+        logs_dir = self.dir / "logs"
+        orig = logs_dir / "run_oldtask.log"
+        orig.write_text("[old] === 原任务 start ===\n", encoding="utf-8")
+        task_dir = self.dir / "workflows" / "h3_oldtask"
+        task_dir.mkdir(parents=True)
+        (task_dir / "job.json").write_text(
+            _json.dumps({"log_file": "run_oldtask.log"}), encoding="utf-8")
+        # 续传采用原日志：孤儿并入后被删，env 切到原日志
+        h3_submit._adopt_task_log(self.dir, task_dir)
+        self.assertFalse(Path(new_log).exists())
+        self.assertEqual(os.environ.get("H3_LOG_FILE"), str(orig))
+        h3_submit._log_event("completed ok")
+        text = orig.read_text(encoding="utf-8")
+        self.assertIn("completed ok", text)
+        self.assertIn("start argv=", text)  # 本次会话起始行已并入
+
+
 # ---------------------------------------------------------------------------
 # 输出文件解析 / 远程路径
 # ---------------------------------------------------------------------------
@@ -450,12 +708,17 @@ class TestCliSmoke(unittest.TestCase):
                     p.unlink()
                 except OSError:
                     pass
+        # 注入临时日志文件：避免 CLI 自举日志写入真实 logs\
+        self.log_file = _TEST_TMP / f"cli_smoke_{os.getpid()}.log"
 
     def run_cli(self, *argv):
         import subprocess
+        env = dict(os.environ)
+        env["H3_LOG_FILE"] = str(self.log_file)
         proc = subprocess.run(
             [sys.executable, str(self.CLI), *argv],
             capture_output=True, text=True, timeout=60,
+            env=env,
         )
         return proc.returncode, proc.stdout, proc.stderr
 
@@ -540,6 +803,98 @@ class TestTemplateTokens(unittest.TestCase):
             templates.validate_workflow({"weird": 1})
 
 
+class TestPromptPathFallback(unittest.TestCase):
+    """pick_prompt_paths：槽位/阶段默认文件为空时必须视为未设置并继续回退。"""
+
+    RUNS = Path(__file__).resolve().parent.parent.parent
+    ROOT = RUNS.parent
+
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.dir = Path(self._td.name)
+        pd = self.dir / "prompts"
+        wd = pd / "workflows"
+        wd.mkdir(parents=True)
+        manifest = {
+            "prompt_dir": "prompts/workflows",
+            "default": {
+                "positive": "prompts/def_pos.txt",
+                "negative": "prompts/def_neg.txt",
+            },
+            "slots": {
+                "video_r2v": {
+                    "positive": "prompts/workflows/video_r2v.positive.txt",
+                    "negative": "prompts/workflows/video_r2v.negative.txt",
+                }
+            },
+            "workflow_files": {"video_minimax_h3_r2v.json": "video_r2v"},
+        }
+        (pd / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        self.slot_pos = wd / "video_r2v.positive.txt"
+        self.slot_neg = wd / "video_r2v.negative.txt"
+        self.stage_pos = pd / "stage_pos.txt"
+        self.stage_neg = pd / "stage_neg.txt"
+        self.def_pos = pd / "def_pos.txt"
+        self.def_neg = pd / "def_neg.txt"
+        self.stage_cfg = {
+            "prompt_files": {
+                "positive": "prompts/stage_pos.txt",
+                "negative": "prompts/stage_neg.txt",
+            }
+        }
+
+    def tearDown(self):
+        self._td.cleanup()
+
+    def test_empty_slot_file_falls_back_to_stage_default(self):
+        # 槽位文件为空/纯空白 -> 回退阶段默认文件
+        for p in (self.slot_pos, self.slot_neg):
+            p.write_text("   \n", encoding="utf-8")
+        self.stage_pos.write_text("STAGE-POS", encoding="utf-8")
+        self.stage_neg.write_text("STAGE-NEG", encoding="utf-8")
+        self.def_pos.write_text("DEF-POS", encoding="utf-8")
+        self.def_neg.write_text("DEF-NEG", encoding="utf-8")
+        pos, neg = prompts.pick_prompt_paths(
+            self.dir, self.stage_cfg, Path("video_minimax_h3_r2v.json"), None, None)
+        self.assertEqual(pos.resolve(), self.stage_pos.resolve())
+        self.assertEqual(neg.resolve(), self.stage_neg.resolve())
+
+    def test_all_empty_falls_back_to_manifest_default(self):
+        # 槽位空 + 阶段默认空 -> manifest default
+        for p in (self.slot_pos, self.slot_neg, self.stage_pos, self.stage_neg):
+            p.write_text("", encoding="utf-8")
+        self.def_pos.write_text("DEF-POS", encoding="utf-8")
+        self.def_neg.write_text("DEF-NEG", encoding="utf-8")
+        pos, neg = prompts.pick_prompt_paths(
+            self.dir, self.stage_cfg, Path("video_minimax_h3_r2v.json"), None, None)
+        self.assertEqual(pos.resolve(), self.def_pos.resolve())
+        self.assertEqual(neg.resolve(), self.def_neg.resolve())
+
+    def test_nonempty_slot_wins(self):
+        # 槽位非空 -> 槽位优先于阶段默认
+        self.slot_pos.write_text("SLOT-POS", encoding="utf-8")
+        self.slot_neg.write_text("SLOT-NEG", encoding="utf-8")
+        self.stage_pos.write_text("STAGE-POS", encoding="utf-8")
+        self.stage_neg.write_text("STAGE-NEG", encoding="utf-8")
+        self.def_pos.write_text("DEF-POS", encoding="utf-8")
+        self.def_neg.write_text("DEF-NEG", encoding="utf-8")
+        pos, neg = prompts.pick_prompt_paths(
+            self.dir, self.stage_cfg, Path("video_minimax_h3_r2v.json"), None, None)
+        self.assertEqual(pos.resolve(), self.slot_pos.resolve())
+        self.assertEqual(neg.resolve(), self.slot_neg.resolve())
+
+    def test_unregistered_template_uses_stage_then_default(self):
+        # 模板未注册槽位：阶段默认 > manifest default（都不允许空文件当选）
+        self.stage_pos.write_text("STAGE-POS", encoding="utf-8")
+        self.stage_neg.write_text("", encoding="utf-8")
+        self.def_pos.write_text("DEF-POS", encoding="utf-8")
+        self.def_neg.write_text("DEF-NEG", encoding="utf-8")
+        pos, neg = prompts.pick_prompt_paths(
+            self.dir, self.stage_cfg, Path("unknown_template.json"), None, None)
+        self.assertEqual(pos.resolve(), self.stage_pos.resolve())
+        self.assertEqual(neg.resolve(), self.def_neg.resolve())
+
+
 class TestStageConfig(unittest.TestCase):
     """基于真实 config/pipeline.json（只读）与临时文件行为测试。"""
     RUNS = Path(__file__).resolve().parent.parent.parent
@@ -615,13 +970,17 @@ class TestStageCli(unittest.TestCase):
                     p.unlink()
                 except OSError:
                     pass
+        # 注入临时日志文件：避免 CLI 自举日志写入真实 logs\
+        self.log_file = _TEST_TMP / f"cli_stage_{os.getpid()}.log"
 
     def run_cli(self, *argv):
         import subprocess
-
+        env = dict(os.environ)
+        env["H3_LOG_FILE"] = str(self.log_file)
         proc = subprocess.run(
             [sys.executable, str(self.CLI), *argv],
             capture_output=True, text=True, timeout=60,
+            env=env,
         )
         return proc.returncode, proc.stdout, proc.stderr
 

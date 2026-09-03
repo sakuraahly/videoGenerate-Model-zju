@@ -1,0 +1,10 @@
+{
+  "_comment": "AI 桥接 spark 本地通用模型示例：vLLM 部署 Qwen3-8B/27B（OpenAI 兼容）。用法：1) spark 上用 vLLM 起服务（监听 0.0.0.0:8000，或 127.0.0.1:8000 再加本地隧道 ssh -N -L 8000:127.0.0.1:8000 spark）；2) 复制本文件为 config/llm.json；3) enabled 改 true；4) model 填 vLLM --served-model-name（如 Qwen3-8B/Qwen3-27B，或模型仓库名）。本地服务 api_key 留空即可（本引擎空 key 不发 Authorization 头）。",
+  "enabled": false,
+  "kind": "openai_compatible",
+  "base_url": "http://127.0.0.1:8000/v1",
+  "api_key": "",
+  "model": "Qwen3-8B",
+  "temperature": 0.7,
+  "timeout_seconds": 120
+}

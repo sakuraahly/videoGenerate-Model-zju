@@ -1,8 +1,8 @@
 {
   "id": "e3f2b845-8f2c-4b5a-9caf-eac1029d3e7e",
   "revision": 0,
-  "last_node_id": 120,
-  "last_link_id": 228,
+  "last_node_id": 121,
+  "last_link_id": 229,
   "nodes": [
     {
       "id": 92,
@@ -142,7 +142,7 @@
           "name": "last_frame",
           "shape": 7,
           "type": "IMAGE",
-          "link": null
+          "link": 229
         },
         {
           "name": "width",
@@ -357,6 +357,47 @@
         "Node name for S&R": "GetImageSize"
       },
       "widgets_values": []
+    },
+    {
+      "id": 121,
+      "type": "LoadImage",
+      "pos": [
+        -2560,
+        4550
+      ],
+      "size": [
+        330,
+        360
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            229
+          ],
+          "shape": 7,
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "shape": 3,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "drama_asset_alley.png",
+        "image"
+      ]
     }
   ],
   "links": [
@@ -398,6 +439,14 @@
       0,
       120,
       0,
+      "IMAGE"
+    ],
+    [
+      229,
+      121,
+      0,
+      105,
+      1,
       "IMAGE"
     ]
   ],
