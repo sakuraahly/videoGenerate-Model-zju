@@ -3,8 +3,8 @@
 ## 1. call_comfyui — 提交视频生成任务（提交/等待分离）
 
 ```
-call_comfyui(stage, prompt, negative_prompt, image, image2,
-             resolution, seconds, seed, dry_run, force_new, wait_until_done)
+call_comfyui(stage, prompt, resolution, seconds, seed,
+             dry_run, wait_until_done, force_new)
 ```
 
 | 参数 | 类型 | 说明 |
@@ -42,9 +42,13 @@ run_script(script, args)
 - `h3_submit.py` — 视频生成（同 call_comfyui 的底层实现）
 - `h3_text2img.py` — 文生图：`--prompt "描述" --output 名称 [--resolution 720p]`
 - `h3/idea2prompts.py` — 提示词生成：`--idea "创意" [--workflow 类型] [--force]`
-- `h3/refimage.py` — 参考素材：`list` / `promote --name <id>` /
-  `use --name <id> --stage r2v`（把选中素材设为某阶段模板的参考图）/
-  `use --undo`（还原模板）
+- `h3/refimage.py` — 参考素材：
+  - `list [--pool in|up|out] [--name 关键字] [--limit N]`（默认仅图片、按池限量，
+    不会像以前那样被 out 池刷屏截断）
+  - `use --name <id|文件名> --stage r2v --slot 0|1`（**r2v 有两个参考图槽位**
+    slot0/slot1，人物与场景/道具分开放；用 `use --info --stage r2v` 查看槽位映射；
+    i2v/flf2v 为单槽，默认 slot 0）
+  - `promote --name <id|文件名>`；`use --undo`（git 还原模板）
 
 **安全限制**：
 - 只允许 .py 文件
@@ -66,6 +70,10 @@ modify_workflow(workflow_file, changes)
 **注意**：节点ID是字符串形式的整数（如 "5", "12"）。
 ComfyUI 工作流格式是 `{"nodes": [{"id": 5, "type": "...", ...}]}`，不是扁平字典。
 
+**格式对照（容易混淆）**：本地镜像模板是 **UI 格式**——LoadImage 的图名存在
+`widgets_values[0]`；引擎在线转换后（dry_run/提交时打印的 API 图）同一字段显示为
+`inputs.image`。两者是同一个东西：**改模板一律用 widgets_values**。
+
 **示例**：修改 LoadImage 节点的图片路径
 ```python
 modify_workflow(
@@ -73,3 +81,5 @@ modify_workflow(
     changes={"5": {"widgets_values": ["new_image.png"]}}
 )
 ```
+> 日常换参考图更推荐 `run_script("h3/refimage.py", "use --name <id> --stage r2v --slot 1")`——
+> 它会自动 promote 到 ComfyUI input 并精确改对应 LoadImage 槽位。

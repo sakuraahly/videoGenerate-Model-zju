@@ -9,12 +9,14 @@ i2v / r2v / flf2v 的参考图）。
 
 命令：
   list                     列出三池可作参考的图片/视频（含 id、来源、路径）
+                           [--pool in|up|out] [--name 关键字] [--all] [--limit N]
   promote --name <sel>     把选中的素材复制进 ComfyUI input（供 LoadImage 使用）
-                           <sel> = list 输出的 id（如 out:3）或文件名或绝对路径
+                           <sel> = list 输出的 id（如 up:0）或文件名或绝对路径
                            [--as <filename>] 指定进入 input 后的文件名
-  use --name <sel> --stage <i2v|r2v|flf2v> [--first|--all]
-                           promote + 把该 stage 本地镜像模板里 LoadImage 的图片名
-                           改写为选中素材（--first 只改第一个 LoadImage；默认 first）
+  use --name <sel> --stage <i2v|r2v|flf2v> [--slot N]
+                           设置参考图：把该 stage 本地镜像模板的第 N 个 LoadImage
+                           指向选中素材（r2v 有两个槽位 0/1；不带 --slot 默认槽 0）。
+  use --info --stage r2v   查看模板的参考图槽位映射（不改动）
   use --undo               恢复本地镜像模板（git checkout 还原，仅适用已入库镜像）
   where                    打印三个池目录位置
 
@@ -24,9 +26,12 @@ i2v / r2v / flf2v 的参考图）。
 经 ssh 通道”的约定）。
 
 示例：
-  python runs/h3/refimage.py list
-  python runs/h3/refimage.py promote --name out:0
-  python runs/h3/refimage.py use --name up:hero.png --stage r2v --first
+  python runs/h3/refimage.py list --pool up
+  python runs/h3/refimage.py list --name 沙朗
+  python runs/h3/refimage.py promote --name up:0
+  python runs/h3/refimage.py use --name up:0 --stage r2v --slot 0   # 角色参考
+  python runs/h3/refimage.py use --name up:1 --stage r2v --slot 1   # 第二张参考
+  python runs/h3/refimage.py use --info --stage r2v
   python runs/h3/refimage.py use --undo
 """
 from __future__ import annotations
@@ -81,7 +86,12 @@ def comfy_dirs() -> dict:
 
 
 def _rows(dirs: dict) -> list:
-    """三池扫描 → [{"pool","file","name","size","mtime","full"}]，按池分组排序。"""
+    """三池扫描 → [{"pool","name","full","size","mtime","kind"}]。
+
+    池显示顺序：up（上传收件箱，最近最相关）→ in（ComfyUI input）→ out（ComfyUI
+    output 历史产物）；input/uploads 均**递归**扫描（upload_watch 会把图片镜像到
+    input/user_uploads/ 子目录，顶层扫描会漏）。
+    """
     out = []
     seen = set()
 
@@ -99,29 +109,55 @@ def _rows(dirs: dict) -> list:
                     "size": p.stat().st_size, "mtime": p.stat().st_mtime,
                     "kind": kind})
 
-    for d, pool in ((dirs["input"], "in"), (dirs["uploads"], "up")):
+    for d, pool in ((dirs["uploads"], "up"), (dirs["input"], "in")):
         if os.path.isdir(d):
-            for name in sorted(os.listdir(d)):
-                add(pool, os.path.join(d, name))
-    # ComfyUI output：递归收集图片（保存的图片产物可能带子目录）
+            for dp, _dn, fn in os.walk(d):
+                for name in sorted(fn):
+                    add(pool, os.path.join(dp, name))
     if os.path.isdir(dirs["output"]):
         for dp, _dn, fn in os.walk(dirs["output"]):
             for name in sorted(fn):
                 add("out", os.path.join(dp, name))
-    out.sort(key=lambda r: (r["pool"], r["mtime"]), reverse=True)
+    pool_order = {"up": 0, "in": 1, "out": 2}
+    out.sort(key=lambda r: (pool_order[r["pool"]], -r["mtime"]))
     return out
 
 
-def cmd_list(dirs: dict, show_other: bool = False) -> int:
-    rows = _rows(dirs)
+def _filter_rows(rows: list, pool: str = "", name: str = "", kinds=(("image", "video"),),
+                 show_other: bool = False) -> list:
+    res = rows
+    if pool:
+        res = [r for r in res if r["pool"] == pool]
+    if name:
+        res = [r for r in res if name.lower() in r["name"].lower()]
+    if not show_other:
+        res = [r for r in res if r["kind"] != "other"]
+    return res
+
+
+def cmd_list(dirs: dict, show_other: bool = False, pool: str = "",
+             name: str = "", limit: int = 25) -> int:
+    rows = _filter_rows(_rows(dirs), pool=pool, name=name, show_other=show_other)
     print(f"素材池位置：{json.dumps(dirs, ensure_ascii=False)}")
+    print(f"过滤：池={pool or '全部'} 名称含={name or '-'}（默认仅图片，--all 含视频/其它）")
     print(f"{'id':<10}{'池':<5}{'类型':<7}{'大小':>10}  {'名称'}")
-    for i, r in enumerate(rows):
-        if r["kind"] == "other" and not show_other:
-            continue
-        print(f"{r['pool']}:{i:<8}{r['pool']:<5}{r['kind']:<7}{r['size']:>10}  {r['name']}")
-    print(f"\n共 {len(rows)} 项（--all 含其它类型）。用法：promote --name <id|文件名>；"
-          f"use --name <id|文件名> --stage r2v")
+    pools = []
+    for r in rows:
+        if r["pool"] not in pools:
+            pools.append(r["pool"])
+    counts = {p: 0 for p in pools}
+    omitted = 0
+    for r in rows:
+        counts[r["pool"]] += 1
+        idx = counts[r["pool"]] - 1
+        if idx < limit:
+            print(f"{r['pool']}:{idx:<8}{r['pool']:<5}{r['kind']:<7}{r['size']:>10}  {r['name']}")
+        else:
+            omitted += 1
+    if omitted:
+        print(f"… 省略 {omitted} 项（每池最多 {limit} 行；可用 --pool/--name 过滤、--limit 调大）")
+    print(f"共 {len(rows)} 项（各池计数 {counts}）。用法：promote --name <id|文件名>；"
+          f"use --name <id|文件名> --stage r2v [--slot 0|1]")
     _log("list")
     return 0
 
@@ -182,7 +218,33 @@ def _stage_template(stage: str) -> Path:
     return ROOT / "workflows" / "remote_workflows" / f"video_minimax_h3_{stage}.json"
 
 
-def cmd_use(dirs: dict, sel: str, stage: str, targets: str, undo: bool) -> int:
+def template_slots(tpl: Path) -> list:
+    """返回模板中 LoadImage 槽位：[(槽位序号, 当前图名), ...]（按节点顺序）。"""
+    data = json.loads(tpl.read_text(encoding="utf-8-sig"))
+    nodes = data.get("nodes") if isinstance(data, dict) else None
+    if not isinstance(nodes, list):
+        raise ValueError(f"模板不是 UI 格式: {tpl}")
+    slots = []
+    for n in nodes:
+        if isinstance(n, dict) and n.get("type") == "LoadImage":
+            vals = n.get("widgets_values") or []
+            slots.append((len(slots), str(vals[0]) if vals else ""))
+    return slots
+
+
+def _print_slots(tpl: Path) -> None:
+    try:
+        slots = template_slots(tpl)
+    except ValueError as e:
+        print(f"[错误] {e}", file=sys.stderr)
+        return
+    print(f"模板 {tpl.name} 参考图槽位（共 {len(slots)} 个，0 起编号）：")
+    for idx, cur in slots:
+        print(f"  slot {idx}: {cur or '(空)'}")
+
+
+def cmd_use(dirs: dict, sel: str, stage: str, targets: str, slot: int,
+            undo: bool, info: bool) -> int:
     tpl = _stage_template(stage)
     if not tpl.exists():
         print(f"[错误] 该 stage 无本地镜像模板: {tpl}", file=sys.stderr)
@@ -196,6 +258,24 @@ def cmd_use(dirs: dict, sel: str, stage: str, targets: str, undo: bool) -> int:
             return 0
         print(f"[错误] 还原失败（模板可能未入库/有本地新增）: {r.stderr[:200]}", file=sys.stderr)
         return 3
+    if info:
+        _print_slots(tpl)
+        return 0
+    try:
+        slots = template_slots(tpl)
+    except ValueError as e:
+        print(f"[错误] {e}", file=sys.stderr)
+        return 3
+    if not slots:
+        print(f"[错误] 模板 {tpl.name} 中没有 LoadImage 节点", file=sys.stderr)
+        return 3
+    if slot is not None:
+        if slot < 0 or slot >= len(slots):
+            print(f"[错误] slot {slot} 越界（模板共 {len(slots)} 个槽位: 0..{len(slots)-1}）；"
+                  f"用 use --info 查看", file=sys.stderr)
+            return 3
+        targets = f"slot:{slot}"
+
     rows = _rows(dirs)
     try:
         r = _resolve_sel(rows, sel)
@@ -210,28 +290,33 @@ def cmd_use(dirs: dict, sel: str, stage: str, targets: str, undo: bool) -> int:
     dst = os.path.join(dirs["input"], name)
     if os.path.abspath(dst) != os.path.abspath(r["full"]):
         shutil.copy2(r["full"], dst)
-    # 2) 改写本地镜像模板的全部/首个 LoadImage
+    # 2) 改写本地镜像模板的 LoadImage（--slot N 精确槽位 / --first 第一个 / --all-loads 全部）
     data = json.loads(tpl.read_text(encoding="utf-8-sig"))
-    nodes = data.get("nodes") if isinstance(data, dict) else None
-    if nodes is None:
-        print(f"[错误] 模板不是 UI 格式: {tpl}", file=sys.stderr)
-        return 3
+    nodes = data.get("nodes")
     patched = 0
     for n in nodes:
-        if isinstance(n, dict) and n.get("type") == "LoadImage":
-            vals = n.get("widgets_values") or []
-            if vals:
-                vals[0] = name
+        if not (isinstance(n, dict) and n.get("type") == "LoadImage"):
+            continue
+        if targets.startswith("slot:"):
+            if patched != int(targets.split(":", 1)[1]):
                 patched += 1
-                if targets == "first":
-                    break
+                continue
+        vals = n.get("widgets_values") or []
+        if not vals:
+            vals = [""]
+            n["widgets_values"] = vals
+        vals[0] = name
+        patched += 1
+        if targets in ("first",) or targets.startswith("slot:"):
+            break
     if patched == 0:
-        print(f"[错误] 模板 {tpl.name} 中没有 LoadImage 节点", file=sys.stderr)
+        print(f"[错误] 未能定位要修改的 LoadImage 槽位", file=sys.stderr)
         return 3
     tpl.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"已把 {stage} 模板 {tpl.name} 的 {patched} 个 LoadImage 指向: {name}")
+    print(f"已把 {stage} 模板 {tpl.name} 的 LoadImage 指向: {name}（target={targets}）")
+    _print_slots(tpl)
     print("提示：槽位提示词由 prompts/workflows/ 对应文件控制；恢复模板请执行 use --undo。")
-    _log(f"use stage={stage} image={name} patched={patched} targets={targets}")
+    _log(f"use stage={stage} image={name} targets={targets}")
     return 0
 
 
@@ -245,7 +330,11 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="参考素材池管理（ComfyUI 已保存图 / 上传收件箱）")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p_list = sub.add_parser("list")
-    p_list.add_argument("--all", action="store_true", help="含其它类型文件")
+    p_list.add_argument("--all", action="store_true", help="含视频/其它类型（默认仅图片）")
+    p_list.add_argument("--pool", default="", choices=["in", "up", "out", ""],
+                        help="只看某个池")
+    p_list.add_argument("--name", default="", help="按文件名包含过滤")
+    p_list.add_argument("--limit", type=int, default=25, help="每池最多显示行数")
     p_prom = sub.add_parser("promote")
     p_prom.add_argument("--name", required=True)
     p_prom.add_argument("--as", dest="as_name", default="")
@@ -253,10 +342,15 @@ def main(argv=None) -> int:
     p_use.add_argument("--name", default="")
     p_use.add_argument("--stage", default="i2v",
                        choices=["i2v", "r2v", "flf2v"])
+    p_use.add_argument("--slot", type=int, default=None,
+                       help="精确指定参考图槽位（0 起，如 r2v 有 0/1 两个）；"
+                            "用 use --info 查看槽位映射")
     p_use.add_argument("--first", dest="targets", action="store_const", const="first",
                        default="first")
     p_use.add_argument("--all-loads", dest="targets", action="store_const", const="all")
-    p_use.add_argument("--undo", action="store_true")
+    p_use.add_argument("--undo", action="store_true", help="git 还原模板")
+    p_use.add_argument("--info", action="store_true",
+                       help="只打印模板参考图槽位映射，不改动")
     sub.add_parser("where")
     args = ap.parse_args(argv)
 
@@ -275,14 +369,18 @@ def main(argv=None) -> int:
         return r.returncode if r.returncode in (0, 2, 3) else 3
 
     if args.cmd == "list":
-        return cmd_list(dirs, show_other=args.all)
+        return cmd_list(dirs, show_other=args.all, pool=args.pool,
+                        name=args.name, limit=args.limit)
     if args.cmd == "promote":
         return cmd_promote(dirs, args.name, args.as_name)
     if args.cmd == "use":
+        if args.info:
+            return cmd_use(dirs, "", args.stage, "first", None, False, True)
         if not args.undo and not args.name:
-            print("use 需要 --name <id|文件名> 或 --undo", file=sys.stderr)
+            print("use 需要 --name <id|文件名> 或 --undo 或 --info", file=sys.stderr)
             return 3
-        return cmd_use(dirs, args.name, args.stage, args.targets, args.undo)
+        return cmd_use(dirs, args.name, args.stage, args.targets,
+                       args.slot, args.undo, False)
     if args.cmd == "where":
         return cmd_where(dirs)
     return 0
