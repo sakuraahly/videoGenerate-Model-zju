@@ -559,6 +559,24 @@ logs/agent-comm/
 
 ---
 
+## 11. 两端代码协作：Git + 文件同步协议（Windows ↔ spark）
+
+> 背景：spark 无 GitHub 推送能力，但保留**本地 git 记录**（commit/回滚可用）；跨端合并不走
+> git push，而是文件级"逐文件取新 + 显式冲突"。详见 `docs/deploy-modes.md` §5–§6。
+
+- 工具：`python runs\sync_merge.py`（两端均部署）：`--status`（一致/远端新/本地新/冲突/删除提示）、
+  `--pull-auto`、`--push-auto`、`--resolve <文件> --from local|remote`、`--make-base`；
+  基线 `.sync-state.json`（各端一份，已 gitignore）。
+- 不参与同步：`.git/__pycache__/.test_tmp/outputs/logs、workflows/h3_*` 与机器文件
+  （`config/llm.json、config/deploy.json、config/pipeline.json`——两端本应不同，各自维护）。
+- 冲突规则（相对两端各自的基线哈希）：一端=基线另一端≠ → 自动取新；
+  两端都≠基线 → **冲突列清单，人 `--resolve` 选边，绝不自动覆盖**；删除仅提示不自动执行。
+- 纪律：改动后两端各自 `git add -A && git commit`（spark 用本地 user，不推 GitHub）；
+  收敛后两端 `--make-base`；本机照常 `git push origin master`。
+- 整目录外传（不带 .git）用 `sync_to_spark.py`（约定：排除 .git，见 deploy-modes §5）。
+
+---
+
 ## 附录: Agent 标识规范
 
 | Agent | 标识符 | 职责域 |
