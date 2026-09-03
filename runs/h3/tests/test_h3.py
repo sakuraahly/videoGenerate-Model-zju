@@ -508,6 +508,17 @@ class TestRunLog(unittest.TestCase):
         h3_submit._log_event("hello 事件")
         self.assertIn("py: hello 事件", f.read_text(encoding="utf-8"))
 
+    def test_err_writes_log_too(self):
+        """回归：提前退出路径(断点拦截/参数错/拒绝)只 _err 不落日志，
+        会留下只有 run start 两行的“粗略日志”。_err 必须同步写日志。"""
+        import h3_submit
+        f = self.dir / "err.log"
+        f.write_text("", encoding="utf-8")
+        os.environ["H3_LOG_FILE"] = str(f)
+        h3_submit._err("检测到上次任务尚未完成（断点存在）")
+        text = f.read_text(encoding="utf-8")
+        self.assertIn("py: err 检测到上次任务尚未完成", text)
+
     def test_adopt_task_log_merges_and_switches(self):
         import json as _json
         import h3_submit

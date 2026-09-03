@@ -48,7 +48,13 @@ _LOG_ENV = "H3_LOG_FILE"
 
 
 def _err(msg: str) -> None:
+    """打印错误到 stderr，并同步落运行日志（前提：日志已初始化）。
+
+    教训：只打印不落日志会让提前退出路径留下只有 run start 两行的“粗略
+    日志”，事后无法定位失败原因。所有失败路径必须统一经此处留痕。
+    """
     print(f"[错误] {msg}", file=sys.stderr, flush=True)
+    _log_event(f"err {msg}")
 
 
 def _ensure_run_log(project_dir: Path):
@@ -406,7 +412,7 @@ def main(argv: Optional[list] = None) -> int:
     if run_log:
         if log_created:
             print(f"[INFO] 运行日志: {run_log}", flush=True)
-        _log_event(f"start argv={' '.join(argv) if argv is not None else ''}")
+        _log_event(f"start argv={' '.join(argv) if argv is not None else ' '.join(sys.argv[1:])}")
 
     base_url = args.comfyui_url or comfy.DEFAULT_COMFYUI_URL
     client = comfy.ComfyClient(base_url=base_url)
@@ -423,7 +429,9 @@ def main(argv: Optional[list] = None) -> int:
     # 仅在“即将开新任务”时才拦截遗留断点；带 --resume 的续传不受影响
     if (not resume_id and _has_new_task_args(args)
             and root_state.get("prompt_id") and not args.force_new):
-        _err("检测到上次任务尚未完成（断点存在）。若确要开新任务，请先删除 "
+        _err("检测到上次任务尚未完成（断点存在: "
+             f"{root_state.get('prompt_id')}）。若上次任务只是超时/中断，"
+             "可直接无参数重跑自动续传继续等待；若确要开新任务，请先删除 "
              f"{jobstate.root_state_path(project_dir)}，或加 --force-new 强制新开。")
         return EXIT_DETERMINISTIC
 
@@ -625,9 +633,11 @@ if __name__ == "__main__":
         sys.exit(main())
     except h3params.ParamError as e:
         print(f"[错误] {e}", file=sys.stderr, flush=True)
+        _log_event(f"err {e}")
         sys.exit(EXIT_DETERMINISTIC)
     except Exception as e:  # noqa: BLE001 - 兜底：任何未预期异常都给出可定位输出
         print("发生未预期的内部错误：", file=sys.stderr, flush=True)
         traceback.print_exc()
         print(f"[内部错误] {e}", file=sys.stderr, flush=True)
+        _log_event(f"internal_error {e}")
         sys.exit(EXIT_INTERNAL)
