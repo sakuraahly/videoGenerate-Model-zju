@@ -1,0 +1,57 @@
+{
+  "_comment": "项目生成能力统一注册表（单一来源，勿在别处重复维护）。用途：1) 人/Agent 生成可读说明；2) 未来喂给本地 LLM(方案一) 让其了解可用能力与参数；3) 校验脚本参数。修改本文件后用 `python runs/h3/capabilities.py --doc` 重新生成 docs/capabilities-ai.md。",
+  "engine": {
+    "name": "videoGenerate-Model-zju",
+    "host": "spark (DGX Spark, ComfyUI 127.0.0.1:8188, ssh 免密)",
+    "models": {
+      "video": "MiniMax H3（本地推理，spark GPU，无需云）",
+      "image": "FLUX.1-dev（本地文生图）",
+      "llm": "Qwen3.8-27B（vLLM, OpenAI 兼容 /v1, spark 127.0.0.1:8000）"
+    }
+  },
+  "tools": [
+    {
+      "name": "generate_reference_image",
+      "description": "Generate a reference image with local FLUX.1-dev (text-to-image). Output lands in spark ~/ai/ComfyUI/input/<name>.png (usable by image-conditioned video workflows) and a local copy under refs/.",
+      "usage": "python runs/h3_text2img_flux.py --text \"<detailed English visual description>\" --name <snake_case> [--width 1344] [--height 768] [--steps 28] [--seed N]",
+      "params": {
+        "text": {"type": "string", "description": "English visual description, concrete subject/scene/lighting/style", "required": true},
+        "name": {"type": "string", "description": "Output base name; becomes spark input/<name>.png and refs/<name>.png", "required": true},
+        "width": {"type": "integer", "default": 1344, "note": "best quality landscape on spark"},
+        "height": {"type": "integer", "default": 768},
+        "steps": {"type": "integer", "default": 28},
+        "seed": {"type": "integer", "default": "random"}
+      }
+    },
+    {
+      "name": "generate_video",
+      "description": "Run a video-generation workflow with MiniMax H3 (local inference on spark). Prompt content is taken automatically from the workflow's prompt slot file (see prompts/), or override with --prompt-file.",
+      "usage": "python runs/h3_submit.py --stage <workflow_id> [--resolution 360p|480p|540p|720p|768p] [--seconds 5..15] [--seed N] [--force-new] [--dry-run]",
+      "params": {
+        "stage": {"type": "string", "enum": ["t2v", "i2v", "r2v", "flf2v"], "description": "workflow id, see workflows below"},
+        "template": {"type": "string", "description": "exact template json path as alternative to --stage"},
+        "resolution": {"type": "string", "enum": ["360p", "480p", "540p", "720p", "768p"]},
+        "seconds": {"type": "number", "note": "single shot max ~15s"},
+        "seed": {"type": ["integer", "string"]},
+        "timeout": {"type": "integer", "default": 3600},
+        "dry_run": {"type": "boolean", "description": "validate without consuming GPU"}
+      },
+      "outputs": {"video": "outputs/video_N.mp4", "log": "logs/run_<ts>_<ms>.log", "task_dir": "workflows/h3_<ts>_<ms>/"}
+    }
+  ],
+  "workflows": [
+    {"id": "video_t2v", "engine": "local", "purpose": "text-to-video (official standard template)", "needs_images": "none", "slot": "video_t2v"},
+    {"id": "video_i2v", "engine": "local", "purpose": "image-to-video: animate from one first frame", "needs_images": "1 first-frame image", "slot": "video_i2v"},
+    {"id": "video_r2v", "engine": "local", "purpose": "reference-to-video: keep 1-2 reference images (character/scene) consistent", "needs_images": "1-2 reference images", "slot": "video_r2v"},
+    {"id": "video_flf2v", "engine": "local", "purpose": "first-frame + last-frame video (local extension of i2v)", "needs_images": "2 images (first, last)", "slot": "video_flf2v"},
+    {"id": "api_t2v", "engine": "comfy-cloud", "purpose": "text-to-video via MiniMax Hailuo official API (Comfy cloud login required)", "needs_images": "none", "slot": "api_t2v"},
+    {"id": "api_r2v", "engine": "comfy-cloud", "purpose": "reference-to-video via Hailuo API (Comfy cloud login required)", "needs_images": "1-2 reference images", "slot": "api_r2v"},
+    {"id": "api_flf2v", "engine": "comfy-cloud", "purpose": "first+last frame via Hailuo API (Comfy cloud login required)", "needs_images": "2 images (self-provided example)", "slot": "api_flf2v"}
+  ],
+  "prompt_slots": {
+    "file_pattern": "prompts/workflows/<slot>.{positive,negative}.txt",
+    "fallback": "empty/missing slot file falls back to prompts/positive_prompts.txt (default)",
+    "editor": "bats/prompts/prompts.bat"
+  },
+  "note_for_llm": "Prompts you write for the video workflows must follow the rules in config/prompt_blueprints.json (positive & negative in English JSON, include audio, end with negative constraints)."
+}

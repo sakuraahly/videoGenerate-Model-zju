@@ -8,6 +8,9 @@
 > Full operator guide: `docs/user-guide.md` · Workflow & prompt selection (with/without a local
 > LLM): `docs/workflow-and-prompt.md` · Architecture/how-to-extend:
 > `docs/robustness-and-modularity.md` · Prompt rules: `skills/h3-prompt-engineering.md`.
+> Capability registry (single source of what the project can do): `config/capabilities.json` —
+> regenerate `docs/capabilities-ai.md` with `python runs/h3/capabilities.py --doc`; model-facing
+> digest via `--digest`.
 
 ---
 

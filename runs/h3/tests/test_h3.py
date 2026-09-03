@@ -531,6 +531,42 @@ class TestRunLog(unittest.TestCase):
         self.assertIn("start argv=", text)  # 本次会话起始行已并入
 
 
+class TestCapabilities(unittest.TestCase):
+    """能力注册表 config/capabilities.json：加载/查询/LLM digest/文档生成。"""
+
+    RUNS = Path(__file__).resolve().parent.parent.parent
+    ROOT = RUNS.parent
+
+    def test_load_and_workflow_lookup(self):
+        from h3 import capabilities
+        cap = capabilities.load_capabilities(self.ROOT)
+        self.assertTrue(cap.get("workflows"))
+        self.assertTrue(cap.get("tools"))
+        w = capabilities.workflow_by_id(cap, "video_r2v")
+        self.assertIsNotNone(w)
+        self.assertEqual(w.get("engine"), "local")
+        self.assertEqual(w.get("slot"), "video_r2v")
+        self.assertIsNone(capabilities.workflow_by_id(cap, "no_such"))
+
+    def test_llm_digest_is_compact_and_informative(self):
+        from h3 import capabilities
+        cap = capabilities.load_capabilities(self.ROOT)
+        d = capabilities.llm_digest(cap)
+        self.assertIn("video_r2v", d)
+        self.assertIn("h3_submit.py --stage", d)
+        self.assertIn("h3_text2img_flux.py", d)
+        self.assertIn("prompt_blueprints.json", d)
+        self.assertLess(len(d), 1200)  # 小模型友好：保持精简
+
+    def test_markdown_doc_generates_table(self):
+        from h3 import capabilities
+        cap = capabilities.load_capabilities(self.ROOT)
+        md = capabilities.markdown_doc(cap)
+        self.assertIn("| id |", md)
+        for wid in ("video_t2v", "video_i2v", "video_r2v", "video_flf2v"):
+            self.assertIn(wid, md)
+
+
 # ---------------------------------------------------------------------------
 # 输出文件解析 / 远程路径
 # ---------------------------------------------------------------------------

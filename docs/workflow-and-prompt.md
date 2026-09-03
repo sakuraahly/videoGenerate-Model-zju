@@ -130,9 +130,33 @@ python runs\h3_submit.py --stage r2v --force-new --seed 2026
 
 ---
 
-## 5. 相关文档
+## 5. 能力注册表与"让模型了解项目"的两方案取舍（给开发者/后续会话）
+
+**方案一（结构化能力，已落地基础）：System Prompt + 工具定义**
+- 单一来源：`config/capabilities.json`（视频工作流 7 个、`generate_reference_image`=FLUX、
+  `generate_video`=h3_submit 参数、提示词槽位规则），模型可读的英文描述与参数 schema。
+- 生成人类/Agent 文档：`python runs\h3\capabilities.py --doc` → 重写
+  `docs/capabilities-ai.md`（标注"由 json 生成，勿手改"）。
+- 喂给本地 LLM 的精简摘要（~0.7k 字符）：`python runs\h3\capabilities.py --digest`。
+  当前"槽位填词"每次请求默认**不注入**该摘要（避免挤占已调优的 7 条规则）；当模型要承担
+  "创意 → 选工作流/出图/定参数"（plan 模式）时再把 digest 注入 system，或在 LLM 支持
+  Function Calling 的稳定版本（vLLM ≥0.28 的 tools）下把工作流做成 tools。
+- 关键约束：给 27B 级小模型的指令必须**自包含、编号、短句、含示例**（见
+  `config/prompt_blueprints.json` 与 §3；模型看不到仓库其它文件）。
+
+**方案二（RAG，当前不启用，理由与启用时机）**
+- 本项目知识规模很小（8 个提示词槽 + 7 个工作流 + 3 个工具），System Prompt 放得下；
+  引入 embedding/向量库（bge、Chroma 等）会增加部署与延迟且对 27B 收益低。
+- 何时启用：工具/说明扩到几十个、或用户要模型回答"项目怎么用"类开放问题且命中率不足时，
+  再按"文档切片 → bge-small-zh 向量化 → 检索 top-k 拼入上下文"实现（配置与查询放
+  `runs/h3/`，入口预留为 `idea2prompts --rag-help` 的后续版本）。
+
+---
+
+## 6. 相关文档
 - `docs/quickstart.md` 新手三步走（含参考图操作）
 - `docs/user-guide.md` 完整命令与机制
 - `docs/manual-use-6-workflows.md` 每模板 GUI+脚本细步骤
+- `docs/capabilities-ai.md` 项目生成能力注册表（由 config/capabilities.json 生成）
 - `skills/h3-prompt-engineering.md` 提示词写法规则
 - `config/llm.spark-qwen3.example.json` AI 桥配置示例（情形 B 前提）
