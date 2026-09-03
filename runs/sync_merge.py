@@ -34,8 +34,8 @@ EXCLUDE_TOP = {".git", ".test_tmp", "__pycache__", ".pytest_cache", "outputs", "
 EXCLUDE_PREFIX = ("workflows/h3_",)
 EXCLUDE_FILES = {
     STATE_NAME, ".sync-manifest.json", "config/llm.json", "config/deploy.json",
-    "config/pipeline.json", "config/autosync.json", ".ai_brief.tmp.txt", "last_job.json",
-    ".run.lock", ".tunnel.json",
+    "config/pipeline.json", "config/autosync.json", "config/upload_watch.json",
+    ".ai_brief.tmp.txt", "last_job.json", ".run.lock", ".tunnel.json",
 }
 
 

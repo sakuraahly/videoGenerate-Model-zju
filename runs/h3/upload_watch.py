@@ -43,7 +43,9 @@ IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 VID_EXT = {".mp4", ".webm", ".mov", ".mkv", ".gif"}
 
 DEFAULT = {"enabled": True, "interval": 30,
-           "openwebui_data_dir": os.path.expanduser("~/.open-webui"),
+           # 实测：本机 pip 版 Open WebUI 数据目录在 ~/.cache/open-webui
+           # （首次上传前 uploads/ 子目录可能尚不存在，属正常）
+           "openwebui_data_dir": os.path.expanduser("~/.cache/open-webui"),
            "keep_originals": True}
 
 
