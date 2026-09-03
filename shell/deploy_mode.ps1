@@ -9,7 +9,7 @@ $Py = Join-Path $ProjectRoot 'runs\h3\deploy.py'
 
 function Invoke-Py {
     param([string[]]$ArgsList)
-    & python @ArgsList
+    & python $Py @ArgsList
     Write-Host ''
     Write-Host ("  退出码: " + $LASTEXITCODE)
 }
