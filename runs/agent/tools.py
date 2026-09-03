@@ -98,6 +98,10 @@ class RunScript(BaseTool):
         if extra_args:
             cmd.extend(extra_args.split())
 
+        env = None
+        if script_name == 'h3_submit.py' and '--dry-run' in (extra_args or ''):
+            env = {**os.environ, 'H3_CONCISE': '1'}  # 精简 JSON 刷屏，防上下文膨胀
+
         try:
             result = subprocess.run(
                 cmd,
@@ -105,6 +109,7 @@ class RunScript(BaseTool):
                 text=True,
                 timeout=_SCRIPT_TIMEOUT,
                 cwd=PROJECT_ROOT,
+                env=env,
             )
             stdout = _truncate(result.stdout)
             stderr = _truncate(result.stderr)
@@ -294,9 +299,13 @@ class CallComfyUI(BaseTool):
             cmd.extend(['--seed', str(params['seed'])])
         if params.get('dry_run'):
             cmd.append('--dry-run')
+            env = {**os.environ, 'H3_CONCISE': '1'}  # 精简输出：防长 JSON 撑爆对话
         elif not params.get('wait_until_done'):
             # 提交/等待分离：默认提交即返回，任务后台运行（不阻塞、不误报超时）
             cmd.append('--submit-only')
+            env = None
+        else:
+            env = None
         if params.get('force_new'):
             cmd.append('--force-new')
         if params.get('prompt'):
@@ -311,6 +320,7 @@ class CallComfyUI(BaseTool):
                 text=True,
                 timeout=tool_timeout,
                 cwd=PROJECT_ROOT,
+                env=env,
             )
             stdout = _truncate(result.stdout)
             stderr = _truncate(result.stderr)

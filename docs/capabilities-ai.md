@@ -3,7 +3,7 @@
 引擎：`videoGenerate-Model-zju` @ spark (DGX Spark, ComfyUI 127.0.0.1:8188, ssh 免密)
 模型：视频 MiniMax H3（本地推理，spark GPU，无需云）；文生图 FLUX.1-dev（本地文生图）；LLM Qwen3.8-27B（vLLM, OpenAI 兼容 /v1, spark 127.0.0.1:8000）
 
-## 视频工作流（workflows）
+## 视频工作流（本地组，唯一实际使用）
 
 | id | 用途 | 引擎 | 图需求 | 提示词槽位 |
 |---|---|---|---|---|
@@ -11,9 +11,9 @@
 | `video_i2v` | image-to-video: animate from one first frame | `local` | 1 first-frame image | `video_i2v` |
 | `video_r2v` | reference-to-video: keep 1-2 reference images (character/scene) consistent | `local` | 1-2 reference images | `video_r2v` |
 | `video_flf2v` | first-frame + last-frame video (local extension of i2v) | `local` | 2 images (first, last) | `video_flf2v` |
-| `api_t2v` | text-to-video via MiniMax Hailuo official API (Comfy cloud login required) | `comfy-cloud` | none | `api_t2v` |
-| `api_r2v` | reference-to-video via Hailuo API (Comfy cloud login required) | `comfy-cloud` | 1-2 reference images | `api_r2v` |
-| `api_flf2v` | first+last frame via Hailuo API (Comfy cloud login required) | `comfy-cloud` | 2 images (self-provided example) | `api_flf2v` |
+
+
+> 注：云端 api_*（Comfy 登录）不在使用范围，已从能力面剔除；本地同语义由 video_* 四类覆盖。
 
 - 槽位文件：`prompts/workflows/<slot>.{positive,negative}.txt`；空/缺失回退 default（`prompts/positive_prompts.txt`）；编辑入口 `bats/prompts/prompts.bat`。
 

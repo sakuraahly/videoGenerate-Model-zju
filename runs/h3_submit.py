@@ -568,7 +568,18 @@ def main(argv: Optional[list] = None) -> int:
         if args.dry_run:
             _log_event(f"dry_run mode={mode} stage={stage_id} "
                        f"nodes={len(wf) if isinstance(wf, dict) else 0} (预览，未提交)")
-            print(json.dumps(wf, indent=2, ensure_ascii=False))
+            if os.environ.get("H3_CONCISE", "").strip().lower() not in ("", "0", "false", "no"):
+                # agent 对话场景（H3_CONCISE=1）不刷整份 JSON，防上下文膨胀/回复截断
+                size = ""
+                if gp:
+                    size = (f"resolution={gp.width}x{gp.height}({gp.resolution}) "
+                            f"seconds={gp.seconds}s->{gp.length}f@{gp.fps}fps seed={gp.seed} "
+                            f"steps={gp.steps}")
+                print(f"[dry-run 预览通过] mode={mode} stage={stage_id} "
+                      f"nodes={len(wf) if isinstance(wf, dict) else 0} {size}"
+                      f"（校验无误，未提交；完整 JSON 请在人工 CLI 查看）", flush=True)
+            else:
+                print(json.dumps(wf, indent=2, ensure_ascii=False))
             return EXIT_OK
 
         # 任务文件夹 + 工作流落盘 + 审计记录（workflow-file 原样模式不重存）

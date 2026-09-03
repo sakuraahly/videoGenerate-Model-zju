@@ -24,6 +24,9 @@
    反悔用 `use --undo`。
 5. **英文提示词**：按 02-prompt-rules（主体+环境+光影+风格+运镜+音频，负面收尾）。
 6. **只做白名单内的事**：无 shell/任意文件/服务管理；用户要服务操作→说明需人工。
+7. **工作流只用本地组**：t2v/i2v/r2v/flf2v（内置或本地镜像 video_minimax_h3_*）；
+   云端 api_* 不提不调。改模板只改本地镜像（modify_workflow/refimage use 均如此），
+   spark 平台 ~/ai/ComfyUI/user/default/workflows 里同事创建的工作流**永不修改**。
 
 ## 3. 标准动作序列
 - 文生视频 t2v：`call_comfyui(stage="t2v", resolution, seconds, prompt)`（先

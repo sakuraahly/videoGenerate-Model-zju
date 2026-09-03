@@ -35,14 +35,14 @@ def workflow_by_id(cap: dict, wid: str) -> Optional[dict]:
 
 
 def llm_digest(cap: dict) -> str:
-    """压缩版能力摘要（给本地 LLM 的 system 上下文；一行式、小模型友好）。"""
-    wf = []
-    for w in cap.get("workflows") or []:
-        eng = "L" if w.get("engine") == "local" else "C"
-        wf.append(f"{w['id']}({eng},{w.get('needs_images', 'none')})")
+    """压缩版能力摘要（给本地 LLM 的 system 上下文；一行式、小模型友好）。
+
+    只列本地工作流组（engine=local）；云端 api_* 不在使用范围，不向模型提及。
+    """
+    wf = [f"{w['id']}({w.get('needs_images', 'none')})"
+          for w in (cap.get("workflows") or []) if w.get("engine") == "local"]
     lines = [
-        f"Available video workflows: {', '.join(wf)} "
-        "(L=local inference on spark, C=Comfy-cloud login required).",
+        f"Local workflow group (the ONLY workflows in use): {', '.join(wf)}.",
         "Run a workflow: python runs/h3_submit.py --stage <workflow_id> "
         "[--resolution 360p|480p|540p|720p|768p] [--seconds 5..15] [--seed N] [--dry-run to preview].",
         "Make a reference image: python runs/h3_text2img_flux.py --text '<English description>' "
@@ -54,10 +54,14 @@ def llm_digest(cap: dict) -> str:
 
 
 def markdown_doc(cap: dict) -> str:
+    local_wf = [x for x in (cap.get("workflows") or []) if x.get("engine") == "local"]
+    has_cloud = any(x.get("engine") != "local" for x in (cap.get("workflows") or []))
     w = "\n".join(
         f"| `{x['id']}` | {x.get('purpose', '')} | `{x.get('engine')}` | "
         f"{x.get('needs_images', 'none')} | `{x.get('slot')}` |"
-        for x in cap.get("workflows") or [])
+        for x in local_wf)
+    cloud_note = ("\n\n> 注：云端 api_*（Comfy 登录）不在使用范围，已从能力面剔除；"
+                  "本地同语义由 video_* 四类覆盖。") if has_cloud else ""
     tools = []
     for t in cap.get("tools") or []:
         p = "\n".join(f"  - `{k}` ({v.get('type')}): {v.get('description', '')}"
@@ -70,11 +74,12 @@ def markdown_doc(cap: dict) -> str:
 引擎：`{cap['engine'].get('name')}` @ {cap['engine'].get('host')}
 模型：视频 {cap['engine']['models'].get('video')}；文生图 {cap['engine']['models'].get('image')}；LLM {cap['engine']['models'].get('llm')}
 
-## 视频工作流（workflows）
+## 视频工作流（本地组，唯一实际使用）
 
 | id | 用途 | 引擎 | 图需求 | 提示词槽位 |
 |---|---|---|---|---|
 {w}
+{cloud_note}
 
 - 槽位文件：`{cap['prompt_slots']['file_pattern']}`；空/缺失回退 default（`prompts/positive_prompts.txt`）；编辑入口 `{cap['prompt_slots']['editor']}`。
 

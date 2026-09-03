@@ -34,7 +34,7 @@ LLM_CFG = {
     'generate_cfg': {
         'temperature': 0.2,
         'top_p': 0.8,
-        'max_tokens': 4096,
+        'max_tokens': 8192,
         'fncall_prompt_type': 'nous',
     },
 }
@@ -46,6 +46,12 @@ SYSTEM_MESSAGE = """\
 ═══ 核心知识（已内嵌，无需工具调用） ═══
 
 【项目架构】Windows 工作站 + 远程 DGX Spark。Spark 上运行 ComfyUI + H3 视频模型 + SGLang(Qwen3.8-27B)。
+
+【工作流组（唯一实际使用，不要提及其它）】
+  只使用本地工作流组，语义四类：t2v(文生视频)/i2v(首帧图生)/r2v(参考图保连贯)/
+  flf2v(首末帧)，实现 = 内置 t2v 或本地镜像 video_minimax_h3_{t2v,i2v,r2v,flf2v}.json。
+  云端 api_minimax_h3_*（需 Comfy 登录）不在使用范围，不提及、不调用。
+
 【你的能力】
   - call_comfyui(stage) — 提交视频生成任务。stage: t2v(文生视频)/i2v(图生视频)/r2v(参考图)/flf2v(首末帧)
   - run_script(script, args) — 运行白名单 .py 脚本:
