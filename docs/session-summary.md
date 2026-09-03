@@ -165,7 +165,8 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - `robustness-and-modularity.md` 架构/断点/隧道/扩展/测试；§9 工作流分类与占位符
 - `h3-troubleshooting.md`、`h3-manual-operations.md`(legacy)、`comfyui-startup-and-access.md`、
   `long-term-maintenance.md`、`h3-workflow-architecture.md`
-- `agent-communication/` 多 Agent 协作（protocol / collaboration / review-and-recommendations / inbox 总线）
+- `agent-communication/` 多 Agent 协作（protocol / collaboration / review-and-recommendations /
+  inbox 总线 / scheduler-agent-design=Qwen 调度器 Function Calling 落地设计）
 - `local-model/` 本地模型部署文档（另 Agent 维护：quick-start / full-manual）
 - `skills/h3-video-generation.md`（智能体技能卡）、`skills/h3-prompt-engineering.md`（提示词规则）
 
