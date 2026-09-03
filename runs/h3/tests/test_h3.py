@@ -327,6 +327,17 @@ class TestIdea2PromptsHttp(unittest.TestCase):
         req = m.call_args[0][0]
         self.assertEqual(req.headers.get("Authorization"), "Bearer sk-local-1")
 
+    def test_max_tokens_in_payload_when_configured(self):
+        import json as _json
+        from h3 import idea2prompts
+        cfg = {"kind": "openai_compatible", "base_url": "http://127.0.0.1:8000/v1",
+               "api_key": "", "model": "Qwen3.8-27B", "temperature": 0.7, "timeout": 30,
+               "max_tokens": 1500}
+        with mock.patch("urllib.request.urlopen", return_value=self._fake_resp()) as m:
+            idea2prompts.chat_once(cfg, [{"role": "user", "content": "hi"}])
+        body = _json.loads(m.call_args[0][0].data.decode("utf-8"))
+        self.assertEqual(body["max_tokens"], 1500)
+
 
 class TestSubgraphFlatten(unittest.TestCase):
     """UUID 子图解组：基于真实 remote_workflows 模板（离线，无需 client）。"""

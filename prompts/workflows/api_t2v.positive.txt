@@ -1,0 +1,19 @@
+我们需要回答用户：作为影视分镜提示词撰写器，只输出可直接运行的 JSON：{"positive": "...", "negative": "..."}。不要多余文字。
+
+需要生成 api_t2v / minimax h3 t2v 单段 5-15s，简洁场景推进。创意：雨夜小巷，黑衣特工用匕首无声反杀最后两名敌人，霓虹灯光下血珠顺着刀刃滴落。
+
+必须遵守项目 skills/h3-prompt-engineering.md（我们不知道内容，但用户给了规则）：
+- 开头锚定时长+运镜
+- 写物理动作不写抽象
+- 中文按字枚举、指定字体、5-6 字内？ 这里可能指如果画面出现中文文字，要逐字枚举、指定字体、字数5-6内。我们的提示词不需要中文字幕，但可避免文字。
+- 英文比中文稳；可能提示词用英文更稳？但用户中文。槽位是 api t2v，可能输出 positive 可以是英文？规则说英文比中文稳。为了稳定，positive 用英文？但“中文按字枚举...”如果中文提示词可能不稳。可以输出英文正向提示词。但用户中文，也许期望中文？系统说你是影视分镜提示词撰写器，只输出 JSON。没有要求语言。为了模型稳定，positive 用英文较好。negative 也可英文。
+- 必须包含音频描述（即使无声也写 no dialogue, no music）
+- 结尾负面约束。输出正向与负向两个字段。
+
+需要只输出 JSON。不要 markdown。
+
+内容：视频提示词。开头锚定时长+运镜，例如 "5s, low-angle tracking shot following a black-clad agent through a rain-soaked neon alley..." 或 "8s, handheld close tracking..."。简洁场景推进。
+
+物理动作：agent steps, twists, drives dagger, enemy falls, blood drips from blade. 无声反杀：no dialogue, no music, only rain and blade hiss? 但必须包含音频描述。可以写 "audio: no dialogue, no music, light rain, wet footsteps, soft blade impact" 或 "no dialogue, no music" 但雨声可以。规则即使无声也写 no dialogue, no music。可以包含 no dialogue, no music, rain sound.
+
+负面

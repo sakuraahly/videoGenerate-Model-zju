@@ -79,6 +79,19 @@ python runs\h3_submit.py --stage r2v --force-new                 # then run that
 Without a configured LLM (`enabled=false`), still offer `--dry-run`, and fill the slot files
 manually (human mode — see `docs/workflow-and-prompt.md` §2).
 
+### 1.3c Local LLM serving notes (Qwen3.8-27B vLLM on spark)
+
+- Serve: `~/Qwen3.8-27B/start_vllm.sh` in tmux session `vllm` (port 8000, 127.0.0.1).
+  The repo copy is `shell/spark_vllm_start.sh`. **`--limit-mm-per-prompt` must be JSON**
+  (`'{"image": 4, "video": 2}'`) — the legacy `image=4,video=2` format fails on vLLM ≥0.28.
+- Local access is via SSH tunnel; local port 8000 may be blocked by a stale listener, use e.g.
+  `ssh -N -L 8011:127.0.0.1:8000 spark` and point `config/llm.json` `base_url` at `8011`.
+- **Keep `max_tokens` small in `llm.json` (~500)**. Without it the server may emit up to its
+  `max_model_len` (65536) and stall the whole queue for many minutes. Unoptimized GB10 serving
+  is only ~4–5 tok/s, so generous `timeout_seconds` (300) is expected.
+- Tooling on spark: `shell/spark_chat_setup.sh` / `spark_chat_terminal.py` (quick chat),
+  `spark_download_qwen3.8_27b.sh` (ModelScope download into `~/Qwen3.8-27B`).
+
 ### 1.4 Multi-workflow (stage/template) runs
 
 `config/pipeline.json` registers stages (`t2v`, `i2v`, `r2v`, `flf2v`, plus SDXL

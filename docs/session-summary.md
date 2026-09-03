@@ -166,11 +166,14 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - `skills/h3-video-generation.md`（智能体技能卡）、`skills/h3-prompt-engineering.md`（提示词规则）
 
 ## 10. 待办 / 下一步（给新对话的明确任务）
-1. **AI 桥端到端验证**（代码/配置已就绪，缺 spark 侧模型）：在 spark 部署通用模型
-   （计划 Qwen3-8B/27B，vLLM OpenAI 兼容，建议 --served-model-name 固定如 Qwen3-8B），
-   按 `config\llm.spark-qwen3.example.json` 填 `config/llm.json`（enabled=true，api_key 留空），
-   跑 `bats\prompts\ai_prompts.bat` 验证一段创意 → 全部槽位提示词写入。
-   （引擎已支持空 key 免鉴权；base_url 仅 127.0.0.1 时先建 8000 隧道。）
+1. **AI 桥：已基本接通，待全量验证**（2026-09-03）：spark 已部署 Qwen3.8-27B vLLM
+   （`~/Qwen3.8-27B/vllm-venv` + `~/Qwen3.8-27B/start_vllm.sh`，tmux 会话 vllm，8000，
+   max_len 65536）；本地经隧道 8011→8000（8000 本地端口曾被残留进程占用的权宜）。
+   `config/llm.json` 已指向（enabled=true、model=Qwen3.8-27B、max_tokens=500、
+   timeout_seconds=300）；idea2prompts 单槽（api_t2v）**端到端成功一次**
+   （positive 1115ch 写入）。**待 Qwen 优化完成后**：全槽位生成 + `bats\prompts\ai_prompts.bat`
+   交互验证。注意：当前 GB10 上该服务吞吐约 4.5 tok/s（无优化 kernel 时慢），生成超长输出会
+   拖垮队列——务必保持 llm.json 的 max_tokens 限长（曾因不限长=65536 空转导致后续请求超时）。
 2. **本地语义已全覆盖**：video t2v/i2v/r2v/flf2v 均已本地实跑出片（`--stage` 或 `--template`）。
    api_* 三份为 **Comfy 云模板**：如要用（云端通道），先在 ComfyUI 登录 Comfy 账号，
    否则 `Unauthorized` 属预期；提示词槽位注入链路与本地图一致（槽 api_t2v/api_r2v/api_flf2v）。
@@ -211,7 +214,29 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   用 `_adopt_task_log` 沿用原任务日志并并入本会话起始行。测试注入临时 H3_LOG_FILE 防污染
   真实 logs（+5 单测，套件 79）。
 - `shell\ForSparkService\*`：三件套重写（见 §8b），废弃 `ssh -N -f` 与相对路径调用。
+- **《GAME OVER》三步产出（2026-09-03，spark）**：FLUX.1-dev 文生图两张
+  （1344×768，`runs/h3_text2img_flux.py`，落 spark input + 本地 `refs\`）：
+  `refs\hero_night_ops.png`（暗夜特工主角）、`refs\alley_night_neon.png`（雨夜巷）；
+  r2v 视频两段（复用上两图，槽位词）：
+  `outputs\video_gameover_sample_5s.mp4`（360p/5s 小样）与
+  `outputs\video_gameover_15s.mp4`（480p/15s 正片，prompt=
+  `prompts\gameover_15s.positive.txt`，结尾 "GAME OVER" 红字）。
+  **注意：ComfyUI 进程随后被手动杀掉——再次生成前需先 StartComfyUI.bat 恢复。**
 - 镜像同步：`sync_remote_workflows.ps1` 拉齐 6/6（当时 4 份过期）。
+- **第 4 步：Qwen3.8-27B vLLM 部署与 AI 桥打通（2026-09-03）**：
+  - 安装：`~/Qwen3.8-27B/vllm-venv` 用**清华镜像**装 vLLM 0.28.0（aarch64 wheel 308MB；
+    官方源易卡下载）；模型 18 shards 已就绪（`~/Qwen3.8-27B/models/Qwen--Qwen3.8-27B/`）。
+  - 启动：`~/Qwen3.8-27B/start_vllm.sh`（= `shell/spark_vllm_start.sh`，tmux 会话 vllm）。
+    **修复点：`--limit-mm-per-prompt` 参数旧格式 `image=4,video=2` 不被 vLLM 0.28 接受，
+    必须 JSON 格式 `'{"image": 4, "video": 2}'`**（已修）；识别架构
+    Qwen3_5ForConditionalGeneration；加载约 8 分钟。
+  - 访问：spark 监听 127.0.0.1:8000 → 本地隧道（因本地 8000 曾被残留进程占用，
+    权宜用 **8011**：`ssh -N -L 8011:127.0.0.1:8000 spark`）。
+  - AI 桥修复：idea2prompts 新增 `max_tokens`（llm.json 限 500；不限长=65536 空转拖垮队列，
+    曾导致后续请求超时）；端到端单槽 api_t2v 成功一次（+1 单测，套件 80）。
+    吞吐约 4.5 tok/s（无优化 kernel），**用户正在优化 Qwen 服务中，勿打扰**。
+  - 其余 spark 侧脚本（仓库内）：`shell/spark_chat_setup.sh`（一键复制脚本+隧道+聊天）、
+    `shell/spark_chat_terminal.py`（OpenAI 兼容终端聊天）、`shell/spark_vllm_start.sh`（服务启动）。
 - 提示词：`prompts/workflows/video_r2v.positive.txt`、`video_i2v.positive.txt` 已按
   skills/h3-prompt-engineering.md 填写（空槽位回退 default 见上）。
 - **文档/知识沉淀（2026-09-02）**：新增 `docs/quickstart.md`（新手三步上手）；

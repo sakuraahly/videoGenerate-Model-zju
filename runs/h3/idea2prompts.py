@@ -49,6 +49,7 @@ def load_llm_config(project_dir: Path) -> dict:
         "model": str(data.get("model") or ""),
         "temperature": float(data.get("temperature", 0.7)),
         "timeout": int(data.get("timeout_seconds", 120)),
+        "max_tokens": int(data.get("max_tokens") or 0) or None,
     }
 
 
@@ -68,17 +69,21 @@ def chat_once(cfg: dict, messages: list) -> str:
     if cfg.get("kind") != "openai_compatible":
         raise ParamError(f"暂不支持 kind={cfg.get('kind')}（当前仅 openai_compatible）。")
     url = f"{cfg['base_url']}/chat/completions"
-    payload = json.dumps({
+    payload = dict({
         "model": cfg["model"],
         "messages": messages,
         "temperature": cfg["temperature"],
-    }).encode("utf-8")
+    })
+    if cfg.get("max_tokens"):
+        # 限长输出：本地 vLLM 若不限会放开到 max_model_len（65536），易导致超时/长编译
+        payload["max_tokens"] = cfg["max_tokens"]
+    payload_json = json.dumps(payload).encode("utf-8")
     # 本地自部署端点（spark vLLM/Ollama 等）通常无密钥：api_key 为空时不发
     # Authorization 头（空 Bearer 可能被部分服务以 401 拒绝）。
     headers = {"Content-Type": "application/json"}
     if cfg.get("api_key"):
         headers["Authorization"] = f"Bearer {cfg['api_key']}"
-    req = urllib.request.Request(url, data=payload, method="POST", headers=headers)
+    req = urllib.request.Request(url, data=payload_json, method="POST", headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=cfg["timeout"]) as resp:
             data = json.loads(resp.read().decode("utf-8"))
