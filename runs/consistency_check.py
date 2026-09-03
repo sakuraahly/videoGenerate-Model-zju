@@ -99,7 +99,7 @@ def check_capabilities_vs_manifest():
 
 
 def check_templates_images():
-    """模板 LoadImage 引用图 与 spark input 比对（仅 ssh ls，不启服务）。"""
+    """模板 LoadImage 引用图 与 spark input 比对（仅 ls，不启服务）。"""
     refs = set()
     for jf in sorted(MIRROR.glob("*.json")):
         ui = jload(jf)
@@ -110,10 +110,22 @@ def check_templates_images():
                     refs.add((jf.name, str(v)))
     if not refs:
         return
-    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "spark",
-                        "ls -1 ~/ai/ComfyUI/input/ 2>/dev/null"],
-                       capture_output=True, text=True, timeout=60)
-    have = set(r.stdout.splitlines()) if r.returncode == 0 else set()
+    # spark-local：input 在本机，直接 ls；win-remote：经 ssh ls spark
+    site = "win-remote"
+    try:
+        dep = jload(ROOT / "config" / "deploy.json")
+        site = dep.get("site") or site
+    except Exception:
+        pass
+    have = set()
+    if site == "spark-local":
+        indir = (Path.home() / "ai" / "ComfyUI" / "input")
+        have = {p.name for p in indir.glob("*")} if indir.is_dir() else set()
+    else:
+        r = subprocess.run(["ssh", "-o", "BatchMode=yes", "spark",
+                            "ls -1 ~/ai/ComfyUI/input/ 2>/dev/null"],
+                           capture_output=True, text=True, timeout=60)
+        have = set(r.stdout.splitlines()) if r.returncode == 0 else set()
     for fname, img in sorted(refs):
         if img not in have:
             ISSUES.append(f"模板 {fname} 引用图不在 spark input: {img}")
