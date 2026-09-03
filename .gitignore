@@ -27,9 +27,6 @@ logs/
 .ps_check_tmp/
 .ps_check.ps1
 
-# 每日 AI 日报产物
-ai_daily_reports/
-
 # Python
 __pycache__/
 *.py[cod]
