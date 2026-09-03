@@ -18,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # runs/
 from h3 import comfy  # noqa: E402
+from h3 import logutil  # noqa: E402
 
 REMOTE_HOST = "spark"
 COMFY = "http://127.0.0.1:8188"
@@ -86,20 +87,35 @@ def main() -> int:
 
     client = comfy.ComfyClient(COMFY, retries=2)
     wf = build_flux_workflow(args.text, args.width, args.height, args.steps, args.seed, args.prefix)
+    project_root = Path(__file__).resolve().parent.parent
+    site = _site(project_root)
+    logutil.ensure_run_log(project_root, "h3_text2img_flux")
+    logutil.log_event("h3_text2img_flux", logutil.fmt(
+        event="task", argv=sys.argv[1:], name=args.name,
+        size=f"{args.width}x{args.height}", steps=args.steps, seed=args.seed,
+        site=site))
     print(f"[flux] submitting {args.width}x{args.height} steps={args.steps} seed={args.seed}")
     try:
         prompt_id = client.submit(wf)
     except comfy.ComfyRejected as e:
+        logutil.log_event("h3_text2img_flux", logutil.fmt(
+            event="err", reason="submit_rejected", detail=str(e)[:200]))
         print(f"[flux] 提交被拒: {e}", file=sys.stderr)
         if getattr(e, "body", None):
             print(e.body[:1500], file=sys.stderr)
         return 3
     print(f"[flux] prompt_id={prompt_id} 轮询中（FLUX 单图约 2-6 分钟）...")
+    logutil.log_event("h3_text2img_flux", logutil.fmt(
+        event="submitted", prompt_id=prompt_id))
     kind, entry = client.wait_for(prompt_id, timeout=1800)
     if kind == "timeout":
+        logutil.log_event("h3_text2img_flux", logutil.fmt(
+            event="err", prompt_id=prompt_id, reason="timeout"))
         print("[flux] 超时", file=sys.stderr)
         return 2
     if kind == "error" or (entry and (entry.get("status") or {}).get("status_str") == "error"):
+        logutil.log_event("h3_text2img_flux", logutil.fmt(
+            event="err", prompt_id=prompt_id, reason="task_failed"))
         print("[flux] 任务失败", file=sys.stderr)
         return 3
     # 定位 SaveImage 输出
@@ -116,6 +132,8 @@ def main() -> int:
     remote = f"{im['filename']}" if im.get("subfolder") in (None, "", " ") else \
         f"{im['subfolder']}/{im['filename']}"
     print(f"[flux] spark output: ~/ai/ComfyUI/output/{remote}")
+    logutil.log_event("h3_text2img_flux", logutil.fmt(
+        event="completed", prompt_id=prompt_id, remote=remote))
 
     # 产物落位：spark-local 同机直接复制；win-remote 经 ssh cp + scp 下载
     project_root = Path(__file__).resolve().parent.parent
@@ -129,7 +147,11 @@ def main() -> int:
         try:
             shutil.copy2(out_full, dest_input)
             print(f"[flux] copied to spark input: {dest_input}")
+            logutil.log_event("h3_text2img_flux", logutil.fmt(
+                event="input_copied", dest=str(dest_input), site=site))
         except Exception as e:
+            logutil.log_event("h3_text2img_flux", logutil.fmt(
+                event="err", reason="input_copy_failed", detail=str(e)[:200]))
             print(f"[flux] 复制到 input 失败: {e}", file=sys.stderr)
         local_dir = project_root / "refs"
         local_dir.mkdir(exist_ok=True)
@@ -137,7 +159,11 @@ def main() -> int:
         try:
             shutil.copy2(out_full, local)
             print(f"[flux] 本地副本: {local}（{local.stat().st_size} B）")
+            logutil.log_event("h3_text2img_flux", logutil.fmt(
+                event="refs_copied", dest=str(local), site=site))
         except Exception as e:
+            logutil.log_event("h3_text2img_flux", logutil.fmt(
+                event="err", reason="refs_copy_failed", detail=str(e)[:200]))
             print(f"[flux] 复制 refs 失败: {e}", file=sys.stderr)
         return 0
 

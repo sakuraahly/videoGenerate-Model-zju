@@ -18,6 +18,13 @@ import sys
 import time
 import urllib.request
 import urllib.error
+from pathlib import Path
+
+# 允许以脚本直接运行（python runs/h3_text2img.py）：把 runs/ 加入路径后复用 h3 包
+_SELF_DIR = Path(__file__).resolve().parent
+if str(_SELF_DIR) not in sys.path:
+    sys.path.insert(0, str(_SELF_DIR))
+from h3 import logutil  # noqa: E402
 
 COMFYUI_URL = os.environ.get('COMFYUI_URL', 'http://127.0.0.1:8188')
 
@@ -171,6 +178,13 @@ def main():
 
     width, height = RESOLUTION_PRESETS[args.resolution]
 
+    # 运行日志（h3 系列统一格式；PS 注入 H3_LOG_FILE 则汇入会话日志）
+    logutil.ensure_run_log(Path(__file__).resolve().parent.parent, 'h3_text2img')
+    logutil.log_event('h3_text2img', logutil.fmt(
+        event='task', argv=sys.argv[1:], resolution=args.resolution,
+        frames=5, steps=args.steps, seed=args.seed,
+        dry_run=bool(args.dry_run)))
+
     workflow = build_workflow(
         prompt=args.prompt,
         negative_prompt=args.negative,
@@ -182,6 +196,8 @@ def main():
     )
 
     if args.dry_run:
+        logutil.log_event('h3_text2img', logutil.fmt(
+            event='dry_run', nodes=len(workflow)))
         print('[DRY-RUN] H3 文生图工作流 JSON:')
         print(json.dumps(workflow, indent=2, ensure_ascii=False))
         return 0
@@ -195,28 +211,40 @@ def main():
     try:
         prompt_id = queue_prompt(workflow)
         print(f'[INFO] 任务已提交: {prompt_id}')
+        logutil.log_event('h3_text2img', logutil.fmt(
+            event='submitted', prompt_id=prompt_id))
         print('[INFO] H3 模型较大，生成可能需要 2-5 分钟...')
 
         result = wait_for_completion(prompt_id)
 
         if result.get('status', {}).get('status_str') == 'success':
             outputs = result.get('outputs', {})
+            frame_count = 0
             for node_id, node_output in outputs.items():
                 if 'images' in node_output:
                     for img in node_output['images']:
+                        frame_count += 1
                         print(f'[OK] 图片已保存: {img.get("subfolder", "")}/{img.get("filename", "unknown")}')
+            logutil.log_event('h3_text2img', logutil.fmt(
+                event='completed', prompt_id=prompt_id, frames=frame_count,
+                prefix=args.output))
             print('[OK] 生成完成！共 5 帧图片（取第一帧即可）')
             return 0
         else:
             status = result.get('status', {})
+            logutil.log_event('h3_text2img', logutil.fmt(
+                event='err', prompt_id=prompt_id, reason='task_failed'))
             print(f'[ERROR] 任务失败: {status.get("messages", result)}')
             return 1
 
     except urllib.error.URLError as e:
+        logutil.log_event('h3_text2img', logutil.fmt(
+            event='err', reason='comfy_unreachable', detail=str(e)[:200]))
         print(f'[ERROR] 无法连接 ComfyUI ({COMFYUI_URL}): {e}')
         print('[HINT] 确保 ComfyUI 正在运行: tmux attach -t comfyui')
         return 2
     except Exception as e:
+        logutil.log_event('h3_text2img', f'err {e}')
         print(f'[ERROR] {e}')
         return 1
 

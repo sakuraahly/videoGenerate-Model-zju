@@ -335,3 +335,47 @@ class ReadDoc(BaseTool):
             return _truncate(content)
         except Exception as e:
             return f'错误：{e}'
+
+
+# ---- 工具调用审计日志（透明包装：不改变 schema/行为；调用统一落 logs/run_*.log） ----
+_TOOL_NAMES = {RunScript: 'run_script', ModifyWorkflow: 'modify_workflow',
+               CallComfyUI: 'call_comfyui', ReadDoc: 'read_doc'}
+
+
+def _log_tool(name, event, **fields):
+    try:
+        runs_dir = os.path.join(PROJECT_ROOT, 'runs')
+        if runs_dir not in sys.path:
+            sys.path.insert(0, runs_dir)
+        from h3 import logutil
+        logutil.ensure_run_log(PROJECT_ROOT, 'agent-tools')
+        text = ' '.join('{0}={1}'.format(k, v) for k, v in fields.items())
+        logutil.log_event(name, event + (' ' + text if text else ''))
+    except Exception:
+        pass
+
+
+def _wrap_call(cls):
+    orig = cls.call
+    name = _TOOL_NAMES[cls]
+
+    def wrapped(self, params, **kwargs):
+        p = params if isinstance(params, str) else json.dumps(params, ensure_ascii=False)
+        _log_tool(name, 'call', params=_truncate(p, 300))
+        try:
+            out = orig(self, params, **kwargs)
+        except Exception as e:  # noqa: BLE001
+            _log_tool(name, 'error', err=_truncate(str(e), 300))
+            raise
+        _log_tool(name, 'ok', out_len=len(out))
+        return out
+
+    wrapped.__name__ = orig.__name__
+    wrapped.__doc__ = orig.__doc__
+    wrapped.__module__ = orig.__module__
+    wrapped.__annotations__ = dict(getattr(orig, '__annotations__', {}))
+    cls.call = wrapped
+
+
+for _cls in (RunScript, ModifyWorkflow, CallComfyUI, ReadDoc):
+    _wrap_call(_cls)

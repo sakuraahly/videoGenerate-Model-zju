@@ -24,6 +24,7 @@ $ErrorActionPreference = 'Continue'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $here
 . (Join-Path $here 'lib\utils.ps1')
+$env:H3_LOG_FILE = Initialize-RunLog -ProjectRoot $ProjectRoot
 
 $ManifestFile = Join-Path $ProjectRoot 'prompts\manifest.json'
 

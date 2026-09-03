@@ -26,6 +26,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from h3 import logutil
 from h3 import prompts as h3prompts  # noqa: E402
 from h3.params import ParamError, project_root_from_file  # noqa: E402
 
@@ -212,13 +213,24 @@ def main(argv=None) -> int:
     m = h3prompts.load_manifest(project_dir)
     slots = [args.workflow] if args.workflow else slot_list(project_dir)
 
+    # 运行日志：AI 桥每次调用都留痕（PS 编排注入 H3_LOG_FILE 则汇入会话日志，
+    # 否则自举 logs/run_<ts>_<ms>.log），杜绝“AI 桥调用无日志”盲区。
+    logutil.ensure_run_log(project_dir, "idea2prompts")
+    logutil.log_event("idea2prompts", logutil.fmt(
+        event="task", idea_len=len(idea), slots=len(slots),
+        workflow=args.workflow or "all", dry_run=bool(args.dry_run),
+        llm_enabled=bool(cfg.get("enabled"))))
+
     print(f"[idea2prompts] 创意: {idea[:120]}{'...' if len(idea) > 120 else ''}")
+    ok_slots = 0
     for slot in slots:
         msgs = build_messages(idea, slot, blueprints, m)
         print(f"  - {slot}")
         if args.dry_run:
             print(f"      system: {msgs[0]['content'][:120]}...")
             print(f"      user  : {msgs[1]['content'][:160]}...")
+            logutil.log_event("idea2prompts", logutil.fmt(
+                event="dry_run", slot=slot))
             continue
         if not cfg.get("enabled"):
             if args.force:
@@ -236,21 +248,39 @@ def main(argv=None) -> int:
                                        defaults=True)
         else:
             h3prompts.write_slot_texts(project_dir, slot, out["positive"], out["negative"])
+        ok_slots += 1
         print(f"      ok positive={len(out['positive'])}ch negative={len(out['negative'])}ch")
+        logutil.log_event("idea2prompts", logutil.fmt(
+            event="slot_written", slot=slot,
+            positive_chars=len(out["positive"]), negative_chars=len(out["negative"])))
         if not out["negative"]:
             print("      [警告] negative 为空：模型输出不完整或超长被截断，请调大 llm.json "
                   "max_tokens 或重试；运行时会回退 default 负向词。", file=sys.stderr)
+    logutil.log_event("idea2prompts", logutil.fmt(
+        event="completed", dry_run=bool(args.dry_run), slots=len(slots),
+        ok_slots=ok_slots))
     print("完成。" if not args.dry_run else "(dry-run 预览，未请求/写入)")
     return 0
+
+
+def _log_err(e: Exception) -> None:
+    """失败路径统一留痕（复用 h3_submit §12.4 教训：提前退出必须落日志）。"""
+    try:
+        logutil.ensure_run_log(project_root_from_file(Path(__file__)), "idea2prompts")
+        logutil.log_event("idea2prompts", f"err {e}")
+    except Exception:  # noqa: BLE001 日志失败不影响主流程
+        pass
 
 
 if __name__ == "__main__":
     try:
         sys.exit(main())
     except ParamError as e:
+        _log_err(e)
         print(f"[错误] {e}", file=sys.stderr)
         sys.exit(3)
     except Exception as e:
+        _log_err(e)
         import traceback
         traceback.print_exc()
         sys.exit(90)

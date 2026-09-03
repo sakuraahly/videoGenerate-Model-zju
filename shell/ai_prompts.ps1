@@ -10,6 +10,9 @@ param([string]$Idea = '', [string]$Workflow = '', [switch]$DryRun)
 $ErrorActionPreference = 'Continue'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $here
+. (Join-Path $here 'lib\utils.ps1')
+$env:H3_LOG_FILE = Initialize-RunLog -ProjectRoot $root
+Write-Info "ai_prompts 会话运行日志: $env:H3_LOG_FILE"
 
 if (-not $Idea) {
   Write-Host ''

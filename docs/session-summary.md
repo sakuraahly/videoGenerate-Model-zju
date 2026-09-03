@@ -447,3 +447,11 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   `outputs/video_recovered_i2v_cat_00024.mp4`，last_job.json 已删。
 - 其它：全槽位生成补出 `prompts/workflows/video_flf2v.negative.txt`（通用词表，入库）；
   `.gitignore` 增 `config/llm.json.bak`。
+- **日志系统全流程升级**：新增 `runs/h3/logutil.py` 统一日志模块（格式与 h3_submit
+  一致：`[ts] py: <tool> event k=v`；优先沿用环境变量 `H3_LOG_FILE`，否则自举
+  `logs/run_<ts>_<ms>.log`）。已接线：idea2prompts（task/slot_written/completed/
+  dry_run/err）、h3_text2img、h3_text2img_flux（submitted/completed/err/落位事件）、
+  agent 工具 tools.py 四工具（call/ok/error 透明审计包装，不改变 schema）。PS 侧
+  ai_prompts.ps1 / prompts_console.ps1 接入 Initialize-RunLog 并导出 H3_LOG_FILE →
+  PowerShell 行与子进程 py: 事件汇入同一份会话日志。AI 桥测试数据此前不入日志的
+  盲区已消除（实测：PS+py 交错日志、dry-run 与真实生成均有留痕）。
