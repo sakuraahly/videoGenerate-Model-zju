@@ -133,8 +133,15 @@ def build_messages(idea: str, slot: str, blueprints: dict,
     label = str(b.get("label") or slot)
     extra = str(b.get("extra") or "")
     sys_prompt = (
-        "你是影视分镜提示词撰写器。只输出可直接运行的 JSON："
-        '{"positive": "...", "negative": "..."}。不要多余文字。\n规则：' + rules
+        "你是影视分镜提示词撰写器。只输出一个可直接运行的 JSON 对象（含非空 negative），"
+        "禁止 markdown、禁止注释、禁止多余文字。\n"
+        "有效输出示例：\n"
+        '{"positive": "A five-second cinematic tracking shot. A hooded figure steps out of '
+        'shadow, a combat knife glinting in neon rain, then sprints down the alley. Ambient '
+        'rain and distant traffic, soft footsteps, no dialogue, no music. No watermark, no '
+        'text, no cuts.", "negative": "blurry, gibberish text, watermark, distorted hands, '
+        'extra fingers, flicker, low quality"}\n'
+        "规则：\n" + rules
     )
     user_prompt = (
         f"目标提示词槽位：{slot}（{label}）\n槽位说明：{extra}\n"
@@ -196,6 +203,9 @@ def main(argv=None) -> int:
         else:
             h3prompts.write_slot_texts(project_dir, slot, out["positive"], out["negative"])
         print(f"      ok positive={len(out['positive'])}ch negative={len(out['negative'])}ch")
+        if not out["negative"]:
+            print("      [警告] negative 为空：模型输出不完整或超长被截断，请调大 llm.json "
+                  "max_tokens 或重试；运行时会回退 default 负向词。", file=sys.stderr)
     print("完成。" if not args.dry_run else "(dry-run 预览，未请求/写入)")
     return 0
 

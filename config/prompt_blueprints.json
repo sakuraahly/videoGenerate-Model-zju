@@ -1,14 +1,14 @@
 {
-  "_comment": "AI 生成各工作流提示词时的蓝图说明（每条=发给通用模型的指令片段）。可自由补充/改写。",
-  "global_rules": "视频提示词遵守项目 skills/h3-prompt-engineering.md：开头锚定时长+运镜；写物理动作不写抽象；中文按字枚举、指定字体、5-6 字内；英文比中文稳；必须包含音频描述（即使无声也写 no dialogue, no music）；结尾负面约束。输出要正向(positive)与负向(negative)两个字段。",
+  "_comment": "AI 生成各工作流提示词时的蓝图说明（每条=发给通用模型的指令片段）。规则必须自包含（模型看不到本仓库其它文件）；按小模型(27B 级)遵循友好方式编号成短句。可自由补充/改写。",
+  "global_rules": "规则（请逐条遵守，用英文产出）：\n1 只输出一个 JSON 对象，禁止 markdown 代码块、禁止注释、禁止其它任何文字：{\"positive\": \"...\", \"negative\": \"...\"}\n2 positive 与 negative 都用英文书写；中文只允许作为画面内目标文字（见 6）的引号内容。\n3 positive 开头锚定时长与镜头类型（例如 A five-second continuous cinematic tracking shot），随后写具体人物/物体动作与运镜（tracking shot / push-in / pan / handheld），不写空泛形容词。\n4 positive 必须包含一句音频描述：写清环境声/动作拟音，或显式 no dialogue, no music。\n5 结尾写负面约束句（如 no watermark, no gibberish text, no cuts, no distorted limbs），并把同类禁忌逐项列入 negative 字段。\n6 若画面需要显示文字：只允许不超过 6 个字符的短文本，且按字符逐一拼写（如 'G','A','M','E'），并说明字体与样式。\n7 negative 字段必须非空：列出该场景最可能翻车的项（乱码文字、错别字、水印、畸形肢体、多余手指、画面闪烁等）。",
   "slots": {
-    "default": { "label": "默认/内置 T2V（本地模型，一镜到底）", "extra": "单段连续 5-15s 文字生视频；不要图参考。" },
+    "default": { "label": "默认/内置 T2V（本地模型，一镜到底）", "extra": "单段连续 5-15s 文字生视频；不要图参考；写清楚场景与人物动作即可。" },
     "video_t2v": { "label": "同事 video_minimax_h3_t2v（本地，子图 GUI）", "extra": "单段文字生视频；与 default 同场景但独立措辞可选。" },
-    "video_i2v": { "label": "同事 video_minimax_h3_i2v（本地，给定首帧动起来）", "extra": "描述从首帧延续的运动/镜头；不要求人物造型重述，只写动起来后发生什么。" },
-    "video_r2v": { "label": "同事 video_minimax_h3_r2v（本地开放图，角色/场景参考图）", "extra": "强调沿用参考图角色/场景/风格保持一致；描述运镜与动作。" },
-    "video_flf2v": { "label": "本地 FLF2V（首帧+末帧，由 i2v 双帧变体）", "extra": "描述从首帧画面到末帧画面之间的平滑连续过渡：人物/场景/风格保持一致，一次不间断运镜，无剪辑。" },
+    "video_i2v": { "label": "同事 video_minimax_h3_i2v（本地，给定首帧动起来）", "extra": "给定首帧图并延续它动起来：不要重述图中人物/物体造型，只写动起来后的运动与镜头变化。" },
+    "video_r2v": { "label": "同事 video_minimax_h3_r2v（本地开放图，角色/场景参考图）", "extra": "有角色+场景两张参考图：不要描述参考图已有的外观，写‘沿用参考图的角色/场景/风格/光照保持一致’，重点给动作与运镜。" },
+    "video_flf2v": { "label": "本地 FLF2V（首帧+末帧，由 i2v 双帧变体）", "extra": "给定首帧与末帧图：描述两帧之间平滑连续的一次性过渡（人物/场景/风格一致、单镜无剪辑、无形变闪烁）。" },
     "api_t2v": { "label": "api_minimax_h3_t2v（Hailuo 封装）", "extra": "单段 5-15s；简洁场景推进。" },
-    "api_r2v": { "label": "api_minimax_h3_r2v（Hailuo 封装，参考图）", "extra": "沿用参考图一致性。" },
+    "api_r2v": { "label": "api_minimax_h3_r2v（Hailuo 封装，参考图）", "extra": "沿用参考图一致性；给动作与运镜。" },
     "api_flf2v": { "label": "api_minimax_h3_flf2v（Hailuo 封装，首帧+末帧）", "extra": "描述首帧到末帧之间的平滑过渡与动作。" }
   }
 }
