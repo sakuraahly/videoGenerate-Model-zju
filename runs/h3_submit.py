@@ -45,6 +45,20 @@ EXIT_DETERMINISTIC = 3
 EXIT_INTERNAL = 90
 
 _LOG_ENV = "H3_LOG_FILE"
+_KEEP_ENV = "H3_KEEP_BREAKPOINT"
+
+
+def _keep_breakpoint() -> bool:
+    """是否在任务成功后保留断点。
+
+    编排层（generate_video.ps1）负责下载产物，且下载成功后自行 Clear-JobState，
+    因此它注入 H3_KEEP_BREAKPOINT=1 要求 Python 保留断点（remote_path 供外层下载）。
+    CLI / agent 工具直跑时没有外层下载器：若成功仍保留断点，会产生“已完成任务
+    的残留断点把下一次新任务劫持成旧任务续传”的假象（实测教训：cat 提示词请求
+    被续传成旧测试任务并返回旧产物 MiniMax_H3_00025_.mp4）。
+    → 未注入该开关时，成功后立即清断点，断点只服务于“进行中/超时/中断”的恢复。
+    """
+    return os.environ.get(_KEEP_ENV, "").strip().lower() not in ("", "0", "false", "no")
 
 
 def _err(msg: str) -> None:
@@ -625,6 +639,12 @@ def main(argv: Optional[list] = None) -> int:
     host = str(env.get("remote_host") or "spark")
     print(f"\nTo download:")
     print(f"  scp {host}:{remote_path} {args.output}/", flush=True)
+
+    # 无人负责下载（未注入 H3_KEEP_BREAKPOINT）→ 成功后立即清断点，
+    # 防止“已完成任务残留断点”把下一次新任务错误续传成旧任务。
+    if not _keep_breakpoint():
+        jobstate.clear_root_state(project_dir)
+        _log_event(f"root_state_cleared prompt_id={resume_id} (no outer downloader)")
     return EXIT_OK
 
 

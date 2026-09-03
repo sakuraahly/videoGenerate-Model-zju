@@ -129,6 +129,7 @@ function Invoke-H3Submit {
 # 0) 运行日志：logs\run_<时间戳>.log（同时供 Python 端经 H3_LOG_FILE 追加）
 $runLog = Initialize-RunLog -ProjectRoot $ProjectRoot
 $env:H3_LOG_FILE = $runLog
+$env:H3_KEEP_BREAKPOINT = '1'   # Python 成功出片后保留断点：外层负责下载并在下载成功后清除
 Write-Host "[INFO] 运行日志: $runLog"
 
 # 0b) 部署形态：win-remote（默认，Windows + ssh 隧道） | spark-local（整体在 spark，同机直连）
@@ -336,6 +337,7 @@ try {
 finally {
     if (Test-Path Env:COMFYUI_URL) { Remove-Item Env:COMFYUI_URL -ErrorAction SilentlyContinue }
     if (Test-Path Env:H3_LOG_FILE) { Remove-Item Env:H3_LOG_FILE -ErrorAction SilentlyContinue }
+    if (Test-Path Env:H3_KEEP_BREAKPOINT) { Remove-Item Env:H3_KEEP_BREAKPOINT -ErrorAction SilentlyContinue }
     if ($DeploySite -ne 'spark-local') { Stop-Tunnel }   # spark-local 无隧道
     Release-ProjectLock -Handle $lock -Path $LockPath
 }
