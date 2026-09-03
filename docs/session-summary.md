@@ -171,9 +171,8 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - `skills/h3-video-generation.md`（智能体技能卡）、`skills/h3-prompt-engineering.md`（提示词规则）
 
 ## 10. 待办 / 下一步（给新对话的明确任务）
-1. **ComfyUI 需修复依赖（2026-09-03）**：`comfy_kitchen` 模块缺 `int8_attention_is_available`
-   属性，启动报 `AttributeError`。正在 `pip install --upgrade comfy_kitchen`（后台进行中）。
-   修复后：`bash ~/videoGenerate-Model-zju/shell/manage_services.sh start` 可一键全启。
+1. **ComfyUI 依赖已修复（2026-09-03）**：`comfy_kitchen` 已升级到 0.2.31。
+   一键全启：`bash ~/videoGenerate-Model-zju/shell/manage_services.sh start`。
 2. **开机自启已配置（2026-09-03）**：XDG autostart `.desktop` → `start_all_services.sh`
    协调启动（先停 ComfyUI → SGLang 加载 2min → 再启 ComfyUI → qwen-agent → Open WebUI）。
    管理命令：`bash ~/videoGenerate-Model-zju/shell/manage_services.sh {start|stop|restart|status|enable|disable|logs}`。
@@ -181,20 +180,27 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. **Qwen-Agent 调度器端到端已验证（2026-09-03）**：
    - `call_comfyui` dry_run 成功（t2v 参数验证通过）
    - `run_script` idea2prompts dry-run 成功
+   - `modify_workflow` 已修复（适配 ComfyUI nodes[] 数组格式）
+   - 安全回归测试 13 项全部通过（目录穿越、绝对路径、非 .py、非法 JSON 等）
    - SGLang 无需 `--enable-auto-tool-choice`（qwen-agent nous 模式绕过）
    - tmux `qwen-agent` 端口 7860，Gradio Web UI 可用
-4. **Open WebUI 已运行（2026-09-03）**：tmux `webui`，端口 3000。
+4. **文生图已实现（2026-09-03）**：`runs/h3_text2img.py` 用 H3 视频模型生成 5 帧图片。
+   Spark 只有 H3 模型（无 SD/SDXL），故复用 H3 生成极短视频取首帧。
+   用法：`python runs/h3_text2img.py --prompt “描述” --output goodboy`。
+   Qwen Agent 调用提示词：`请用 run_script 运行 h3_text2img.py --prompt “...” --output goodboy`。
+5. **Open WebUI 已运行（2026-09-03）**：tmux `webui`，端口 3000。
    访问：`http://spark:3000`（或隧道 `ssh -N -L 3000:127.0.0.1:3000 spark`）。
    首次访问需注册管理员账号。重启务必保留 `HF_HUB_OFFLINE=1`。
-5. **AI 桥：已基本接通，待全量验证**：idea2prompts 单槽（api_t2v）端到端成功一次。
+6. **AI 桥：已基本接通，待全量验证**：idea2prompts 单槽（api_t2v）端到端成功一次。
    待全槽位生成 + `bats\prompts\ai_prompts.bat` 交互验证。
-6. **本地语义已全覆盖**：video t2v/i2v/r2v/flf2v 均已本地实跑出片。
-7. **维护提醒**：
+7. **本地语义已全覆盖**：video t2v/i2v/r2v/flf2v 均已本地实跑出片。
+8. **维护提醒**：
    - 同事更新 spark 模板后，`bats\workflow\sync_remote_workflows.bat` 拉齐镜像。
    - spark 服务管理统一用 `manage_services.sh`（不再手动 tmux）。
    - ComfyUI venv 在 `~/ai/venv/`（非 `~/ai/ComfyUI/venv/`）。
-8. 可选项：把”创意→提示词”做成单页 GUI/Web 入口；为 6 工作流补”参考图自动回传/占位符”
-   自动化；危险用例回归测试（目录穿越、提示注入等）。
+   - 每次工作后更新 `skills/h3-video-generation.md` 和 `docs/session-summary.md`。
+9. 可选项：把”创意→提示词”做成单页 GUI/Web 入口；为 6 工作流补”参考图自动回传/占位符”
+   自动化；modify_workflow 端到端实测（test_tool_calling3.py 在 spark 上跑）。
 
 ## 11. 2026-09-02 会话修复记录（供回溯）
 - `runs/h3/prompts.py`：pick_prompt_paths 只判文件存在不判空 → 空槽位文件挡住回退 default，
@@ -304,3 +310,18 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   - collaboration.md：文件树更新（加入 runs/agent/ + scheduler-agent-design.md）。
   - 两文件顶部均已标注"示例 vs 真实"免责声明。
   - .gitignore 已加入 inbox/ / *.jsonl / state.yaml（暂态消息不入库）。
+- **Qwen-Agent 工具修复与安全测试（2026-09-03 续）**：
+  - `modify_workflow` 修复：原代码按 flat dict 查找节点（`data[node_id]`），实际工作流是
+    ComfyUI `nodes[]` 数组格式。改为按 `id` 搜索节点，修正 `changes` 参数描述（去掉多余
+    `inputs` 包装层）。`run_script` 校验顺序修复（.py 扩展名检查提前到文件存在性检查前）。
+  - 安全回归测试 `runs/agent/test_security.py`：13 项全部通过（目录穿越、绝对路径、非 .py、
+    非法 JSON、不存在节点、非整数节点 ID 等）。可本地运行（mock qwen_agent 依赖）。
+  - `modify_workflow` 端到端测试 `runs/agent/test_tool_calling3.py`：备份→agent 修改→验证→恢复。
+  - 文生图 `runs/h3_text2img.py`：用 H3 视频模型（无 SD/SDXL）生成 5 帧极短视频，保存为
+    图片序列。工作流：UNETLoader + CLIPLoader(type=minimax) + VAELoader +
+    MiniMaxH3ImageToVideo(length=5) + BasicGuider + KSamplerSelect(res_multistep) +
+    BasicScheduler(simple) + RandomNoise + SamplerCustomAdvanced + VAEDecode + SaveImage。
+  - 模型文档：spark ComfyUI 只有 H3 模型（diffusion_model 21GB + text_encoder 16GB + VAE 5.2GB），
+    已记录到 memory `project-spark-comfyui-models.md`。
+  - skills 更新：`skills/h3-video-generation.md` 新增 §1.3c（SGLang 部署）和 §1.3d（文生图）。
+  - Qwen Agent 系统消息更新：明确列出 `h3_text2img.py` 可用，给出调用示例。

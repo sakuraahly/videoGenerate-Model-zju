@@ -85,14 +85,14 @@ class RunScript(BaseTool):
 
         if '..' in script_name or script_name.startswith('/'):
             return '错误：脚本路径不合法（禁止 .. 或绝对路径）'
+        if not script_name.endswith('.py'):
+            return '错误：只允许执行 .py 脚本'
 
         script_path = _resolve(os.path.join(PROJECT_ROOT, 'runs', script_name))
         if not _is_under(script_path, _ALLOWED_SCRIPT_DIRS):
             return f'错误：脚本 {script_name} 不在白名单目录 runs/ 下'
         if not os.path.isfile(script_path):
             return f'错误：脚本不存在 {script_name}'
-        if not script_path.endswith('.py'):
-            return '错误：只允许执行 .py 脚本'
 
         cmd = [sys.executable, script_path]
         if extra_args:
@@ -125,9 +125,9 @@ class RunScript(BaseTool):
 @register_tool('modify_workflow')
 class ModifyWorkflow(BaseTool):
     description = (
-        '修改工作流 JSON 文件中指定节点的输入字段。'
-        '仅允许修改 workflows/remote_workflows/ 和 config/templates/ 下的文件。'
-        '用于调整参考图路径、分辨率等结构性参数。'
+        '修改工作流 JSON 文件中指定节点的字段。'
+        '仅允许修改 workflows/remote_workflows/ 下的文件。'
+        '用于调整参考图路径（LoadImage 的 widgets_values）、分辨率等结构性参数。'
     )
     parameters = {
         'type': 'object',
@@ -140,7 +140,10 @@ class ModifyWorkflow(BaseTool):
                 'type': 'string',
                 'description': (
                     'JSON 格式修改内容，形如 '
-                    '{"<node_id>": {"inputs": {"<field>": "<value>"}}}'
+                    '{"<node_id>": {"widgets_values": ["new_image.png"]}} '
+                    '或 {"<node_id>": {"mode": 4}}，'
+                    'node_id 为节点的整数 ID（字符串形式）。'
+                    '常见操作：修改 LoadImage 节点的 widgets_values[0] 更换参考图。'
                 ),
             },
         },
@@ -172,17 +175,22 @@ class ModifyWorkflow(BaseTool):
             with open(full_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
+            nodes = data.get('nodes', [])
+            node_index = {n.get('id'): n for n in nodes if isinstance(n, dict)}
+
             modified_nodes = []
-            for node_id, node_changes in changes.items():
-                if node_id in data:
-                    node = data[node_id]
-                    if isinstance(node, dict):
-                        if 'inputs' not in node:
-                            node['inputs'] = {}
-                        node['inputs'].update(node_changes)
-                        modified_nodes.append(node_id)
-                else:
-                    return f'错误：节点 {node_id} 在工作流中不存在'
+            for node_id_str, node_updates in changes.items():
+                try:
+                    node_id = int(node_id_str)
+                except (ValueError, TypeError):
+                    return f'错误：节点 ID 必须是整数，收到 {node_id_str}'
+
+                if node_id not in node_index:
+                    return f'错误：节点 ID {node_id} 在工作流中不存在'
+
+                node = node_index[node_id]
+                node.update(node_updates)
+                modified_nodes.append(str(node_id))
 
             with open(full_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)

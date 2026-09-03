@@ -84,20 +84,47 @@ python runs\h3_submit.py --stage r2v --force-new                 # then run that
 Without a configured LLM (`enabled=false`), still offer `--dry-run`, and fill the slot files
 manually (human mode — see `docs/workflow-and-prompt.md` §2).
 
-### 1.3c Local LLM serving notes (Qwen3.8-27B vLLM on spark)
+### 1.3c Local LLM serving notes (Qwen3.8-27B SGLang on spark)
 
-- Serve: `~/Qwen3.8-27B/start_vllm.sh` in tmux session `vllm` (port 8000, 127.0.0.1).
-  The repo copy is `shell/spark_vllm_start.sh`. **`--limit-mm-per-prompt` must be JSON**
-  (`'{"image": 4, "video": 2}'`) — the legacy `image=4,video=2` format fails on vLLM ≥0.28.
+- Serve: tmux session `sglang`，端口 8000（127.0.0.1）。
+  启动命令见 `shell/start_sglang_coexist.sh`（共存模式 mem=0.55）或
+  `shell/start_all_services.sh`（协调启动：先停 ComfyUI → 加载 SGLang → 再启 ComfyUI）。
 - Local access is via SSH tunnel; local port 8000 may be blocked by a stale listener, use e.g.
   `ssh -N -L 8011:127.0.0.1:8000 spark` and point `config/llm.json` `base_url` at `8011`.
 - **Keep `max_tokens` small in `llm.json` (~500)**. Without it the server may emit up to its
-  `max_model_len` (65536) and stall the whole queue for many minutes. Unoptimized GB10 serving
-  is only ~4–5 tok/s, so generous `timeout_seconds` (300) is expected.
-- Tooling on spark: `shell/spark_chat_setup.sh` / `spark_chat_terminal.py` (quick chat),
-  `spark_download_qwen3.8_27b.sh` (ModelScope download into `~/Qwen3.8-27B`).
+  `max_model_len` (65536) and stall the whole queue for many minutes.
+- Qwen-Agent 调度器：tmux `qwen-agent`，端口 7860（Gradio Web UI）。
+  工具：`run_script`（h3_submit.py / h3_text2img.py / idea2prompts.py）、
+  `modify_workflow`（修改工作流节点参数）、`call_comfyui`（提交视频生成）。
+- Open WebUI：tmux `webui`，端口 3000（`http://spark:3000`）。
+- 开机自启：`~/.config/autostart/spark-ai-services.desktop` 调用 `shell/start_all_services.sh`。
+- 管理脚本：`shell/manage_services.sh {start|stop|restart|status|logs}`。
 
-### 1.3d Local model role guard (strong constraint — enforced in code + docs)
+### 1.3d 文生图（H3 模型版）
+
+Spark 只有 H3 视频模型，没有 SD/SDXL 图像模型。`runs/h3_text2img.py` 复用 H3 模型
+生成 5 帧极短视频，保存为图片序列（取第一帧即可）。
+
+```bash
+# 文生图（默认 360p，5 帧）
+python runs/h3_text2img.py --prompt "a cute golden retriever" --output goodboy
+
+# 指定分辨率
+python runs/h3_text2img.py --prompt "赛博朋克城市" --output goodboy --resolution 480p
+
+# 仅验证工作流
+python runs/h3_text2img.py --prompt "test" --output test --dry-run
+```
+
+模型文件（ComfyUI models/ 子目录）：
+- `diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors` (21GB)
+- `text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` (16GB)
+- `vae/minimax_h3_video_vae_fp16.safetensors` (5.2GB)
+
+Qwen Agent 调用文生图的特异提示词：
+> 请用 run_script 工具运行 h3_text2img.py，参数是 `--prompt "描述" --output goodboy`。
+
+### 1.3e Local model role guard (strong constraint — enforced in code + docs)
 
 The local LLM (Qwen3.8-27B) is a **prompt authoring tool only**: turn an idea into slot
 prompt JSON. It must never be used for (and must refuse, see injected system rule 0 and
