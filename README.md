@@ -14,6 +14,13 @@ MiniMax H3（Hailuo-03）视频生成自动化工具集：本地 Windows 编排�
 - **文生图参考**：FLUX.1-dev 生成本地参考图（`runs/h3_text2img_flux.py`，落 spark input 供视频模板用）
 - **AI 创意桥**：一句话创意 → 本地通用模型（Qwen3.8-27B vLLM）为各工作流槽位生成正/负提示词（`idea2prompts.py`）；本地模型带职责护栏（只做提示词生成，拒绝服务器控制类指令）
 - **断点续传**：网络中断自动恢复（`last_job.json`），绝不重复生成
+- **提交/等待分离**：`h3_submit --submit-only` 提交即返回 prompt_id（任务后台运行），
+  agent 的 call_comfyui 默认即此语义——不再出现“任务在跑却被 600s 超时误报”
+- **产物落位按形态**：spark-local 完成后直存程序文件夹 `outputs/video_N.mp4`
+  （打印 `LOCAL_OUTPUT:`，无需 scp）；win-remote 走 scp/隧道下载
+- **两文件夹自动合并**：`runs/sync_auto.py {enable|disable|status|once|watch}`
+  （入口 `bats\workflow\autosync.bat`）——本机(spark)与 spark(Windows) 双副本
+  “逐文件取新”自动收敛，冲突保留人工处理，可手动开启/关闭
 - **SSH 隧道自愈**：自动重连包装器 + keepalive，应对 NAT 空闲断连
 - **运行审计**：每次运行落盘 `workflows/h3_<时间戳>/`（API/UI 工作流 + job.json 运行记录）与 `logs/run_*.log`（毫秒命名，与任务双向可查）
 

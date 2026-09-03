@@ -455,3 +455,16 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   ai_prompts.ps1 / prompts_console.ps1 接入 Initialize-RunLog 并导出 H3_LOG_FILE →
   PowerShell 行与子进程 py: 事件汇入同一份会话日志。AI 桥测试数据此前不入日志的
   盲区已消除（实测：PS+py 交错日志、dry-run 与真实生成均有留痕）。
+- **提交/等待分离 + spark-local 直存 outputs + 自动合并（commit 19a22e6）**：
+  - 修复“任务已提交并持续运行，但 call_comfyui 600s 超时误报并丢失 prompt_id”：
+    h3_submit 新增 `--submit-only`（提交即打印 `TASK_SUBMITTED: prompt_id` 返回、
+    断点保留）；call_comfyui 默认提交即返回（新参数 wait_until_done/force_new），
+    真超时也从 partial stdout 提取 prompt_id 并指引“无参重跑续传”。
+  - spark-local 直跑成功后按 deploy.json site 把产物**本机复制直存 outputs/**
+    （video_N.mp4 递增命名，打印 `LOCAL_OUTPUT:`）；win-remote 保持 scp（编排层下载）。
+  - 双模式隔离：spark-local 一切操作 spark 程序文件夹；win-remote 走隧道/scp。
+  - 两个文件夹自动化合并：`runs/sync_auto.py {enable|disable|status|once|watch}`
+    + `bats\workflow\autosync.bat`；enable --daemon 后台周期合并（默认 180s），
+    每轮 sync_merge 逐文件取新、冲突留人工 `--resolve`；config/autosync.json
+    两端各自维护（不入库/不参与同步）。实测：submit-only→续传→出片并 LOCAL_OUTPUT
+    直存 outputs/video_4.mp4（fox 演示）；两端基线已重建。
