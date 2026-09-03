@@ -21,6 +21,33 @@ import tempfile
 from pathlib import Path
 
 EXCLUDE_DIRS = {".git", ".test_tmp", "__pycache__", ".pytest_cache"}
+# 机器相关/产物/运行期文件：两端各自维护或运行期生成，不随整仓同步覆盖
+# （deploy.json/llm.json 等两端本就不同；覆盖会把 spark-local 形态打回 win-remote）
+EXCLUDE_FILES = {
+    "config/deploy.json", "config/llm.json", "config/llm.json.bak",
+    "config/pipeline.json", "config/transfer.json", "config/autosync.json",
+    "config/upload_watch.json", ".sync-state.json", "last_job.json",
+    ".tunnel.json", ".run.lock", ".ai_brief.tmp.txt", ".sync-manifest.json",
+}
+EXCLUDE_PREFIX = ("workflows/h3_",)
+EXCLUDE_NAME = {"logs", "outputs"}
+
+
+def _should_exclude(info: tarfile.TarInfo) -> bool:
+    parts = Path(info.name).parts  # 形如 "<项目>/...."
+    if len(parts) <= 1:
+        return False
+    rel_parts = parts[1:]
+    if rel_parts[0] in EXCLUDE_DIRS:
+        return True
+    if rel_parts[0] in EXCLUDE_NAME:
+        return True
+    if rel_parts[0] in EXCLUDE_PREFIX:
+        return True
+    rel = "/".join(rel_parts)
+    if rel in EXCLUDE_FILES:
+        return True
+    return False
 
 
 def pack(project_root: Path) -> Path:
@@ -32,11 +59,8 @@ def pack(project_root: Path) -> Path:
     name = project_root.name
 
     def _filter(info: tarfile.TarInfo) -> tarfile.TarInfo:
-        # info.name 形如 "<项目>/...."
-        parts = Path(info.name).parts
-        if len(parts) > 1 and parts[1] in EXCLUDE_DIRS:
-            return None
-        return info
+        # 排除 .git/机器配置/产物/审计目录；两端文件语义见 EXCLUDE_*
+        return None if _should_exclude(info) else info
 
     with tarfile.open(tmp, "w") as tf:
         tf.add(project_root, arcname=name, filter=_filter)
