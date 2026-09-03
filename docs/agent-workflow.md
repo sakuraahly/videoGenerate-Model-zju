@@ -160,6 +160,15 @@ Agent 工具调用另有 `agent-tools` 事件（`modify_workflow call/ok …`）
 | 素材列表为空 / 上传文件找不到 | Open WebUI 尚未产生 uploads；看门狗未起 | 先上传一次文件；`tmux ls` 查 upload-watch；`python3 runs/h3/upload_watch.py status` |
 | spark 上出现“Could not resolve hostname spark” | 工具按 win-remote 分支误发 ssh | 检查 config/deploy.json site=spark-local（同步已排除机器配置，不会被打回） |
 | 产物不在 Windows outputs | spark-local 模式产物在 spark | spark: outputs/ 自取或 scp 拉回；win-remote 才会自动下载 |
+| 对话输出到一定长度被截断，看不出是否还在生成 | 单轮输出超长/后台长任务期间界面无反馈 | 新界面已解决：状态栏持续心跳显示“任务进行中…”，超长回复自动暂停并提示发送“继续”续写 |
+
+## 8b. Agent 界面（7860）说明（2026-09 起自研轻量界面）
+- **历史会话**：下拉列出 `logs/agent_chats/*.jsonl`（按时间倒序，标题=首句），可加载续聊/删除/刷新；
+- **＋新对话**：一键开新会话（旧会话自动存档，互不干扰）；
+- **进行中指示**：模型/工具在后台线程执行，界面独立心跳每 3s 刷新状态栏（“⏳ 任务进行中… 请勿重复提交”）——长视频任务不再“看着像卡死”；
+- **自动暂停续写**：单轮回复设 max_tokens 上限 + 系统提示约束精炼输出；超长被截断时自动追加“发送：继续 续写”提示；
+- **上下文预算**：每轮调用前按字符预算（~28k 字符≈13k tokens）裁剪历史（保留首轮意图+最近 8 轮），裁剪时对模型附加说明，长会话不失控；
+- 会话内容存于 `logs/agent_chats/`（随 logs/ 一起 gitignore，仅本机）。
 
 ## 9. 服务与维护速查（spark 人工执行）
 

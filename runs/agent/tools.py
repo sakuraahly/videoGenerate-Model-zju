@@ -442,6 +442,22 @@ class ReadDoc(BaseTool):
             return f'错误：{e}'
 
 
+# read_doc 的工具描述随 docs/agent-reading 目录自动更新（新增文档无需改代码）
+_doc_dir = os.path.join(PROJECT_ROOT, 'docs', 'agent-reading')
+if os.path.isdir(_doc_dir):
+    _doc_files = sorted(f for f in os.listdir(_doc_dir)
+                        if f.lower().endswith(('.md', '.txt')))
+    if _doc_files:
+        try:
+            ReadDoc.description = (
+                ReadDoc.description.split('可用文档包括：')[0]
+                + '可用文档包括：' + '、'.join(_doc_files)
+                + '。用于在任务前了解项目能力与执行协议。'
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+
 # ---- 工具调用审计日志（透明包装：不改变 schema/行为；调用统一落 logs/run_*.log） ----
 _TOOL_NAMES = {RunScript: 'run_script', ModifyWorkflow: 'modify_workflow',
                CallComfyUI: 'call_comfyui', ReadDoc: 'read_doc',

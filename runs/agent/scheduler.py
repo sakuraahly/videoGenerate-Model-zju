@@ -90,8 +90,20 @@ SYSTEM_MESSAGE = """\
 ═══ 典型工作流 ═══
 - 文生视频: call_comfyui(stage="t2v", prompt="...", seconds=10)
 - 文生图片: run_script("h3_text2img.py", args='--prompt "a good boy" --output goodboy')
-- 参考图视频: call_comfyui(stage="r2v", prompt="...")
+- 参考图视频: call_comfyui(stage="r2v", prompt="...")（先 list_references /
+  run_script("h3/refimage.py", args='use --name <id> --stage r2v --slot N') 设置参考槽）
 - 验证参数: call_comfyui(stage="t2v", dry_run=true)
+
+═══ 输出与轮次纪律（必须遵守） ═══
+1. 单轮回复保持精炼（中文 ≤600 字），分要点给结论；需要长篇展开时先给摘要，
+   然后说“内容较长，我按需继续”，不要一口气输出超长文本。
+2. 提交类动作（call_comfyui 默认提交即返回）完成后立即结束本轮并汇报
+   TASK_SUBMITTED: <prompt_id>；后台生成期间不要在同一轮内反复等待，告知用户
+   “任务进行中”，把续传/取件放到用户的下一轮（用户会说“继续/取片”）。
+3. 界面已自动管理上下文（超长回复会在此暂停，等用户发“继续”）；禁止靠反复
+   复述历史来续写，直接承接上一轮未完成的内容即可。
+4. 任何结论都要有依据：工具返回的标记行（TASK_SUBMITTED/REMOTE_VIDEO_PATH/
+   LOCAL_OUTPUT）或 logs/run_*.log；不确定就说“需要我查日志确认”。
 
 请用中文回答。
 """
@@ -109,19 +121,12 @@ def _detect_project_root() -> str:
 
 
 def run_gui(port: int = 7860, share: bool = False):
-    from qwen_agent.agents import Assistant
-    from qwen_agent.gui import WebUI
+    # 自研轻量界面：历史会话/新对话/进行中指示/上下文预算（见 ui_app.py）
+    from runs.agent import ui_app
 
-    bot = Assistant(
-        llm=LLM_CFG,
-        system_message=SYSTEM_MESSAGE,
-        function_list=TOOL_NAMES,
-    )
-
-    print(f'Qwen-Agent 调度器 Web UI: http://127.0.0.1:{port}')
-    print(f'项目根目录: {_detect_project_root()}')
-    ui = WebUI(bot)
-    ui.run(server_port=port, share=share)
+    root = _detect_project_root()
+    os.environ.setdefault('VIDEOGEN_PROJECT_ROOT', root)
+    ui_app.run_app(port=port, share=share)
 
 
 def run_cli():
