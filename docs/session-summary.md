@@ -353,6 +353,8 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   - SYSTEM_MESSAGE 重写：从「强制读取」改为「已内嵌 + 可选 read_doc 深入参考」。
   - TOOL_NAMES 新增 'read_doc'，scheduler.py import 同步更新。
   - 安全测试 13/13 通过（原有测试未受影响）。
+  - **交接文档**：`docs/handoff-2026-09-03.md`（本地）+ `~/Qwen3.8-27B/PROJECT-STATUS.md`（spark），
+    包含服务状态、启动命令、已知缺陷、诊断结论、新对话快速启动清单。
 
 ---
 
@@ -415,10 +417,11 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. **spark 侧 git 提交需内联身份**：`git -c user.name=Developer -c user.email=dev@spark
    commit …`（仓库未配置 user.name/email，直接 commit 会报
    `unable to auto-detect email address`）。
-4. **本地领先 GitHub 1 个提交**：本地 master=20f89ae，origin/master=8fc1027，
-   未 push（原计划是本地推 GitHub；spark 只保留本地 git 记录，永不推 GitHub）。
-5. 提示词残留：`prompts/workflows/video_i2v.positive.txt` 仍含注入过的 cat 提示词段，
-   待用 `bats\prompts\prompts.bat` 的 `[N]` 手动清理（历史遗留，非本次引入）。
+4. ~~本地领先 GitHub~~ → **已推送**：本地 master=02a8261 == origin/master（此前领先的
+   20f89ae / 7d14d56 与移除 AI 日报的 02a8261 均已 push；spark 只保留本地 git 记录，永不推 GitHub）。
+5. ~~提示词残留~~ → **已清理**：`prompts/workflows/video_i2v.positive.txt` 中
+   2026-09-03 15:30 追加注入的 cat 提示词段已移除，文件现仅含当前正片提示词
+   （历史遗留，非本次引入）。
 6. 老文档中 ComfyUI “tmux 进程”叙述（h3-troubleshooting.md 等）已过时：
    现行 = systemd `comfyui.service`（§3 与 §12.1）。
 

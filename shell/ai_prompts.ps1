@@ -33,7 +33,8 @@ if ($DryRun) { $argsList += @('--dry-run') }
 $code = $LASTEXITCODE
 Remove-Item -LiteralPath $brief -Force -ErrorAction SilentlyContinue
 Write-Host ''
-if ($code -eq 0) { Write-Host '提示词生成完成。可用 prompts.bat 查看/微调；运行工作流时自动使用。' }
+if ($DryRun) { Write-Host '(dry-run 预览完成：未调用模型、未写入任何文件。真实生成请直接双击 ai_prompts.bat 输入创意。)' }
+elseif ($code -eq 0) { Write-Host '提示词生成完成。可用 prompts.bat 查看/微调；运行工作流时自动使用。' }
 else { Write-Host '未成功。若提示 AI(enabled=false)：编辑 config\llm.json 填入配置后重试。'
        Write-Host '  - 本地 spark vLLM(Qwen3)：参考 config\llm.spark-qwen3.example.json（api_key 可留空）。'
        Write-Host '  - 公网 OpenAI 兼容：填 base_url/api_key/model 后置 enabled=true。' }

@@ -132,7 +132,7 @@ function Invoke-AiGenerate {
     param([string]$Slot, [string]$Idea)
     if (-not $Idea) { $Idea = (Read-Host '请输入一句创意').Trim(); if (-not $Idea) { return } }
     Write-Info "调用本地模型为 $Slot 生成提示词（idea2prompts --workflow $Slot）..."
-    & python (Join-Path $ProjectRoot 'runs\h3\idea2prompts.py') --idea $Idea --workflow $Slot --force
+    & python (Join-Path $ProjectRoot 'runs\h3\idea2prompts.py') --idea $Idea --workflow $Slot
     Write-Host ("  退出码: " + $LASTEXITCODE)
 }
 
