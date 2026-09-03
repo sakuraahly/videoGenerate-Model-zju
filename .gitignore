@@ -42,3 +42,6 @@ venv/
 # AI 密钥（勿提交）
 config/llm.json
 
+
+# AI 桥临时简报文件（ai_prompts.bat 运行期生成）
+.ai_brief.tmp.txt
