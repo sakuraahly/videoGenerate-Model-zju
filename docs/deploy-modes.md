@@ -69,6 +69,14 @@ python runs/h3_submit.py --stage video_r2v --force-new
 > 约定（2026-09-03 起）：整目录外传一律排除 `.git` 等 git/缓存文件——版本历史走 GitHub
 > （`git push` / 远端 `git pull`），文件同步只传代码/配置/资产。原因：远端 git 对象只读权限会
 > 令 scp 整目录覆盖失败；且 .git 应唯一由 GitHub 维护。
+>
+> **合并语义（重要，2026-09-03 修正）**：同步以**文件为单位取两端较新版本**——不是"某一端
+> 单向覆盖"。代码与文档的合并首选 **git**（本地 commit/push → 远端 `git pull`，自动三向合并）；
+> 本节的 tar 工具只用于 git 之外/覆盖层文件（如 `config/llm.json`、产物、spark 本地配置），
+> 使用前先确认方向：新文件在哪一端就用对应的"正向/反向"命令，避免把较新文件覆盖回旧版。
+> 实例：本地新增"同步工具/约定文档"并推送 git 后，spark 因不传 .git 而缺这两项；随后一次
+> "spark→本地"反向整传把本地较新文件覆盖成旧版——已用 `git checkout` 恢复。正确流程是
+> git 推送后用远端 `git pull` 取新，或按较新端方向做定向同步。
 
 - **推荐工具**：`python runs\sync_to_spark.py`（入口 `bats\workflow\sync_to_spark.bat`）：
   打包时排除 `.git/.test_tmp/__pycache__` → scp 临时 tar → 远端解包到 `~/videoGenerate-Model-zju`。
