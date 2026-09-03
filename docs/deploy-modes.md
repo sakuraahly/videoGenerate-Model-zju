@@ -64,3 +64,16 @@ python runs/h3_submit.py --stage video_r2v --force-new
 - 切换只改两份本地配置（deploy.json / llm.json），不动 spark 远端任何文件。
 - 服务启停权限以 `docs/session-summary.md` 最新记录为准（例如 Qwen 优化期间勿擅自启动）。
 - 模型职责护栏（只做提示词生成、拒绝服务器控制指令）对两种形态同样生效。
+
+## 5. 同步项目到 spark（传输约定：**不携带 .git**）
+> 约定（2026-09-03 起）：整目录外传一律排除 `.git` 等 git/缓存文件——版本历史走 GitHub
+> （`git push` / 远端 `git pull`），文件同步只传代码/配置/资产。原因：远端 git 对象只读权限会
+> 令 scp 整目录覆盖失败；且 .git 应唯一由 GitHub 维护。
+
+- **推荐工具**：`python runs\sync_to_spark.py`（入口 `bats\workflow\sync_to_spark.bat`）：
+  打包时排除 `.git/.test_tmp/__pycache__` → scp 临时 tar → 远端解包到 `~/videoGenerate-Model-zju`。
+  选项：`--clean`（先删远端目录再传）、`--dry-run`（本地预览不含 .git）。
+- 只传已提交内容也可用 `git archive HEAD | ssh spark tar -x -C ~`（但会漏 gitignored 的
+  本地配置如 `config/llm.json`、产物；本仓库同步默认保留这些，故用上面的 tarfile 工具）。
+- 更新代码更推荐：`ssh spark "git -C ~/videoGenerate-Model-zju pull origin master"`
+  （需远端已配置 remote 与认证）。

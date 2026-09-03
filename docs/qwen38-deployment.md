@@ -246,78 +246,89 @@ python3 ~/Qwen3.8-27B/chat_terminal.py
 
 ## 6. Web UI 配置
 
-### 6.1 Open WebUI (推荐)
+### 6.1 Open WebUI (已部署)
 
-Open WebUI 提供类 ChatGPT 的网页对话界面。
+Open WebUI 提供类 ChatGPT 的网页对话界面，已部署在 spark 端口 3000。
 
 ```bash
-# 方式一: pip 安装 (国内推荐)
-python3 -m venv ~/open-webui-venv
-~/open-webui-venv/bin/pip install open-webui \
-    -i https://mirrors.aliyun.com/pypi/simple/ \
-    --trusted-host mirrors.aliyun.com
-
-# 启动
+# 实际启动命令（tmux 会话 webui）
+HF_HUB_OFFLINE=1 \
 OPENAI_API_BASE_URL=http://127.0.0.1:8000/v1 \
-OPENAI_API_KEY=sk-dummy \
-~/open-webui-venv/bin/open-webui serve --host 0.0.0.0 --port 3000
-
-# 方式二: Docker
-docker run -d \
-  --name open-webui \
-  --network host \
-  -e OPENAI_API_BASE_URL=http://127.0.0.1:8000/v1 \
-  -e OPENAI_API_KEY=sk-dummy \
-  -v /home/Developer/open-webui/data:/app/backend/data \
-  --restart always \
-  ghcr.io/open-webui/open-webui:latest
+source ~/open-webui-venv2/bin/activate && \
+open-webui serve --host 0.0.0.0 --port 3000
 ```
+
+**重要**：重启时必须保留 `HF_HUB_OFFLINE=1` 防止联网下载。
 
 访问:
-- Spark 本机: http://localhost:3000
+- Spark 本机: http://spark:3000
 - 本地 Windows: 先 `ssh -L 3000:127.0.0.1:3000 spark`，再打开 http://localhost:3000
 
-首次访问需注册管理员账号。在设置中添加 API 连接:
-- API Base URL: `http://127.0.0.1:8000/v1`
-- API Key: 任意值 (如 `sk-dummy`)
+首次访问需注册管理员账号。
 
-### 6.2 ChatGPT-Next-Web (轻量替代)
+RAG 说明：RAG 默认启用（embedding 模型 `sentence-transformers/all-MiniLM-L6-v2` 已缓存）。
+如需禁用 RAG 可添加 `ENABLE_RAG=false` 环境变量。
+
+### 6.2 Qwen-Agent 调度器（已部署）
+
+Qwen-Agent 提供受限调度器，让 Qwen3.8-27B 通过白名单工具执行视频/图片生成任务。
 
 ```bash
-# Docker 部署
-docker run -d \
-  --name chatgpt-web \
-  --network host \
-  -e OPENAI_API_KEY=sk-dummy \
-  -e BASE_URL=http://127.0.0.1:8000 \
-  -e CODE=your-access-password \
-  yidadaa/chatgpt-next-web:latest
+# 启动（tmux 会话 qwen-agent，端口 7860）
+cd ~/videoGenerate-Model-zju
+tmux new-session -d -s qwen-agent 'python runs/agent/scheduler.py --port 7860'
 ```
+
+可用工具：
+- `run_script` — 运行白名单脚本（h3_submit.py 视频生成、h3_text2img.py 文生图、idea2prompts.py 提示词生成）
+- `modify_workflow` — 修改工作流 JSON 节点参数
+- `call_comfyui` — 经 h3_submit.py 引擎提交生成任务
+
+访问: http://spark:7860 (Gradio Web UI)
+
+System prompt 位于 `runs/agent/scheduler.py` 的 `SYSTEM_MESSAGE` 变量。
 
 ---
 
 ## 7. 服务管理
 
-使用 `manage_services.sh` 统一管理所有服务:
+### 7.1 统一管理脚本
 
 ```bash
-bash ~/Qwen3.8-27B/manage_services.sh status        # 查看所有服务状态
-bash ~/Qwen3.8-27B/manage_services.sh start-sglang   # 启动 SGLang
-bash ~/Qwen3.8-27B/manage_services.sh stop-sglang    # 停止 SGLang
-bash ~/Qwen3.8-27B/manage_services.sh start-vllm     # 启动 vLLM
-bash ~/Qwen3.8-27B/manage_services.sh stop-vllm      # 停止 vLLM
-bash ~/Qwen3.8-27B/manage_services.sh start-comfyui  # 启动 ComfyUI
-bash ~/Qwen3.8-27B/manage_services.sh stop-comfyui   # 停止 ComfyUI
-bash ~/Qwen3.8-27B/manage_services.sh stop-all       # 停止所有服务
-bash ~/Qwen3.8-27B/manage_services.sh health         # 健康检查
-bash ~/Qwen3.8-27B/manage_services.sh gpu            # GPU 内存分布
+# 路径：~/videoGenerate-Model-zju/shell/manage_services.sh
+bash ~/videoGenerate-Model-zju/shell/manage_services.sh status     # 查看所有服务状态
+bash ~/videoGenerate-Model-zju/shell/manage_services.sh start      # 启动所有服务（协调启动）
+bash ~/videoGenerate-Model-zju/shell/manage_services.sh stop       # 停止所有服务
+bash ~/videoGenerate-Model-zju/shell/manage_services.sh restart    # 重启所有服务
+bash ~/videoGenerate-Model-zju/shell/manage_services.sh logs       # 查看最近日志
+bash ~/videoGenerate-Model-zju/shell/manage_services.sh enable     # 启用开机自启
+bash ~/videoGenerate-Model-zju/shell/manage_services.sh disable    # 禁用开机自启
 ```
 
-### tmux 会话管理
+### 7.2 协调启动（重要）
+
+SGLang 加载模型需要 ~60GB GPU 内存，与 ComfyUI 共存会 OOM。协调启动顺序：
+
+1. **停止 ComfyUI**（释放 ~16.5GB GPU 内存）
+2. **启动 SGLang**（等待 2-3 分钟模型加载完成）
+3. **启动 ComfyUI**（与 SGLang 共存，mem=0.55）
+4. **启动 qwen-agent**（端口 7860）
+5. **启动 Open WebUI**（端口 3000）
+
+`start_all_services.sh` 已实现此协调流程。
+
+### 7.3 开机自启
+
+已配置 XDG autostart：`~/.config/autostart/spark-ai-services.desktop`
+调用 `shell/start_all_services.sh` 实现开机自动启动所有服务。
+
+### 7.4 tmux 会话
 
 ```bash
-tmux attach -t sglang     # 查看 SGLang 日志 (Ctrl+B D 退出)
-tmux attach -t comfyui    # 查看 ComfyUI 日志
+tmux attach -t sglang       # SGLang 推理服务 (端口 8000)
+tmux attach -t comfyui      # ComfyUI (端口 8188)
+tmux attach -t qwen-agent   # Qwen-Agent 调度器 (端口 7860)
+tmux attach -t webui        # Open WebUI (端口 3000)
 ```
 
 ---

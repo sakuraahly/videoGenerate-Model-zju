@@ -286,3 +286,52 @@ class CallComfyUI(BaseTool):
             return '错误：提交超时 (600s)'
         except Exception as e:
             return f'错误：{e}'
+
+
+_ALLOWED_DOC_DIRS = [
+    os.path.join(PROJECT_ROOT, 'docs', 'agent-reading'),
+]
+
+
+@register_tool('read_doc')
+class ReadDoc(BaseTool):
+    description = (
+        '读取 docs/agent-reading/ 目录下的参考文档（Markdown 格式）。'
+        '可用文档包括：00-project-overview.md（项目概览）、01-tools-reference.md（工具参考）、'
+        '02-prompt-rules.md（提示词规则）、03-models-and-environment.md（模型环境）。'
+        '用于在任务前了解项目能力和限制。'
+    )
+    parameters = {
+        'type': 'object',
+        'properties': {
+            'filename': {
+                'type': 'string',
+                'description': '文档文件名，如 00-project-overview.md',
+            },
+        },
+        'required': ['filename'],
+    }
+
+    def call(self, params: Union[str, dict], **kwargs) -> str:
+        params = self._verify_json_format_args(params)
+        filename = params['filename']
+
+        if '..' in filename or filename.startswith('/'):
+            return '错误：文档路径不合法（禁止 .. 或绝对路径）'
+        if not filename.endswith(('.md', '.txt')):
+            return '错误：只允许读取 .md 或 .txt 文件'
+
+        doc_path = _resolve(os.path.join(
+            PROJECT_ROOT, 'docs', 'agent-reading', filename,
+        ))
+        if not _is_under(doc_path, _ALLOWED_DOC_DIRS):
+            return f'错误：文档 {filename} 不在允许目录内'
+        if not os.path.isfile(doc_path):
+            return f'错误：文档不存在 {filename}'
+
+        try:
+            with open(doc_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return _truncate(content)
+        except Exception as e:
+            return f'错误：{e}'

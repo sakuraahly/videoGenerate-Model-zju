@@ -109,10 +109,10 @@ tmux new-session -d -s qwen-agent \
      python3 $HOME/Qwen3.8-27B/start_qwen_agent.py --port 7860 \
      2>&1 | tee $HOME/qwen-agent.log"
 
-log "Starting Open WebUI..."
+log "Starting Open WebUI (RAG enabled)..."
 tmux new-session -d -s webui \
     "source $HOME/open-webui-venv2/bin/activate && \
-     HF_HUB_OFFLINE=1 ENABLE_RAG=false \
+     HF_HUB_OFFLINE=1 \
      OPENAI_API_BASE_URL=http://127.0.0.1:$SGLANG_PORT/v1 \
      open-webui serve --host 0.0.0.0 --port 3000 \
      2>&1 | tee $HOME/webui.log"

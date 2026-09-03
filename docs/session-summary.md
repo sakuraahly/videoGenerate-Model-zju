@@ -325,3 +325,27 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
     已记录到 memory `project-spark-comfyui-models.md`。
   - skills 更新：`skills/h3-video-generation.md` 新增 §1.3c（SGLang 部署）和 §1.3d（文生图）。
   - Qwen Agent 系统消息更新：明确列出 `h3_text2img.py` 可用，给出调用示例。
+- **RAG 默认启用 + Agent 必读文档（2026-09-03 续）**：
+  - `shell/start_all_services.sh`：移除 `ENABLE_RAG=false`，Open WebUI 启动即启用 RAG。
+  - `shell/systemd/open-webui.service`：同步移除 `ENABLE_RAG=false`。
+  - `docs/qwen38-deployment.md`、`docs/local-model/quick-start.md`：更新启动命令和 RAG 说明。
+  - `docs/agent-reading/` 新建 4 篇必读文档：
+    - `00-project-overview.md` — 项目概览、能力清单、硬性限制、关键路径
+    - `01-tools-reference.md` — 3 个工具的参数、用法、安全限制
+    - `02-prompt-rules.md` — H3 提示词工程速查（结构模板、示例、常见错误）
+    - `03-models-and-environment.md` — Spark 模型清单、服务端口、GPU 内存协调
+  - `runs/agent/scheduler.py` SYSTEM_MESSAGE 更新：新增「任务前必读（强制）」段落，
+    要求 agent 每次接到新任务时先通过 run_script 读取 docs/agent-reading/ 文件。
+- **Agent 知识内嵌 + read_doc 工具（2026-09-03 续）**：
+  - 问题诊断：用户在 Open WebUI (端口 3000) 对话，该界面是纯聊天，无工具调用能力。
+    带工具的调度器在 Qwen-Agent Gradio UI (端口 7860)。
+  - 原「任务前必读」要求 agent 用 run_script 读 .md 文件，但 run_script 只允许 .py，
+    导致 agent 无法读取文档。
+  - 修复方案（双管齐下）：
+    1. 新增 `read_doc` 工具（`runs/agent/tools.py`）：读取 docs/agent-reading/ 下的 .md/.txt，
+       realpath 前缀校验 + 扩展名检查 + 输出截断。
+    2. 将核心知识（项目架构、能力清单、硬性限制、模型信息、分辨率、提示词规则、典型工作流）
+       直接嵌入 SYSTEM_MESSAGE，agent 无需工具调用即具备基础知识。
+  - SYSTEM_MESSAGE 重写：从「强制读取」改为「已内嵌 + 可选 read_doc 深入参考」。
+  - TOOL_NAMES 新增 'read_doc'，scheduler.py import 同步更新。
+  - 安全测试 13/13 通过（原有测试未受影响）。

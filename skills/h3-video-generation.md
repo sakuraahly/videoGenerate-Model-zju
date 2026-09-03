@@ -94,8 +94,12 @@ manually (human mode — see `docs/workflow-and-prompt.md` §2).
 - **Keep `max_tokens` small in `llm.json` (~500)**. Without it the server may emit up to its
   `max_model_len` (65536) and stall the whole queue for many minutes.
 - Qwen-Agent 调度器：tmux `qwen-agent`，端口 7860（Gradio Web UI）。
+  **注意**：Open WebUI (端口 3000) 是纯聊天界面，无工具调用能力。
+  带工具的调度器在端口 7860（Qwen-Agent Gradio UI）。
   工具：`run_script`（h3_submit.py / h3_text2img.py / idea2prompts.py）、
-  `modify_workflow`（修改工作流节点参数）、`call_comfyui`（提交视频生成）。
+  `modify_workflow`（修改工作流节点参数）、`call_comfyui`（提交视频生成）、
+  `read_doc`（读取 docs/agent-reading/ 参考文档）。
+  核心知识已嵌入 SYSTEM_MESSAGE，agent 无需工具调用即具备基础能力。
 - Open WebUI：tmux `webui`，端口 3000（`http://spark:3000`）。
 - 开机自启：`~/.config/autostart/spark-ai-services.desktop` 调用 `shell/start_all_services.sh`。
 - 管理脚本：`shell/manage_services.sh {start|stop|restart|status|logs}`。
