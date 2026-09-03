@@ -1,6 +1,11 @@
 # 多 Agent 通信协作协议
 
 > 定义多个 AI Agent 之间的通信方式、消息格式和协作流程
+>
+> ⚠️ **示例与真实区分**：本文所有 JSON/YAML 里的任务内容（如 FlashInfer、NVFP4、
+> SGLang、具体脚本路径）**多为示例**。执行前必须以 `docs/session-summary.md` 的
+> “当前状态/待办”和实际文件为准（当前真实对象：Qwen3.8-27B vLLM 服务、FlashInfer
+> 加速安装中；引擎用 vLLM，不是 SGLang）。
 
 ## 目录
 
@@ -507,6 +512,21 @@ logs/agent-comm/
 ├── audit.yaml          # 审计摘要
 └── artifacts/          # 工作产出快照
 ```
+
+---
+
+## 9. 消息文件总线（最小落地约定）
+
+> 补充（2026-09-03 评审后）：协议要真正跑起来，需要约定消息落盘位置与事实源。
+
+- **收件箱目录**：`docs/agent-communication/inbox/`（写方在此落消息，命名沿用
+  `msg-<任务id>-<type>.json`；该目录已 gitignore，属暂态）。
+- **事实源**：各 Agent 开工/收工扫描 inbox，并把进展/结论写入
+  `docs/session-summary.md`（跨 Agent 唯一事实源，含当前状态、待办、服务开关）。
+- **审查/决策产物**：需要追溯的评审报告、决策记录直接入库（如本目录的
+  `review-and-recommendations.md`），不入 inbox。
+- **服务状态纪律**：spark 侧服务（vLLM/ComfyUI/FlashInfer）是否可启动、由谁启动，
+  一律以 session-summary 最新记录为准，不擅自启停他人负责的服务。
 
 ---
 

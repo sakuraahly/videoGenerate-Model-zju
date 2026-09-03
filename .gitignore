@@ -45,3 +45,8 @@ config/llm.json
 
 # AI 桥临时简报文件（ai_prompts.bat 运行期生成）
 .ai_brief.tmp.txt
+
+# Agent 通信暂态文件（消息/状态；需要追溯的评审文档仍入库）
+docs/agent-communication/inbox/
+docs/agent-communication/*.jsonl
+docs/agent-communication/state.yaml

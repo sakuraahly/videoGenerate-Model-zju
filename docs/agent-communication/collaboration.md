@@ -1,6 +1,10 @@
 # Agent 协作实践指南
 
 > 基于通信协议的实际协作流程和操作规范
+>
+> ⚠️ 与 protocol.md 同理：本文"实际协作示例"（FlashInfer/NVFP4/SGLang 等）是**示例**，
+> 勿按字面执行；真实现状见 `docs/session-summary.md`。消息落盘见 protocol.md §9
+> （inbox 目录 + session-summary 为事实源）。
 
 ## 审查工作流
 
@@ -151,18 +155,21 @@ Reviewer Agent 审查所有产出:
 ```
 project-root/
 ├── docs/
-│   ├── local-model/          # 模型部署文档
-│   │   ├── quick-start.md    # 快速启动指南
-│   │   └── full-manual.md    # 完整技术手册
-│   └── agent-communication/  # Agent 通信文档
-│       ├── protocol.md       # 通信协议规范
-│       └── collaboration.md  # 协作实践指南
+│   ├── local-model/          # 模型部署文档（已有：quick-start / full-manual）
+│   ├── agent-communication/  # Agent 通信文档
+│   │   ├── protocol.md       # 通信协议规范
+│   │   ├── collaboration.md  # 协作实践指南
+│   │   ├── review-and-recommendations.md   # 评审与衔接建议（2026-09-03）
+│   │   └── inbox/            # 暂态消息总线（gitignore；见 protocol.md §9）
+│   └── session-summary.md    # ★ 跨 Agent 事实源（先读它）
 ├── shell/                    # 部署脚本
-│   ├── spark_vllm_start.sh
-│   ├── spark_vllm_smart_start.sh
+│   ├── spark_vllm_start.sh   # vLLM 标准启动
+│   ├── spark_vllm_smart_start.sh  # 智能启动（先探测再决定）
+│   ├── spark_install_flashinfer.sh # FlashInfer SM12.1 安装（进行中）
+│   ├── spark_manage_services.sh    # 服务管理
 │   └── ...
 └── logs/
-    └── agent-comm/           # Agent 通信日志
+    └── agent-comm/           # Agent 通信日志（gitignore）
 ```
 
 ### 命名规范

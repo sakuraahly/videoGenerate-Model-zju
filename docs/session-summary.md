@@ -164,6 +164,8 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - `robustness-and-modularity.md` 架构/断点/隧道/扩展/测试；§9 工作流分类与占位符
 - `h3-troubleshooting.md`、`h3-manual-operations.md`(legacy)、`comfyui-startup-and-access.md`、
   `long-term-maintenance.md`、`h3-workflow-architecture.md`
+- `agent-communication/` 多 Agent 协作（protocol / collaboration / review-and-recommendations / inbox 总线）
+- `local-model/` 本地模型部署文档（另 Agent 维护：quick-start / full-manual）
 - `skills/h3-video-generation.md`（智能体技能卡）、`skills/h3-prompt-engineering.md`（提示词规则）
 
 ## 10. 待办 / 下一步（给新对话的明确任务）
@@ -223,6 +225,13 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   `outputs\video_gameover_15s.mp4`（480p/15s 正片，prompt=
   `prompts\gameover_15s.positive.txt`，结尾 "GAME OVER" 红字）。
   **注意：ComfyUI 进程随后被手动杀掉——再次生成前需先 StartComfyUI.bat 恢复。**
+- **仓库止血与多 Agent 协作约定（2026-09-03）**：纳入版本控制另一 Agent 新增脚本
+  （`shell/spark_install_flashinfer.sh`=FlashInfer SM12.1 安装进行中、
+  `spark_manage_services.sh`、`spark_vllm_smart_start.sh`）与 `docs/local-model/`
+  （quick-start/full-manual）；`.gitignore` 增 `agent-communication/inbox/` 与 `*.jsonl`
+  `state.yaml`（暂态）；protocol.md/collaboration.md 加"示例 vs 真实"标注与 §9 文件总线
+  落地（inbox + session-summary 为事实源）。**服务状态：ComfyUI 已启动；Qwen(vLLM) 未启动
+  且由优化者负责，任何 Agent 不得擅自启动 Qwen（FlashInfer 优化中）。**
 - 镜像同步：`sync_remote_workflows.ps1` 拉齐 6/6（当时 4 份过期）。
 - **第 4 步：Qwen3.8-27B vLLM 部署与 AI 桥打通（2026-09-03）**：
   - 安装：`~/Qwen3.8-27B/vllm-venv` 用**清华镜像**装 vLLM 0.28.0（aarch64 wheel 308MB；
