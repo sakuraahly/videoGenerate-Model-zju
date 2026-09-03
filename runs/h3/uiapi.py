@@ -208,28 +208,66 @@ def ui_to_api(ui_graph: dict, client: comfy.ComfyClient) -> Dict[str, dict]:
                 raise UiUnsupported(f"节点 {cls}(#{nid}) widget 值不足。")
             return widgets.pop(0)
 
+        def _default_for(name: str, spec: Any, cfg: dict) -> Any:
+            """optional 新字段缺失时的兜底：combo 用 default/首项，标量用类型默认。"""
+            combo = _combo_options_of(spec, cfg)
+            if combo is not None:
+                d = cfg.get("default")
+                if d is not None:
+                    cand = [str(c) if not isinstance(c, dict) else str(c.get("value") or c.get("key") or "")
+                            for c in combo]
+                    if str(d) in cand:
+                        return d
+                return combo[0]
+            t = str(spec[0]).upper()
+            if t == "INT":
+                return cfg.get("default") if isinstance(cfg.get("default"), int) else 0
+            if t == "FLOAT":
+                return cfg.get("default") if isinstance(cfg.get("default"), (int, float)) else 0.0
+            if t == "BOOLEAN":
+                return bool(cfg.get("default", False))
+            return str(cfg.get("default") or "")
+
         def _consume_value(name: str, spec: Any, cfg: dict,
-                           prefix: str = "", target: Optional[Dict] = None) -> None:
+                           prefix: str = "", target: Optional[Dict] = None,
+                           top_names: Optional[set] = None,
+                           is_optional: bool = False) -> None:
             target = inputs if target is None else target
             full = f"{prefix}.{name}" if prefix else name
             kind = _spec_kind(name, spec)
             if kind == "dynamic":
-                val = take()
+                if widgets:
+                    val = take()
+                elif is_optional:
+                    val = _default_for(name, spec, cfg)   # 新版本可选 combo 缺值用默认
+                else:
+                    raise UiUnsupported(f"节点 {cls}(#{nid}) widget 值不足。")
                 target[full] = val
                 for child in _expand_dynamic_option(spec, str(val)):
                     cname, cspe, ccfg = child
-                    _consume_value(cname, cspe, ccfg, prefix=full, target=target)
+                    # 选中项的子输入与节点“顶层同名 widget”重复（如 SaveVideo:
+                    # format.auto→codec 子输入 而 顶层 optional 也有 codec）时，
+                    # 值由顶层 widget 项提供，跳过子展开以免双重消费。
+                    if top_names is not None and cname in top_names:
+                        continue
+                    _consume_value(cname, cspe, ccfg, prefix=full, target=target,
+                                   top_names=top_names)
                 return
             if kind != "value":
                 return
-            val = take()
+            if widgets:
+                val = take()
+            elif is_optional:
+                val = _default_for(name, spec, cfg)       # 新版本新增可选字段兼容
+            else:
+                raise UiUnsupported(f"节点 {cls}(#{nid}) widget 值不足。")
             combo_opts = _combo_options_of(spec, cfg)
             if combo_opts is not None:
                 val = _normalize_combo(combo_opts, cfg, val)
             target[full] = val
             if cfg.get("control_after_generate"):
-                ctrl = take()
-                if str(ctrl).lower() == "randomize" and isinstance(val, (int, float)):
+                ctrl = take() if widgets else None
+                if str(ctrl or "").lower() == "randomize" and isinstance(val, (int, float)):
                     target[full] = random.SystemRandom().randint(0, 2**31 - 1)
 
         if cls == "LoadImage":
@@ -243,19 +281,24 @@ def ui_to_api(ui_graph: dict, client: comfy.ComfyClient) -> Dict[str, dict]:
                 if isinstance(slot, dict):
                     slot_linked[str(slot.get("name"))] = slot.get("link") is not None
 
-            items: List[Tuple[str, Any, dict]] = []
+            items: List[Tuple[str, Any, dict, bool]] = []
+            optional_names = set()
             for section in ("required", "optional"):
                 for name, spec in (info.get("input", {}).get(section) or {}).items():
                     if _spec_kind(name, spec) in ("value", "dynamic"):
-                        items.append((name, spec, _cfg_of(spec)))
-            for name, spec, cfg in items:
+                        items.append((name, spec, _cfg_of(spec), section == "optional"))
+                        if section == "optional":
+                            optional_names.add(name)
+            top_names = {name for (name, _, _, _) in items}
+            for name, spec, cfg, is_optional in items:
                 # 已由连接输入提供值的 widget（convertWidgetToInput/上游连线）不再消费
                 if slot_linked.get(name, False):
                     continue
-                _consume_value(name, spec, cfg)
+                _consume_value(name, spec, cfg, top_names=top_names,
+                               is_optional=is_optional)
 
             # 残留值若与“已连线而被跳过的 widget”数量一致，则是文件的陈旧值，丢弃
-            stale = sum(1 for (name, _, _) in items if slot_linked.get(name, False))
+            stale = sum(1 for (name, _, _, _) in items if slot_linked.get(name, False))
             if len(widgets) > stale:
                 raise UiUnsupported(
                     f"节点 {cls}(#{nid}) 有 {len(widgets)} 个 widget 值无法按定义分配。"

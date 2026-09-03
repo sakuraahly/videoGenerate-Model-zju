@@ -1,0 +1,18 @@
+[Unit]
+Description=Open WebUI (ChatGPT-like interface, port 3000)
+After=sglang-qwen.service
+Wants=sglang-qwen.service
+
+[Service]
+Type=simple
+Environment=HF_HUB_OFFLINE=1
+Environment=ENABLE_RAG=false
+Environment=OPENAI_API_BASE_URL=http://127.0.0.1:8000/v1
+ExecStart=/bin/bash -c 'exec $HOME/open-webui-venv2/bin/open-webui serve --host 0.0.0.0 --port 3000'
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:%h/webui.log
+StandardError=append:%h/webui.log
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=SGLang Qwen3.8-27B (coexist mode, mem=0.55)
+After=network.target
+
+[Service]
+Type=simple
+Environment=CUDA_HOME=/usr/local/cuda
+Environment=TRITON_PTXAS_PATH=/usr/local/cuda/bin/ptxas
+Environment=MAX_JOBS=2
+ExecStart=/bin/bash -c 'exec $HOME/Qwen3.8-27B/sglang-venv/bin/python -m sglang.launch_server --model-path $HOME/Qwen3.8-27B/models/NVFP4 --served-model-name Qwen3.8-27B --host 127.0.0.1 --port 8000 --tp-size 1 --mem-fraction-static 0.55 --context-length 32768 --chunked-prefill-size 8192 --disable-prefill-cuda-graph --trust-remote-code --speculative-algorithm NEXTN --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4'
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:%h/Qwen3.8-27B/sglang.log
+StandardError=append:%h/Qwen3.8-27B/sglang.log
+
+[Install]
+WantedBy=default.target

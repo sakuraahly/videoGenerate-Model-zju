@@ -1,0 +1,17 @@
+[Unit]
+Description=Qwen-Agent Scheduler (Gradio Web UI port 7860)
+After=sglang-qwen.service
+Wants=sglang-qwen.service
+
+[Service]
+Type=simple
+Environment=VIDEOGEN_PROJECT_ROOT=%h/videoGenerate-Model-zju
+WorkingDirectory=%h/videoGenerate-Model-zju
+ExecStart=/bin/bash -c 'exec $HOME/qwen-agent-venv/bin/python3 $HOME/Qwen3.8-27B/start_qwen_agent.py --port 7860'
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:%h/qwen-agent.log
+StandardError=append:%h/qwen-agent.log
+
+[Install]
+WantedBy=default.target
