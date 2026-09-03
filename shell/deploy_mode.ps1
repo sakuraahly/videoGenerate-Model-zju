@@ -1,4 +1,4 @@
-# DeployMode.ps1 — 运行形态切换（bats\config\mode.bat 启动）
+﻿# DeployMode.ps1 — 运行形态切换（bats\config\mode.bat 启动）
 # 形态 A（win-remote，默认/现状）：项目在 Windows，ssh 隧道连 spark ComfyUI/模型。
 # 形态 B（spark-local，交付形态）：项目整体在 spark，同机直连 ComfyUI 与本地模型，无需隧道。
 $ErrorActionPreference = 'Continue'

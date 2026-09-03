@@ -67,7 +67,11 @@
 | 经典 t2v（内置） | `prompts\positive_prompts.txt` 与 `prompts\negative_prompts.txt` | 正向=要什么；负向=不要什么 |
 | 组合工作流 | `prompts\workflows\<工作流槽位>.positive.txt` / `.negative.txt` | 槽位=工作流 id：`video_t2v / video_i2v / video_r2v / video_flf2v`（api 版为 `api_t2v / api_r2v / api_flf2v`） |
 
-- 快捷编辑工具：`bats\prompts\prompts.bat`（列出全部槽位 → 记事本打开 → 改；`C`=把 default 剧本复制到某槽起步）。
+- 快捷编辑工具（向导）：`bats\prompts\prompts.bat`（工作流提示词向导）——动态列出
+  default + 全部工作流槽位与文件状态（空=回退 default）；选定槽位后可：记事本编辑 /
+  default 复制起步 / 输入新词覆盖写入 / **追加注入新提示词（保留旧词，带时间分隔）** /
+  AI 生成（本地模型，等价 `idea2prompts --workflow <槽> --force`）。亦支持非交互：
+  `-Workflow <槽> -Show|-CopyDefault|-Set "词"|-Append "词"|-Idea "创意"`（供 AI/脚本）。
 - **回退规则**：槽位文件**空或缺失** → 自动使用 default（即 `prompts\positive_prompts.txt`）。所以"只想快速换内容"：改 default 两个 txt，所有用空槽的模板都会跟着变。
 - 写好剧本的规则见 `skills/h3-prompt-engineering.md`（先写时长+镜头，动作、运镜、声音，最后负面约束；英文更稳）。
 

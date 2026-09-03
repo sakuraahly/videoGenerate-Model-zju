@@ -1,4 +1,4 @@
-# ComfyUI-Launcher.ps1
+﻿# ComfyUI-Launcher.ps1
 # 交互式菜单：管理 spark ComfyUI 的连接（启动/停止/浏览器）。
 # 注意：所有子脚本用 $PSScriptRoot 绝对定位，勿用相对路径（cwd 不可靠）。
 

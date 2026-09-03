@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     流水线/多工作流 设置控制台（由 pipeline_setup.bat 启动）。
     管理 config/pipeline.json 的默认生成阶段，并检查各阶段模板就位情况。

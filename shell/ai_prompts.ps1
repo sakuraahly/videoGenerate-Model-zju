@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS 单一创意 → 自动生成全部/单个工作流提示词（AI 通用模型桥）
     由 ai_prompts.bat 启动；也可直接 powershell -File 传 -Idea。
     前提：config/llm.json 里 enabled=true 并填 base_url/api_key/model。

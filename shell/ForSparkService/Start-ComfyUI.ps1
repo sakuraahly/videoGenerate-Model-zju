@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     启动远程 ComfyUI（spark tmux 会话）并建立本地 SSH 隧道，可选打开浏览器。

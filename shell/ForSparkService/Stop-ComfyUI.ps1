@@ -1,4 +1,4 @@
-# Stop-ComfyUI.ps1
+﻿# Stop-ComfyUI.ps1
 # 停止 spark ComfyUI 连接：先停本地 SSH 隧道进程，再停远程 ComfyUI。
 # 远程部分：优先 tmux 会话；会话无效则按 main.py 命令行补杀裸进程（端口探测兜底）。
 

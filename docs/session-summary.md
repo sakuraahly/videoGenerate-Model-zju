@@ -171,25 +171,32 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - `skills/h3-video-generation.md`（智能体技能卡）、`skills/h3-prompt-engineering.md`（提示词规则）
 
 ## 10. 待办 / 下一步（给新对话的明确任务）
-1. **AI 桥：已基本接通，待全量验证**（2026-09-03）：spark 已部署 Qwen3.8-27B vLLM
-   （`~/Qwen3.8-27B/vllm-venv` + `~/Qwen3.8-27B/start_vllm.sh`，tmux 会话 vllm，8000，
-   max_len 65536）；本地经隧道 8011→8000（8000 本地端口曾被残留进程占用的权宜）。
+1. **Open WebUI 待启动（2026-09-03）**：spark `~/open-webui-venv2` 正在 `pip install open-webui`
+   （阿里云镜像）。安装完成后：`tmux new-session -d -s webui 'source ~/open-webui-venv2/bin/activate
+   && ENABLE_RAG=false OPENAI_API_BASE_URL=http://127.0.0.1:8000/v1 open-webui serve
+   --host 0.0.0.0 --port 3000'`。访问：`http://spark:3000`（或隧道转发）。
+   首次访问需注册管理员账号。
+2. **Qwen-Agent 调度器已运行，待实测**：tmux `qwen-agent` 端口 7860 已确认 HTTP 200。
+   待做：实际发送一条带工具调用的指令，验证 run_script / call_comfyui 端到端。
+   注意：SGLang 推理服务（tmux `sglang`，端口 8000）必须保持运行。
+3. **AI 桥：已基本接通，待全量验证**（2026-09-03）：spark 已部署 Qwen3.8-27B（SGLang，
+   tmux 会话 sglang，端口 8000，max_len 65536）；本地经隧道 8011→8000。
    `config/llm.json` 已指向（enabled=true、model=Qwen3.8-27B、max_tokens=500、
-   timeout_seconds=300）；idea2prompts 单槽（api_t2v）**端到端成功一次**
-   （positive 1115ch 写入）。**待 Qwen 优化完成后**：全槽位生成 + `bats\prompts\ai_prompts.bat`
-   交互验证。注意：当前 GB10 上该服务吞吐约 4.5 tok/s（无优化 kernel 时慢），生成超长输出会
-   拖垮队列——务必保持 llm.json 的 max_tokens 限长（曾因不限长=65536 空转导致后续请求超时）。
-2. **本地语义已全覆盖**：video t2v/i2v/r2v/flf2v 均已本地实跑出片（`--stage` 或 `--template`）。
+   timeout_seconds=300）；idea2prompts 单槽（api_t2v）端到端成功一次。
+   **待 Qwen 优化完成后**：全槽位生成 + `bats\prompts\ai_prompts.bat` 交互验证。
+4. **本地语义已全覆盖**：video t2v/i2v/r2v/flf2v 均已本地实跑出片（`--stage` 或 `--template`）。
    api_* 三份为 **Comfy 云模板**：如要用（云端通道），先在 ComfyUI 登录 Comfy 账号，
    否则 `Unauthorized` 属预期；提示词槽位注入链路与本地图一致（槽 api_t2v/api_r2v/api_flf2v）。
    参考图 drama_asset_* 等已在 spark input。
-3. **可优化**：子图解组暂不支持嵌套子图（检测即报错）；i2v 顶层模板自带死链
+5. **可优化**：子图解组暂不支持嵌套子图（检测即报错）；i2v 顶层模板自带死链
    （ImageScaleToTotalPixels→GetImageSize 无输入无消费者）由转换层自动清理。
-4. **维护提醒**：
+6. **维护提醒**：
    - 同事更新 spark 模板后，记得 `bats\workflow\sync_remote_workflows.bat` 拉齐镜像再跑。
    - spark ComfyUI 由 `bats\service\StartComfyUI.bat` 管理（tmux comfyui）；脚本按端口探测。
    - 新 UI 模板若含 UUID 子图封装，引擎会自动解组；含嵌套子图会明确报错（可再实现递归）。
-5. 可选项：把“创意→提示词”做成单页 GUI/Web 入口；为 6 工作流补“参考图自动回传/占位符”
+   - spark 服务启停权限：ComfyUI 由本机 bats\service 管理；Qwen(SGLang) 由优化者负责，
+     任何 Agent 不得擅自启停。
+7. 可选项：把”创意→提示词”做成单页 GUI/Web 入口；为 6 工作流补”参考图自动回传/占位符”
    自动化；个别文档树状图可再对一下 bats 布局。
 
 ## 11. 2026-09-02 会话修复记录（供回溯）
@@ -271,3 +278,27 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   api 三份=对应能力的 API 格式：扁平无 subgraph 坑、命令行更稳、走 Comfy 云通道需登录、
   《于勒》15 镜以 api_r2v 做内核、api_flf2v 示例图需自备）已写入
   session-summary §3 / user-guide / manual-use-6-workflows / quickstart / skills/h3-video-generation。
+- **Qwen-Agent 受限调度器落地（2026-09-03）**：
+  - 代码：`runs/agent/tools.py`（3 个受控工具 run_script / modify_workflow / call_comfyui）+
+    `runs/agent/scheduler.py`（入口，Gradio Web UI + CLI 双模式）。
+  - 框架：阿里官方 qwen-agent 0.0.34，`@register_tool` + `BaseTool` 子类，
+    参数为 plain JSON schema（非 function definition 包装）。
+  - 独立 venv：spark `~/qwen-agent-venv`（与 sglang-venv / vllm-venv / open-webui-venv2 隔离）。
+  - 运行：tmux 会话 `qwen-agent`，Gradio Web UI 在 spark 端口 7860（已确认 HTTP 200）。
+  - 启动器：`~/Qwen3.8-27B/start_qwen_agent.py`（薄包装，调用 `runs.agent.scheduler.main`）。
+  - LLM 配置：连接 SGLang `http://127.0.0.1:8000/v1`，temperature=0.2，fncall_prompt_type='nous'。
+  - 安全：realpath 前缀校验（runs/ / workflows/remote_workflows/ / config/templates/），
+    输出截断 ≤5000 字符，脚本超时 120s。
+- **Open WebUI 部署中（2026-09-03）**：
+  - 独立 venv：spark `~/open-webui-venv2`（与 qwen-agent-venv 隔离）。
+  - 安装：`pip install open-webui`（阿里云镜像，146MB wheel，下载中）。
+  - 启动命令（安装完成后）：`ENABLE_RAG=false OPENAI_API_BASE_URL=http://127.0.0.1:8000/v1
+    open-webui serve --host 0.0.0.0 --port 3000`，tmux 会话 `webui`。
+  - 用途：ChatGPT 风格网页对话，API 指向 spark 本地 Qwen3.8-27B（SGLang 端口 8000）。
+- **Agent 通信文档评审采纳（2026-09-03）**：
+  - protocol.md：新增 §9 消息文件总线（inbox + session-summary 事实源）+ §10 分阶段启用
+    （Phase 1 = 模式 A + 消息 JSON + 审查清单 + 安全边界 + Qwen-Agent；Phase 2 暂缓 YAML
+    状态机/扇出/交叉审查）。
+  - collaboration.md：文件树更新（加入 runs/agent/ + scheduler-agent-design.md）。
+  - 两文件顶部均已标注"示例 vs 真实"免责声明。
+  - .gitignore 已加入 inbox/ / *.jsonl / state.yaml（暂态消息不入库）。

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     一键生成 MiniMax H3 视频（模块化编排入口，Windows PowerShell 5.1+）
 

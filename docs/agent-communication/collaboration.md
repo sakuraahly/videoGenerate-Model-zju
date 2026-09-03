@@ -159,9 +159,15 @@ project-root/
 │   ├── agent-communication/  # Agent 通信文档
 │   │   ├── protocol.md       # 通信协议规范
 │   │   ├── collaboration.md  # 协作实践指南
+│   │   ├── scheduler-agent-design.md  # Qwen 调度器 Function Calling 落地设计
 │   │   ├── review-and-recommendations.md   # 评审与衔接建议（2026-09-03）
 │   │   └── inbox/            # 暂态消息总线（gitignore；见 protocol.md §9）
 │   └── session-summary.md    # ★ 跨 Agent 事实源（先读它）
+├── runs/
+│   ├── agent/                # Qwen-Agent 受限调度器（qwen-agent 框架）
+│   │   ├── tools.py          # 3 个受控工具：run_script / modify_workflow / call_comfyui
+│   │   └── scheduler.py      # 入口：Gradio Web UI + CLI 双模式
+│   └── h3/                   # 视频生成引擎包
 ├── shell/                    # 部署脚本
 │   ├── spark_vllm_start.sh   # vLLM 标准启动
 │   ├── spark_vllm_smart_start.sh  # 智能启动（先探测再决定）
