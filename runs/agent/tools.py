@@ -392,7 +392,8 @@ class ReadDoc(BaseTool):
     description = (
         '读取 docs/agent-reading/ 目录下的参考文档（Markdown 格式）。'
         '可用文档包括：00-project-overview.md（项目概览）、01-tools-reference.md（工具参考）、'
-        '02-prompt-rules.md（提示词规则）、03-models-and-environment.md（模型环境）。'
+        '02-prompt-rules.md（提示词规则）、03-models-and-environment.md（模型环境）、'
+        '04-agent-workflow.md（任务执行协议：提交/续传/取件）。'
         '用于在任务前了解项目能力和限制。'
     )
     parameters = {

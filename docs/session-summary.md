@@ -173,6 +173,8 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   inbox 总线 / scheduler-agent-design=Qwen 调度器 Function Calling 落地设计）
 - `local-model/` 本地模型部署文档（另 Agent 维护：quick-start / full-manual）
 - `skills/h3-video-generation.md`（智能体技能卡）、`skills/h3-prompt-engineering.md`（提示词规则）
+- `agent-workflow.md`（⭐ 本地 Agent(Qwen) 工作链手册：两入口/工具/提交-续传-取件/素材链/异常处置）
+- `agent-reading/04-agent-workflow.md`（agent 任务执行协议速查，随调度器 read_doc 提供）
 
 ## 10. 待办 / 下一步（给新对话的明确任务）
 1. **ComfyUI 依赖已修复（2026-09-03）**：`comfy_kitchen` 已升级到 0.2.31。

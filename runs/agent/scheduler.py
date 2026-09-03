@@ -79,6 +79,7 @@ SYSTEM_MESSAGE = """\
   - 01-tools-reference.md — 工具参数详细说明
   - 02-prompt-rules.md — 提示词工程完整规则和示例
   - 03-models-and-environment.md — 模型清单和服务端口
+  - 04-agent-workflow.md — 任务执行协议速查（提交/续传/取件、防重复、证据汇报）
 
 ═══ 典型工作流 ═══
 - 文生视频: call_comfyui(stage="t2v", prompt="...", seconds=10)

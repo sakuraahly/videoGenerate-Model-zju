@@ -64,6 +64,7 @@ outputs/      生成产物（不入库）
 | `docs/workflow-and-prompt.md` | 指定工作流与提示词：有/无本地模型两种情形 |
 | `docs/deploy-modes.md` | 运行形态 win-remote / spark-local（spark 交付用法） |
 | `docs/user-guide.md` | 用户手册：入口、配置、常见流程、断点恢复 |
+| `docs/agent-workflow.md` | ⭐ 本地 Agent(Qwen) 工作链手册：两入口、工具、提交/续传/取件、素材链、异常处置 |
 | `docs/session-summary.md` | 项目状态与待办（跨 Agent 事实源，先读它） |
 | `docs/robustness-and-modularity.md` | 架构分层、扩展方法、可靠性设计 |
 | `docs/h3-workflow-architecture.md` | 14 节点 API 工作流、模型文件、帧数网格 |
