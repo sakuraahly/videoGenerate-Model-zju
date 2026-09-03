@@ -430,3 +430,20 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - `runs/h3/tests/test_h3.py`（+1 回归测试；套件 87）
 - `docs/session-summary.md`（本文件更新）
 （以上均已通过 scp 同步 spark 并各自提交；transferred 时遵循“不含 .git”约定。）
+
+### 12.7 后续会话：spark-local 交付形态验证与修复
+- 两端已合并并推送 GitHub（本地 02a8261/8e310cf/a9f8e74/4f23900；spark HEAD 05cd559 + 53e926b）。
+- **spark-local 全服务共存启动成功**：SGLang(Qwen3.8-27B, 8000, coexist mem=0.55) + ComfyUI(8188,
+  tmux) + qwen-agent(7860) + Open WebUI(3000) 同时在线；Qwen 曾因缺 `ninja` 启动失败，由用户手工修复。
+- **AI 桥实测（真实 SGLang）**：单槽与全槽位生成成功；发现 max_tokens=1200 截断导致非 JSON
+  杂讯被旧 parse_prompt_json“纯文本回退”写入槽位文件 → 修复：JSON 提取加固 + 截断/指令杂讯
+  直接报错不落盘 + llm.json/示例 max_tokens→4096（本地 commit `a9f8e74`）。
+- **程序实测**：h3_submit t2v 360p/5s 真实出片 `MiniMax_H3_00025_.mp4`（~252s）；h3_text2img
+  出 5 帧；h3_text2img_flux 发现**无 spark-local 感知**（在 spark 本机仍 ssh/scp 自己→解析失败）
+  → 修复为读 config/deploy.json 分支、同机 copy2 落位 input/ 与 refs/（本地 commit `4f23900`）。
+- **agent 工具链**：7860 HTTP 200；安全回归 13/13；modify_workflow 真实 LLM 端到端 PASS
+  （test_tool_calling3.py，改后校验并恢复）。
+- 旧断点 0504cacd（此前 101 分钟慢任务）清理：产物 `MiniMax_H3_00024_.mp4` 已恢复至
+  `outputs/video_recovered_i2v_cat_00024.mp4`，last_job.json 已删。
+- 其它：全槽位生成补出 `prompts/workflows/video_flf2v.negative.txt`（通用词表，入库）；
+  `.gitignore` 增 `config/llm.json.bak`。
