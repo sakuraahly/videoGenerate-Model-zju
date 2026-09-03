@@ -382,9 +382,9 @@ class TestSubgraphFlatten(unittest.TestCase):
         mini = next(n for n in flat["nodes"] if n["type"] == "MiniMaxH3ImageToVideo")
         ins = {i["name"]: i for i in mini["inputs"]}
         load = next(n for n in flat["nodes"] if n["type"] == "LoadImage")
-        # 首帧来自顶层 LoadImage（drama_asset_hero.png）
+        # 首帧来自顶层 LoadImage（默认图名是用户可改内容，这里不断言具体文件名）
         self.assertIsNotNone(ins["first_frame"]["link"])
-        self.assertEqual(load["widgets_values"][0], "drama_asset_hero.png")
+        self.assertTrue(str(load["widgets_values"][0]).endswith(".png"))
         # prompt 注入为 UUID 节点 widgets_values[0]
         uuid_node = next(n for n in self._load("video_minimax_h3_i2v.json")["nodes"]
                          if len(str(n["type"])) == 36)
@@ -424,8 +424,10 @@ class TestSubgraphFlatten(unittest.TestCase):
             src = by_id[src_id]
             self.assertEqual(src["type"], "LoadImage")
             imgs[k] = src["widgets_values"][0]
-        self.assertEqual(imgs["first_frame"], "drama_asset_hero.png")
-        self.assertEqual(imgs["last_frame"], "drama_asset_alley.png")
+        # 默认图名是用户可改内容：不断言具体文件名，只要求两端为不同图片（首帧≠末帧）
+        self.assertTrue(str(imgs["first_frame"]).endswith(".png"))
+        self.assertTrue(str(imgs["last_frame"]).endswith(".png"))
+        self.assertNotEqual(imgs["first_frame"], imgs["last_frame"])
         for l in flat["links"]:  # 无悬空
             self.assertIn(int(l[1]), by_id)
             self.assertIn(int(l[3]), by_id)
