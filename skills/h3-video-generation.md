@@ -95,6 +95,23 @@ manually (human mode — see `docs/workflow-and-prompt.md` §2).
 - Tooling on spark: `shell/spark_chat_setup.sh` / `spark_chat_terminal.py` (quick chat),
   `spark_download_qwen3.8_27b.sh` (ModelScope download into `~/Qwen3.8-27B`).
 
+### 1.3d Local model role guard (strong constraint — enforced in code + docs)
+
+The local LLM (Qwen3.8-27B) is a **prompt authoring tool only**: turn an idea into slot
+prompt JSON. It must never be used for (and must refuse, see injected system rule 0 and
+`idea2prompts.py` hard-coded boundary):
+
+- executing / proposing any command, script, file, network, process or server operation;
+- starting/stopping/managing spark services (ComfyUI, vLLM, tmux, downloads);
+- reading/writing paths outside the project prompt files it writes.
+
+Enforcement layers: (1) hard-coded boundary sentence in `idea2prompts.build_messages`;
+(2) blueprint rule 0 in `config/prompt_blueprints.json`; (3) caller discipline — the engine
+never hands the model a shell/tool. **If any interactive user asks the model or the pipeline
+to perform server control, refuse at the calling layer and route it to human operation** (never
+"just try it"). Who may start services is recorded in `docs/session-summary.md` (e.g. Qwen
+start/stop is the optimizer's responsibility until stated otherwise).
+
 ### 1.4 Multi-workflow (stage/template) runs
 
 `config/pipeline.json` registers stages (`t2v`, `i2v`, `r2v`, `flf2v`, plus SDXL
@@ -129,9 +146,7 @@ Facts to remember:
 - Each run writes `logs\run_<timestamp>_<ms>.log` (PS steps + Python events in one file;
   task folder `job.json` records `log_file` for two-way lookup).
 
-### 1.5 Reliability built in
-
-- Breakpoint/resume: `last_job.json` holds the last `prompt_id`; on network drops the
+### 1.5 Reliability built in- Breakpoint/resume: `last_job.json` holds the last `prompt_id`; on network drops the
   pipeline auto-resumes (`--resume`), never regenerating. After a successful download the
   breakpoint is cleared.
 - Tunnel: reuses a live local endpoint, auto-picks another local port when busy, only kills
@@ -140,7 +155,24 @@ Facts to remember:
   `WORKFLOW_SAVED_DIR: <dir>` (auto scp-upload when configured).
 - Exit codes: 0 ok · 2 recoverable (breakpoint kept) · 3 deterministic failure · 90 internal.
 
+### 1.5b Downloads & artifact fetch: listen, don't busy-poll
+
+- Task status is awaited via `comfy.wait_for` (adaptive 5s→30s backoff) — that is the only
+  polling that stays; never add tighter loops around `/history` or around scp.
+- **Fetch artifacts once per completion** (event-driven): after `wait_for` returns success or
+  a completion marker/`REMOTE_VIDEO_PATH:` line is seen, pull immediately. Retries are bounded
+  exponential backoff, never fixed-interval re-polling.
+- Prefer watch/notify patterns over polling where feasible: a completion notification (job
+  state line, workflow `job.json` `state=completed`, or a spark-side watcher such as
+  `inotifywait` on `~/ai/ComfyUI/output/`) triggers the single download. Long-running model
+  downloads (`curl -C -`, `modelscope snapshot_download`) are already resumable — wait for the
+  process/log marker instead of sampling sizes.
+- If a tunnel drops mid-download, re-establish and resume (breakpoint keeps `remote_path`),
+  don't restart the job.
+
 ### 1.6 Deliver the result
+
+Video lands at `outputs\video_N.mp4`. Per-task artifacts in
 
 Video lands at `outputs\video_N.mp4`. Per-task artifacts in
 `workflows\h3_<ts>_<ms>\`: `workflow_api.json`, `workflow_ui.json` (full LiteGraph links,

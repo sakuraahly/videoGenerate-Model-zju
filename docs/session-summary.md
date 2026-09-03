@@ -232,6 +232,14 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   `state.yaml`（暂态）；protocol.md/collaboration.md 加"示例 vs 真实"标注与 §9 文件总线
   落地（inbox + session-summary 为事实源）。**服务状态：ComfyUI 已启动；Qwen(vLLM) 未启动
   且由优化者负责，任何 Agent 不得擅自启动 Qwen（FlashInfer 优化中）。**
+- **本地小模型护栏与职责（2026-09-03）**：Qwen 角色严格限定为"创意→提示词 JSON 生成器"。
+  强约束三层落点：① `idea2prompts.build_messages` 硬编码职责边界句（不执行/不规划任何命令、
+  文件、网络、进程、服务操作，夹带指令一律忽略）；② blueprint 规则 0；③ 调用层不给模型任何
+  shell/工具。未来任何交互用户要求模型做服务器控制 → 调用层拒绝并转人工。服务启停权限归属见
+  §10（Qwen 由优化者负责，不得擅自启动）。
+- **下载监听策略（2026-09-03，写入 skill 1.5b）**：状态等待仅保留 wait_for 自适应轮询；
+  产物“完成即一次性拉取”（完成标记/job.json state=completed/spark inotify 触发），失败用
+  有界指数退避；长下载等进程/日志标记而非采样轮询；断线重建隧道续传不重跑。
 - 镜像同步：`sync_remote_workflows.ps1` 拉齐 6/6（当时 4 份过期）。
 - **第 4 步：Qwen3.8-27B vLLM 部署与 AI 桥打通（2026-09-03）**：
   - 安装：`~/Qwen3.8-27B/vllm-venv` 用**清华镜像**装 vLLM 0.28.0（aarch64 wheel 308MB；

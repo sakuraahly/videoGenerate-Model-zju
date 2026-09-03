@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start SGLang server for Qwen3.8-27B on DGX Spark.
+# Start SGLang server for Qwen3.8-27B on DGX Spark (GB10).
 # SGLang is ~40% faster than vLLM on GB10 with FlashInfer backend.
 #
 # Usage:
@@ -18,6 +18,10 @@ MEM="${SGLANG_MEM:-0.95}"
 TP="${SGLANG_TP:-1}"
 CTX_LEN="${SGLANG_CTX_LEN:-32768}"
 CHUNK_SIZE="${SGLANG_CHUNK_SIZE:-8192}"
+
+export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
+export TRITON_PTXAS_PATH="${CUDA_HOME}/bin/ptxas"
+export MAX_JOBS="${MAX_JOBS:-2}"
 
 USE_NVFP4=true
 for arg in "$@"; do
@@ -44,18 +48,32 @@ echo "  tp:        $TP"
 echo "  mem:       $MEM"
 echo "  ctx_len:   $CTX_LEN"
 echo "  chunk:     $CHUNK_SIZE"
+echo "  CUDA_HOME: $CUDA_HOME"
 echo "=============================="
 
 export PATH="$VENV/bin:$PATH"
 
-exec "$VENV/bin/python" -m sglang.launch_server \
-    --model-path "$MODEL_PATH" \
-    --host "$HOST" \
-    --port "$PORT" \
-    --tp "$TP" \
-    --mem-fraction-static "$MEM" \
-    --context-length "$CTX_LEN" \
-    --chunked-prefill-size "$CHUNK_SIZE" \
-    --disable-prefill-cuda-graph \
-    --trust-remote-code \
-    --dtype bfloat16
+SGLANG_ARGS=(
+    -m sglang.launch_server
+    --model-path "$MODEL_PATH"
+    --served-model-name Qwen3.8-27B
+    --host "$HOST"
+    --port "$PORT"
+    --tp-size "$TP"
+    --mem-fraction-static "$MEM"
+    --context-length "$CTX_LEN"
+    --chunked-prefill-size "$CHUNK_SIZE"
+    --disable-prefill-cuda-graph
+    --trust-remote-code
+)
+
+if [ "$PROFILE" = "nvfp4" ]; then
+    SGLANG_ARGS+=(
+        --speculative-algorithm NEXTN
+        --speculative-num-steps 3
+        --speculative-eagle-topk 1
+        --speculative-num-draft-tokens 4
+    )
+fi
+
+exec "$VENV/bin/python" "${SGLANG_ARGS[@]}"
