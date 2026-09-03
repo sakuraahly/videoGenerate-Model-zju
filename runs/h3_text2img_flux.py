@@ -10,6 +10,7 @@ h3_text2img_flux — 用 spark ComfyUI 的 FLUX.1-dev 生成本地文生图（13
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -20,6 +21,30 @@ from h3 import comfy  # noqa: E402
 
 REMOTE_HOST = "spark"
 COMFY = "http://127.0.0.1:8188"
+
+
+def _site(project_root: Path) -> str:
+    """读取 config/deploy.json 的 site（win-remote 默认/现状；spark-local 交付形态）。"""
+    cfg = project_root / "config" / "deploy.json"
+    try:
+        data = json.loads(cfg.read_text(encoding="utf-8-sig"))
+        return data.get("site") or "win-remote"
+    except Exception:
+        return "win-remote"
+
+
+def _comfy_dirs(project_root: Path) -> tuple:
+    """读取 environment.json 的 remote_output_dir/remote_comfyui_dir；缺省用 ~/ai/ComfyUI。"""
+    env = project_root / "config" / "environment.json"
+    out = "~/ai/ComfyUI/output"
+    comfy = "~/ai/ComfyUI"
+    try:
+        data = json.loads(env.read_text(encoding="utf-8-sig"))
+        out = data.get("remote_output_dir") or out
+        comfy = data.get("remote_comfyui_dir") or comfy
+    except Exception:
+        pass
+    return out, comfy
 
 
 def build_flux_workflow(text: str, width: int, height: int,
@@ -92,18 +117,42 @@ def main() -> int:
         f"{im['subfolder']}/{im['filename']}"
     print(f"[flux] spark output: ~/ai/ComfyUI/output/{remote}")
 
-    # 落 spark input（供视频模板 LoadImage 引用）
+    # 产物落位：spark-local 同机直接复制；win-remote 经 ssh cp + scp 下载
+    project_root = Path(__file__).resolve().parent.parent
+    remote_out_dir, remote_comfy_dir = _comfy_dirs(project_root)
+    site = _site(project_root)
+    out_full = Path(remote_out_dir.replace("~", str(Path.home()))) / remote
+
+    if site == "spark-local":
+        dest_input = Path(remote_comfy_dir.replace("~", str(Path.home()))) / "input" \
+            / f"{args.name}.png"
+        try:
+            shutil.copy2(out_full, dest_input)
+            print(f"[flux] copied to spark input: {dest_input}")
+        except Exception as e:
+            print(f"[flux] 复制到 input 失败: {e}", file=sys.stderr)
+        local_dir = project_root / "refs"
+        local_dir.mkdir(exist_ok=True)
+        local = local_dir / f"{args.name}.png"
+        try:
+            shutil.copy2(out_full, local)
+            print(f"[flux] 本地副本: {local}（{local.stat().st_size} B）")
+        except Exception as e:
+            print(f"[flux] 复制 refs 失败: {e}", file=sys.stderr)
+        return 0
+
+    # win-remote（默认）：ssh cp 落 spark input + scp 下载本地 refs\
     dest_input = f"~/ai/ComfyUI/input/{args.name}.png"
     subprocess.run(["ssh", "-o", "BatchMode=yes", REMOTE_HOST,
-                    f"cp ~/ai/ComfyUI/output/{remote} {dest_input}"], check=False)
+                    f"cp {remote_out_dir}/{remote} {dest_input}"], check=False)
     print(f"[flux] copied to spark input: {dest_input}")
 
     # 下载本地 refs\
-    local_dir = Path.cwd() / "refs"
+    local_dir = project_root / "refs"
     local_dir.mkdir(exist_ok=True)
     local = local_dir / f"{args.name}.png"
     r = subprocess.run(["scp", "-q", "-o", "BatchMode=yes",
-                        f"{REMOTE_HOST}:~/ai/ComfyUI/output/{remote}", str(local)])
+                        f"{REMOTE_HOST}:{remote_out_dir}/{remote}", str(local)])
     if r.returncode == 0 and local.exists():
         print(f"[flux] 本地副本: {local}（{local.stat().st_size} B）")
     else:
