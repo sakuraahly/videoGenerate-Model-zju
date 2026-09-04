@@ -207,6 +207,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
    - spark 服务管理统一用 `manage_services.sh`（不再手动 tmux）。
    - ComfyUI venv 在 `~/ai/venv/`（非 `~/ai/ComfyUI/venv/`）。
    - 每次工作后更新 `skills/h3-video-generation.md` 和 `docs/session-summary.md`。
+   - **新增/修订任何文档或 skills → 回写根目录 `START-HERE.md` 的 §2 索引与版本记录**（它是所有新参与模型的总入口，见其 §5 同步规则）。
 9. 可选项：把”创意→提示词”做成单页 GUI/Web 入口；为 6 工作流补”参考图自动回传/占位符”
    自动化；modify_workflow 端到端实测（test_tool_calling3.py 在 spark 上跑）。
 

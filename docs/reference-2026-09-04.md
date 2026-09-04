@@ -2,6 +2,7 @@
 
 > 本文件是**详细工程参考**：配置注册表、运行形态语义、引擎/工具/Agent 接口契约、
 > 模板明细、服务与内存管理、日志/审计 schema、故障字典、测试模板。
+> 新模型/Agent 总入口与阅读索引：仓库根 **`START-HERE.md`**；
 > 快速交接与测试清单见 `docs/handoff-2026-09-04.md`；事实源 `docs/session-summary.md`。
 > 双端：Windows 本机（git 主库→GitHub）与 spark `~/videoGenerate-Model-zju`（spark-local 运行时）。
 

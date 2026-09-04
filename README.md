@@ -1,5 +1,9 @@
 # H3 Video Generation Toolbox
 
+> ## ⛳ 新参与模型 / Agent 请先读：**[`START-HERE.md`](START-HERE.md)**
+> 仓库总入口：必要架构介绍 + 全部必读文档/skills 索引 + 路径与红线规范。
+> （文档与 skills 的任何新增/修订都会同步回写该文件，见其 §5 同步规则。）
+
 MiniMax H3（Hailuo-03）视频生成自动化工具集：本地 Windows 编排层 + 远程 Linux GPU 主机上的 ComfyUI 本地推理。输入一段场景描述，产出带原生立体声音轨的视频（`outputs/video_N.mp4`）。
 
 > **运行形态**（同一份仓库，`config/deploy.json` 切换，见 `docs/deploy-modes.md`）：
@@ -60,6 +64,10 @@ outputs/      生成产物（不入库）
 
 | 文档 | 内容 |
 |---|---|
+| `START-HERE.md` | ⭐⭐ **新参与模型/Agent 总入口**：架构速览 + 必读索引 + 路径/红线 + 同步规则 |
+| `docs/handoff-2026-09-04.md` | ⭐ 最新交接：服务现状、7860 能力、测试清单（接手下一轮前必读） |
+| `docs/reference-2026-09-04.md` | ⭐ 总参考手册：配置注册表、契约、故障字典、测试模板 |
+| `docs/session-summary.md` | ⭐ 项目状态与待办（跨 Agent 事实源，先读它） |
 | `docs/quickstart.md` | ⭐ 新手快速上手（三步出片 + 模板/参考图选择） |
 | `docs/workflow-and-prompt.md` | 指定工作流与提示词：有/无本地模型两种情形 |
 | `docs/deploy-modes.md` | 运行形态 win-remote / spark-local（spark 交付用法） |
