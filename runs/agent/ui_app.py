@@ -461,104 +461,199 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 for m in msgs if m.get('role') in ('user', 'assistant')]
 
     def send(chat_hist, cid, user_text):
-        # 幂等：忙碌期重复点击 → 忽略并提示（多次点击=单次结果）
+        """重构版 send()：集成 auto-continue + 任务监控。"""
+        from runs.agent.session_state import (
+            get_stop_event, clear_tasks, add_tasks, increment_turn_id, check_turn_valid
+        )
+
+        MAX_AUTO_CONTINUE = 2
+        ABORT_MARKERS = ('⛔', '不可恢复', '熔断')
+
         user_text = (user_text or '').strip()
         if not _active_turn.acquire(blocking=False):
             yield (fmt_msgs(chat_hist or []),
                    BUSY_HTML('上一轮仍在处理中，本次点击已忽略'),
-                   '上一轮仍在处理中；请等状态变绿或点”⏹ 中止本轮”。', gr.update(), cid,
+                   '上一轮仍在处理中；请等状态变绿或点"⏹ 中止本轮"。', gr.update(), cid,
                    chat_hist or [], gr.update())
             return
         try:
             global _stop_requested
             _stop_requested = threading.Event()
+
             if _upload_in_progress:
                 yield (fmt_msgs(chat_hist or []),
                        BUSY_HTML('上传尚未完成，请稍候再发送'),
                        '⏳ 素材上传进行中，请等待上传完成后再发送。', gr.update(), cid,
                        chat_hist or [], gr.update())
                 return
+
             if not user_text:
                 yield (fmt_msgs(chat_hist or []), IDLE_HTML, '请输入内容。', gr.update(), cid,
                        chat_hist or [], gr.update())
                 return
+
             if not cid:
                 cid = new_chat_id()
+
             msgs = list(chat_hist or [])
-            msgs.append({'role': 'user', 'content': user_text})
-            shown = fmt_msgs(msgs)
+            stop_event = get_stop_event(cid)
+            stop_event.clear()
+            clear_tasks(cid)
+            current_turn_id = increment_turn_id(cid)
+
             ev = queue.Queue()
-            stop = threading.Event()
+            stop_hb = threading.Event()
             clear_box = gr.update(value='')
 
             def _heartbeat():
                 t0 = time.time()
-                while not stop.is_set():
+                while not stop_hb.is_set():
                     secs = int(time.time() - t0)
                     text = BUSY_HTML(
                         f'处理中 {secs}s · LLM:{llm_state_text()} · '
                         f'引擎: {tail_run_log() or "等待引擎事件"}')
                     ev.put({'kind': 'hb', 'text': text})
-                    stop.wait(HEARTBEAT_SEC)
+                    stop_hb.wait(HEARTBEAT_SEC)
 
-            threading.Thread(target=run_turn, args=(msgs[:-1], user_text, ev),
-                             daemon=True).start()
             threading.Thread(target=_heartbeat, daemon=True).start()
 
-            status = BUSY_HTML('处理中…')
-            assistant = ''
-            phase = 'ok'
-            aborted = False
+            all_pending_tasks = []
+            monitor_reported_completion = False
             noop = gr.update()
             first = True
-            while True:
-                if _stop_requested.is_set():
-                    aborted = True
-                    break
-                try:
-                    item = ev.get(timeout=1.0)
-                except queue.Empty:
-                    yield shown, status, '', noop, cid, msgs, (clear_box if first else noop)
-                    first = False
-                    continue
-                kind = item.get('kind')
-                if kind in ('hb', 'phase'):
-                    status = item.get('text', status)
-                    yield shown, status, '', noop, cid, msgs, (clear_box if first else noop)
-                    first = False
-                elif kind == 'done':
-                    assistant = item.get('text') or ''
-                    break
-                elif kind == 'error':
-                    phase = 'error'
-                    assistant = item.get('text') or '未知错误'
-                    break
-            stop.set()
+            final_text = ''
+            phase = 'ok'
+            aborted = False
 
-            if aborted:
+            try:
+                for attempt in range(MAX_AUTO_CONTINUE + 1):
+                    if stop_event.is_set() or _stop_requested.is_set():
+                        aborted = True
+                        break
+
+                    if attempt == 0:
+                        msgs.append({'role': 'user', 'content': user_text})
+
+                    shown = fmt_msgs(msgs)
+
+                    turn_args = (msgs[:-1] if attempt > 0 else msgs[:-1], 
+                                user_text if attempt == 0 else None, ev)
+                    threading.Thread(target=run_turn, args=turn_args, daemon=True).start()
+
+                    while True:
+                        if stop_event.is_set() or _stop_requested.is_set():
+                            aborted = True
+                            break
+
+                        if not check_turn_valid(cid, current_turn_id):
+                            aborted = True
+                            break
+
+                        try:
+                            item = ev.get(timeout=0.5)
+                        except queue.Empty:
+                            yield shown, BUSY_HTML('处理中...'), '', noop, cid, msgs, (clear_box if first else noop)
+                            first = False
+                            continue
+
+                        kind = item.get('kind')
+                        if kind in ('hb', 'phase'):
+                            status_text = item.get('text', '')
+                            yield shown, status_text, '', noop, cid, msgs, (clear_box if first else noop)
+                            first = False
+                        elif kind == 'done':
+                            final_text = item.get('text') or ''
+                            phase = 'ok'
+                            break
+                        elif kind == 'error':
+                            phase = 'error'
+                            final_text = item.get('text') or '未知错误'
+                            break
+
+                    if aborted or phase == 'error':
+                        break
+
+                    prompt_ids = extract_prompt_ids(final_text)
+                    if prompt_ids:
+                        tasks = [{'prompt_id': pid, 'type': 'single'} for pid in prompt_ids]
+                        all_pending_tasks.extend(tasks)
+
+                    needs_continuation = (
+                        final_text and 
+                        not any(marker in final_text for marker in ABORT_MARKERS) and
+                        not prompt_ids
+                    )
+
+                    if not needs_continuation or attempt >= MAX_AUTO_CONTINUE:
+                        break
+
+                    msgs.append({"role": "system", "content": '[系统自动续接] 请继续完成当前任务。'})
+                    user_text = None
+                    yield (shown, BUSY_HTML('自动续接中...'), ' 自动续接中...', noop, cid, msgs, noop)
+
+            finally:
+                stop_hb.set()
+
+            add_tasks(cid, all_pending_tasks)
+
+            if all_pending_tasks and check_turn_valid(cid, current_turn_id):
+                try:
+                    from runs.agent.task_watch import _monitor_worker
+                    monitor_queue = queue.Queue(maxsize=10)
+                    monitor_thread = threading.Thread(
+                        target=_monitor_worker, 
+                        args=(cid, current_turn_id, monitor_queue, stop_event),
+                        daemon=True
+                    )
+                    monitor_thread.start()
+
+                    while True:
+                        try:
+                            msg = monitor_queue.get(timeout=0.5)
+                        except queue.Empty:
+                            if not monitor_thread.is_alive():
+                                break
+                            if not check_turn_valid(cid, current_turn_id) or stop_event.is_set():
+                                break
+                            continue
+
+                        if msg['type'] == 'update':
+                            yield (gr.update(), msg['status_html'], msg['note_md'], noop, cid, msgs, noop)
+                        elif msg['type'] == 'done':
+                            monitor_reported_completion = True
+                            if msg['status_html']:
+                                yield (gr.update(), msg['status_html'], msg['note_md'], noop, cid, msgs, noop)
+                            break
+                except Exception:
+                    pass
+
+            if aborted or _stop_requested.is_set():
                 final_status = ABORT_HTML
-                note = ('已中止本轮。若服务端请求仍在执行并可能已提交任务，任务会保留在'
-                        '断点/ComfyUI 队列：想取回就说”无参重跑续传”，想放弃可稍后说'
-                        '”重来”。')
-                msgs.append({'role': 'assistant',
-                             'content': '[已中止] 本轮已由用户停止等待（服务端请求可能仍在完成）。'})
+                note = '已中止本轮。'
+                msgs.append({'role': 'assistant', 'content': '[已中止]'})
             elif phase == 'error':
                 final_status = ERROR_HTML
-                msg = f'[执行出错] {assistant}'
+                msg = f'[执行出错] {final_text}'
                 msgs.append({'role': 'assistant', 'content': msg})
-                note = '上一轮执行出错：可把报错内容发我，或检查 logs/run_*.log。'
-            elif assistant:
+                note = '上一轮执行出错'
+            elif final_text:
                 final_status = IDLE_HTML
-                msgs.append({'role': 'assistant', 'content': assistant})
+                msgs.append({'role': 'assistant', 'content': final_text})
                 note = '✅ 本轮完成'
             else:
                 final_status = IDLE_HTML
-                msgs.append({'role': 'assistant',
-                             'content': '（模型未返回内容，可能被截断；发送”继续”重试）'})
-                note = '模型未返回内容（可能被截断），发送”继续”续写。'
+                msgs.append({'role': 'assistant', 'content': '(模型未返回内容)'})
+                note = '模型未返回内容'
+
             save_chat(cid, msgs)
-            yield (fmt_msgs(msgs), final_status, note, gr.update(choices=_choices()), cid,
-                   msgs, clear_box)
+
+            if check_turn_valid(cid, current_turn_id):
+                if stop_event.is_set() or _stop_requested.is_set():
+                    yield (msgs, ABORT_HTML, ' 已中止', noop, cid, msgs, [])
+                elif monitor_reported_completion:
+                    yield (msgs, noop, noop, noop, cid, msgs, [])
+                else:
+                    yield (msgs, final_status, note, gr.update(choices=_choices()), cid, msgs, clear_box)
         finally:
             _active_turn.release()
     with gr.Blocks(title='H3 视频生成助手', theme=gr.themes.Soft()) as demo:
@@ -569,8 +664,8 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     '说出你的创意，我来生成视频。支持文生视频/图生视频/参考图/首末帧转场。')
         with gr.Row():
             hist_dd = gr.Dropdown(label='历史会话', choices=_choices(), scale=4)
-            load_btn = gr.Button('加载所选')
-            del_btn = gr.Button('删除所选')
+            load_btn = gr.Button('加载所选历史')
+            del_btn = gr.Button('删除所选历史')
             ref_btn = gr.Button('刷新')
             new_btn = gr.Button('＋新对话', variant='primary')
         status_html = gr.HTML(IDLE_HTML)
