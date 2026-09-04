@@ -57,7 +57,7 @@
 
 - 静态一致性：`python runs/consistency_check.py`——检查 manifests/pipeline/capabilities/模板引用图/提示词多段拼接/残留与 git 状态。
 - 单元/已有测试：`python -m pytest runs/h3/tests -q`（若相关）。
-- 本项目自测/烟测：在 spark 跑 `tests/e2e_smoke.py`（若已建）或对**本阶段**的最小脚本；改前端就 grep 界面字符串、改 h3_batch 就跑 `h3_batch.py submit --dry-run`。
+- 本项目自测/烟测：**基座门禁** `python tests/e2e_smoke.py`（已建，spark 全量）与 `python runs/agent/runtime_check.py`（常量/工具/路径/指纹核对）；对**本阶段**的最小脚本：改前端就 grep 界面字符串、改 h3_batch 就跑 `h3_batch.py submit --dry-run`。
 - 涉及 LLM/Agent：跑一轮真实对话或最小对话，断言输出/行为符合预期。
 - 涉及工作流注入：`h3_submit.py --stage <x> --dry-run` 打印 API 图，断言 prompt/参考图已正确注入。
 

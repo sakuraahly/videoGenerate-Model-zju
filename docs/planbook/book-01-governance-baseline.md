@@ -108,10 +108,21 @@
 ## 6. 验收标准（可在 spark 真实环境复现）
 
 - [ ] `ssh spark "cd /home/Developer/videoGenerate-Model-zju && git rev-parse --short HEAD"` 与 Windows 主库 `git rev-parse --short HEAD` 指向**同一代码基线**（或明确记录差异并说明）。
-- [ ] 重启 agent 后日志/界面可见 `AGENT_VERSION` 指纹；该指纹可追溯到某个 commit。
-- [ ] `python tests/e2e_smoke.py` 在 spark 输出 `SMOKE_OK`，且不依赖任何大模型判定。
-- [ ] `python runs/consistency_check.py` 不再报告已登记的关键不一致项（工具数/常量/路径）。
-- [ ] 一次基线部署演练成功：Windows→GitHub→spark→重启→自测全链路有留痕。
+- [x] 重启 agent 后日志/界面可见 `AGENT_VERSION` 指纹；该指纹可追溯到某个 commit。
+- [x] `python tests/e2e_smoke.py` 在 spark 输出 `SMOKE_OK`，且不依赖任何大模型判定。
+- [x] `python runs/consistency_check.py` 不再报告已登记的关键不一致项（工具数/常量/路径）。
+- [x] 一次基线部署演练成功：Windows→GitHub→spark→重启→自测全链路有留痕。
+
+---
+
+## 6b. 实施记录（2026-09-04 第一轮）
+
+- ✅ 已落地：`runs/agent/version.py`（版本指纹；以 `__file__` 推导根目录，不信 env——因 `scheduler.py` 会把 `VIDEOGEN_PROJECT_ROOT` 设为 `expanduser(~/...)`，Windows 上会落到残留副本）；`runs/agent/runtime_check.py`（常量/工具/形态/路径/指纹 6 项核对）；`tests/e2e_smoke.py`（指纹+工具+`h3_submit t2v --dry-run`+runtime_check → `SMOKE_OK`）；`scheduler.py` 集成 version（启动打印 `[agent] AGENT_VERSION=...`）；`ui_app.py` 头部显示 `版本指纹：<commit>`；`consistency_check.py` 增加 `check_runtime_facts`；`docs/code-fact-registry.md`（单一事实登记）。
+- ✅ 本机自测：`runtime_check` 全 [OK]（工具/LLM 项 [SKIP]，需 spark）；`e2e_smoke` 本机 `SMOKE_OK`（工具项 [SKIP]）；`consistency_check` 问题 0。
+- ⏳ 待 spark 验证（同步+重启后）：e2e_smoke 全量（工具项真实检查）；重启后日志与界面头部可见 `AGENT_VERSION`。
+- ✅ spark 验证（2026-09-04）：`/home/Developer/qwen-agent-venv/bin/python tests/e2e_smoke.py` → **SMOKE_OK**（版本指纹 9396309、工具 6 类齐全、`h3_submit t2v --dry-run --force-new` rc=0、runtime_check [OK]）；重启 agent（tmux `agent`）后日志与 /config 头部均显示 `AGENT_VERSION=9396309`（PID 831077，11:12 启动）。
+- 📌 实测要点（已写入 smoke/文档）：① 必须用 **venv python**（system python3 无 qwen_agent）；② dry-run 需 `--force-new`（否则被遗留 last_job.json 断点守卫拦）；③ deploy.site 按端判定（spark=spark-local，Windows=win-remote），已按端修正 runtime_check。
+- 🔧 实施中发现并修复：`scheduler.py` 无条件把 `VIDEOGEN_PROJECT_ROOT` 写成 `expanduser(~/...)`——在 Windows 指向 `C:/Users/<user>/videoGenerate-Model-zju` 残留副本，导致版本/部署探测定错根；已改 `version.project_root()` 以本文件位置为准（env 仅作“确指向真实仓库”时的覆盖）。
 
 ---
 

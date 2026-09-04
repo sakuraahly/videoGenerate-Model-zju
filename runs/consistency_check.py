@@ -154,10 +154,27 @@ def check_leftovers_and_git():
         NOTES.append(f"git 已修改未提交 {len(mod)} 项")
 
 
+def check_runtime_facts():
+    """运行时一致性（book-01 基座）：调 runtime_check，[DIFF] 计为问题、[SKIP] 记录。"""
+    try:
+        r = subprocess.run(
+            [sys.executable, str(ROOT / "runs" / "agent" / "runtime_check.py")],
+            capture_output=True, text=True, timeout=90)
+    except Exception as e:  # noqa: BLE001
+        ISSUES.append(f"runtime_check 异常: {e}")
+        return
+    out = r.stdout
+    diffs = [ln.strip() for ln in out.splitlines() if ln.strip().startswith("[DIFF]")]
+    if diffs:
+        ISSUES.append(f"runtime_check {len(diffs)} 项不一致: {diffs[:3]}")
+    if "[SKIP]" in out:
+        NOTES.append("runtime_check 有 SKIP 项（本机无 qwen_agent 属预期；spark 上应全量[OK]）")
+
+
 def main() -> int:
     for fn in (check_manifest, check_pipeline, check_capabilities_vs_manifest,
                check_templates_images, check_prompt_multi_injection,
-               check_leftovers_and_git):
+               check_leftovers_and_git, check_runtime_facts):
         try:
             fn()
         except Exception as e:  # noqa: BLE001

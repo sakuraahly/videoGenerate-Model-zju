@@ -80,14 +80,19 @@ def _is_excluded(rel: str) -> bool:
 
 
 def _changed_files():
-    """return list of tracked changed file paths on Windows (excl. excluded)."""
-    rc, out, err = _git(["status", "--porcelain"])
+    """return list of tracked changed file paths on Windows (excl. excluded).
+    用 -uall 让未跟踪目录展开为文件；跳过目录/非文件条目。"""
+    rc, out, err = _git(["status", "--porcelain", "-uall"])
     files = []
     for line in out.splitlines():
         if not line or len(line) < 4:
             continue
         p = line[3:].strip().strip('"')
-        if p and not _is_excluded(p):
+        if not p or p.endswith('/'):
+            continue
+        if not (ROOT / p).is_file():
+            continue
+        if not _is_excluded(p):
             files.append(p)
     return sorted(set(files))
 
@@ -181,6 +186,11 @@ def cmd_sync(args):
     if args.dry_run:
         print("[dry-run] 未实际同步。")
         return 0
+    # 先确保远端目标目录存在（scp 不能自动建目录）
+    dirs = sorted({str(Path(f).parent) for f in files if Path(f).parent != Path('.')})
+    if dirs:
+        mk = " ".join(f'mkdir -p \"{SPARK_REPO}/{d}\"' for d in dirs)
+        _ssh(mk)
     ok = 0
     for f in files:
         local = ROOT / f

@@ -660,8 +660,14 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         # 注意：gr.State 必须在 Blocks 上下文内创建（上下文外创建会 KeyError: 0）
         hist_state = gr.State([])   # 完整消息（存档口径：user/assistant 交替）
         cid_state = gr.State('')    # 会话 id（demo.load / ＋新对话 时自动创建）
+        try:
+            from runs.agent import version as _vg
+            _ver = _vg.AGENT_VERSION
+        except Exception:  # noqa: BLE001
+            _ver = 'unknown'
         gr.Markdown('## 🎬 H3 视频生成助手\n'
-                    '说出你的创意，我来生成视频。支持文生视频/图生视频/参考图/首末帧转场。')
+                    '说出你的创意，我来生成视频。支持文生视频/图生视频/参考图/首末帧转场。\n'
+                    f'_版本指纹：`{_ver}`（与 dev.py check / 日志 AGENT_VERSION 核对）_')
         with gr.Row():
             hist_dd = gr.Dropdown(label='历史会话', choices=_choices(), scale=4)
             load_btn = gr.Button('加载所选历史')
