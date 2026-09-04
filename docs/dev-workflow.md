@@ -148,3 +148,28 @@
 - `START-HERE.md §3`（红线）、`§5`（同步/口径规则）、`§6`（版本记录）。
 - `docs/planbook/book-01-governance-baseline.md`（基座/可信部署）、`book-09-phase8-verification-regression.md`（验证门禁）。
 - `skills/dev-workflow.md`（本流程的精简卡）。
+
+---
+
+## 10. 附录 A：Windows 文件写入与 EIO（Win32 1175）经验（2026-09-04 归纳）
+
+### 10.1 现象
+- `ToolCallError: ReplaceFileW EIO (Win32 1175): <file>` —— **编辑/覆盖已有文件**时偶发；新建文件（CreateFile 路径）几乎不触发。
+
+### 10.2 原因（本环境实测归纳）
+- Win32 1175 = ERROR_UNABLE_TO_MOVE_REPLACEMENT_2：`ReplaceFileW`（原子替换）要求目标文件不被其它句柄独占；以下场景会短暂占住目标：
+  1. 杀毒/Defender 实时扫描（写入后即刻重查）；
+  2. Windows Search 索引器；
+  3. 刚结束的 python/git 子进程句柄未及时释放（尤其 `python -m py_compile` 写 __pycache__、`dev.py check/sync`、scp/ssh）；
+  4. 工具链自身的读缓存/mtime 跟踪（常伴生 `file changed since it was read` 提示）。
+- **高频模式**：执行子进程后**立刻**编辑同一文件；或对同一文件**连续多次** edit。
+
+### 10.3 处置（按顺序，已逐条验证）
+1. 直接重试一次（大多数占用秒级释放）；
+2. 仍失败 → 改用 PowerShell `[IO.File]::WriteAllText`（fopen 直写，非 ReplaceFileW；本会话零失败），配合字符串替换 patch；
+3. 长链改动改为「先 read 再整体 write」（整文件重写比逐处 edit 稳）；
+4. 规避：编辑前不要紧挨着跑 py_compile / consistency_check / dev.py 等子进程；同一文件一轮内避免多次 edit；看到 changed-since-read 先 re-read 再 edit。
+
+### 10.4 关联：脚本/字符串转义教训（一并记录）
+- 在 run_code 的 JS 里拼文档/Python 源码时：内容含 **ASCII 单引号** 会中断 `push(…`（改用完整字宽引号 `“ ”` 或 JS 双引号包裹）；含 **反引号** 会中断模板串（需要转义）；`$` 加 `{` 会插值；`\n` 会变成真换行。
+- 经验：**优先「行数组 + join」**；文档内容一律完整字宽引号；给 PowerShell 传含反引号/美元符号的字符串时整体转义，或用 `[char]10` 拼新行，避免多层嵌套。

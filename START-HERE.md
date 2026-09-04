@@ -129,6 +129,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 |---|---|
 | 2026-09-04 工具模块化计划 | 新增 docs/planbook/book-12-agent-tool-modular.md：Agent 工具自动化/模块化/通用化 + 多工作流配置驱动与便捷更换（注册表+适配器+动态 digest） |
 | 2026-09-04 日志计划 | 新增 docs/planbook/book-11-logging-system.md：日志系统治理与升级（全场景稳定/无垃圾/不错失 agent 行为与参数，含 dev.py logs 子命令规划） |
+| 2026-09-04 EIO经验 | docs/dev-workflow.md §10 记录 Windows ReplaceFileW EIO(1175) 根因与处置（重试/WriteAllText/读写顺序/转义教训）；skills 同步一行 |
 | 2026-09-04 基座实施 | book-01 第一轮：version.py / runtime_check.py / tests/e2e_smoke.py / consistency_check 扩展 / code-fact-registry.md；修复 project_root 误入残留副本 |
 | 2026-09-04 工具盒 | 新增 runs/dev.py（check/sync/commit/docs/test 五子命令），把变更与交付工作流固化为脚本，节省 agent token |
 | 2026-09-04 流程固化 | 新增 **变更与交付工作流**（`docs/dev-workflow.md` + `skills/dev-workflow.md`）并纳入 `START-HERE.md §2`；新增 `docs/prompt-taxonomy.md`（10 正 + 9 负）；planbook 更新确认输入 |

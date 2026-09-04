@@ -80,6 +80,18 @@ def main() -> int:
     tail = out.splitlines()[-1] if out.splitlines() else (err.strip()[-120:] or "")
     _check(ok, "h3_submit t2v --dry-run", f"rc={rc} tail={tail[:80]}")
 
+    # 3b) UI 实况（spark）：/config 是否渲染已知新文案（防"编译通过但 UI 不构建/静默退出"）
+    if IS_SPARK:
+        try:
+            import urllib.request
+            cfg = urllib.request.urlopen("http://127.0.0.1:7860/config", timeout=15).read().decode("utf-8", "replace")
+            ok = ("加载所选历史会话" in cfg) and ("继续承接任务" in cfg)
+            _check(ok, "UI /config 实况", "命中新按钮文案" if ok else "未命中（UI 未构建/旧版？查看 ~/agent.log）")
+        except Exception as e:  # noqa: BLE001
+            _check(False, "UI /config 实况", f"无法访问 7860: {e}")
+    else:
+        print("  [SKIP] UI /config 实况  需 spark")
+
     # 4) runtime_check 一致性
     rc, out, err = _run([sys.executable, str(ROOT / "runs" / "agent" / "runtime_check.py")])
     ok = (rc == 0) and ("[DIFF]" not in out)

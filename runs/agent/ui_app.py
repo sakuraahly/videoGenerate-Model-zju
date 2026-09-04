@@ -61,13 +61,13 @@ IDLE_HTML = '<span style="color:green">● 等待输入</span>'
 BUSY_HTML = lambda t: f'<span style="color:#b45309">● {t}</span>'
 ERROR_HTML = '<span style="color:red">● 出错</span>'
 ABORT_HTML = '<span style="color:#b45309">● 已中止</span>'
-UP_IDLE = '<span style="color:#888">尚未上传素材</span>'
+UP_IDLE = '<span style="color:#888">尚未为本会话上传素材</span>'
 UP_LOADING = lambda n: _pill(f'⏳ 正在上传中… {n} 个文件', '#8a6d1a', '#fff8e1', '#e7d492')
 
 
 
 from runs.agent import ctx_budget
-from runs.agent.ctx_budget import UI_TRIM_TOKENS, is_context_overflow_error
+from runs.agent.ctx_budget import UI_TRIM_TOKENS, CONV_MSG_BUDGET_TOKENS, is_context_overflow_error
 REPLY_MAX_TOKENS = ctx_budget.REPLY_MAX_TOKENS  # 兼容旧引用（唯一真值在 ctx_budget）
 
 
@@ -401,12 +401,12 @@ def ingest_upload(paths) -> tuple:
             previews.append(str(thumb) if thumb else str(input_mirror / p.name))
     parts = []
     if added:
-        parts.append(f'✅ {added} 个新素材已加入素材池')
+        parts.append(f'✅ {added} 个新素材已加入本会话素材池')
     if dup:
         if added:
             parts.append(f'⏩ {dup} 个重复已跳过')
         else:
-            parts.append(f'⏩ {dup} 个素材已在池中（可直接使用）')
+            parts.append(f'⏩ {dup} 个素材已在本会话池中（可直接使用）')
     if invalid_details:
         detail_str = '，'.join(f'{name}（{reason}）' for name, reason in invalid_details)
         parts.append(f'🚫 {len(invalid_details)} 个无效：{detail_str}')
@@ -422,7 +422,7 @@ def ingest_upload(paths) -> tuple:
 def llm_state_text() -> str:
     try:
         from runs.agent import llm_mem as _lm
-        return '运行中' if _lm.is_up(1.5) else '让位/停止'
+        return '运行中' if _lm.is_up(1.5) else '暂歇'
     except Exception:  # noqa: BLE001
         return '未知'
 
@@ -453,6 +453,22 @@ def _choices() -> list:
     return [(label, cid) for cid, label in list_chats()]
 
 
+def _err_hint(t: str) -> str:
+    """错误分类 + 解决建议（book-02）。"""
+    t = t or ''
+    if 'maximum context length' in t or 'ModelServiceError' in t:
+        return '上下文超限：请精简对话或点"继续"分轮；已自动压缩一次'
+    if 'ModuleNotFoundError' in t or 'No module named' in t:
+        return '脚本导入异常：已记录待修；可重试一次'
+    if '⛔' in t or '熔断' in t or '不可恢复' in t:
+        return '已连续失败熔断：请更换素材或稍后再试，勿连续重试'
+    if 'TimeoutExpired' in t or '超时' in t:
+        return '提交/轮询卡顿：任务可能在后台运行，用"继续"/"取片"确认，勿重复提交'
+    if 'comfyui' in t.lower() or '8188' in t or 'connection' in t.lower():
+        return '生成服务未就绪：请人工检查 spark 的 ComfyUI（勿自行重启）'
+    return '请按上述信息排查；可点"继续"重试或查看日志'
+
+
 def run_app(port: int = 7860, share: bool = False) -> None:
     import gradio as gr
 
@@ -473,7 +489,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         if not _active_turn.acquire(blocking=False):
             yield (fmt_msgs(chat_hist or []),
                    BUSY_HTML('上一轮仍在处理中，本次点击已忽略'),
-                   '上一轮仍在处理中；请等状态变绿或点"⏹ 中止本轮"。', gr.update(), cid,
+                   '上一轮仍在处理中；请等状态变绿或点"停止当前任务"。', gr.update(), cid,
                    chat_hist or [], gr.update())
             return
         try:
@@ -510,8 +526,8 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 while not stop_hb.is_set():
                     secs = int(time.time() - t0)
                     text = BUSY_HTML(
-                        f'处理中 {secs}s · LLM:{llm_state_text()} · '
-                        f'引擎: {tail_run_log() or "等待引擎事件"}')
+                        f'处理中 {secs}s · 模型:{llm_state_text()} · '
+                        f'进度: {tail_run_log() or "等待生成事件"}')
                     ev.put({'kind': 'hb', 'text': text})
                     stop_hb.wait(HEARTBEAT_SEC)
 
@@ -633,13 +649,18 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 msgs.append({'role': 'assistant', 'content': '[已中止]'})
             elif phase == 'error':
                 final_status = ERROR_HTML
-                msg = f'[执行出错] {final_text}'
+                _hint = _err_hint(final_text)
+                msg = f'[执行出错] {final_text}\n建议：{_hint}'
                 msgs.append({'role': 'assistant', 'content': msg})
-                note = '上一轮执行出错'
+                note = f'本轮执行出错：{_hint}'
             elif final_text:
                 final_status = IDLE_HTML
                 msgs.append({'role': 'assistant', 'content': final_text})
-                note = '✅ 本轮完成'
+                try:
+                    _ctx_n = sum(ctx_budget.count_tokens(str(m.get('content', ''))) for m in msgs)
+                except Exception:  # noqa: BLE001
+                    _ctx_n = 0
+                note = f'✅ 本轮完成 · 上下文约 {_ctx_n} token（预算 ~{CONV_MSG_BUDGET_TOKENS}）'
             else:
                 final_status = IDLE_HTML
                 msgs.append({'role': 'assistant', 'content': '(模型未返回内容)'})
@@ -670,22 +691,23 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     f'_版本指纹：`{_ver}`（与 dev.py check / 日志 AGENT_VERSION 核对）_')
         with gr.Row():
             hist_dd = gr.Dropdown(label='历史会话', choices=_choices(), scale=4)
-            load_btn = gr.Button('加载所选历史')
-            del_btn = gr.Button('删除所选历史')
+            load_btn = gr.Button('加载所选历史会话')
+            del_btn = gr.Button('删除所选历史会话')
             ref_btn = gr.Button('刷新')
-            new_btn = gr.Button('＋新对话', variant='primary')
+            new_btn = gr.Button('＋新建会话', variant='primary')
         status_html = gr.HTML(IDLE_HTML)
         with gr.Row():
-            stop_btn = gr.Button('⏹ 中止本轮', variant='stop', size='sm')
-            gr.Markdown('_程序级状态：随心跳显示 LLM 运行/让位 + 引擎日志行；卡住先看这里，再决定中止_')
+            stop_btn = gr.Button('⏹ 停止当前任务', variant='stop', size='sm')
+            gr.Markdown('_状态条动态显示：模型状态 + 生成进度；长时间不动可点"停止当前任务"。_\n_已提交的任务会在后台完成，用"继续"/"取片"获取结果；素材为本会话专属_')
         chatbot = gr.Chatbot(type='messages', height=440, label='对话')
         with gr.Row():
-            up_btn = gr.UploadButton('📤 上传素材（图片/视频，自动进入素材池）',
+            up_btn = gr.UploadButton('📤 上传素材（图片/视频）· 本会话专属',
                                      file_types=['image', 'video'],
                                      file_count='multiple', scale=3)
+            continue_btn = gr.Button('继续承接任务', size='sm', scale=1)
             box = gr.Textbox(placeholder='描述你的创意，我来生成视频…（Enter 发送）',
                              show_label=False, lines=2, scale=5)
-            send_btn = gr.Button('发送', variant='primary', scale=1)
+            send_btn = gr.Button('开始生成', variant='primary', scale=1)
         up_status = gr.HTML(UP_IDLE)
         gallery = gr.Gallery(label='上传预览',
                              columns=6, object_fit='cover', interactive=False)
@@ -756,9 +778,9 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         def _stop():
             global _stop_requested
             _stop_requested.set()
-            return (ABORT_HTML + ' 已发出中止请求（若任务已提交仍会在后台完成，'
-                    '可用”无参重跑续传”取回）',
-                    '已请求中止')
+            return (ABORT_HTML + ' 已发出停止请求；若任务已提交仍会在后台完成，'
+                    '可用"继续"或"取片"查看结果',
+                    '已请求停止')
 
         load_btn.click(_load, hist_dd, out)
         new_btn.click(_new, None, out)
@@ -766,8 +788,12 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         ref_btn.click(lambda: gr.update(choices=_choices()), None, hist_dd)
         stop_btn.click(_stop, None, [status_html, note_md])
         up_btn.upload(_upload, up_btn, [up_status, gallery])
+        def _continue(hist, cid):
+            yield from send(hist, cid, '继续')
         send_btn.click(send, [hist_state, cid_state, box], send_out,
                        concurrency_limit=1)
+        continue_btn.click(_continue, [hist_state, cid_state], send_out,
+                           concurrency_limit=1)
         box.submit(send, [hist_state, cid_state, box], send_out,
                    concurrency_limit=1)
         demo.load(_auto_new, None, out)
