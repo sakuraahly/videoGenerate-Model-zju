@@ -515,3 +515,67 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   接线丢 _upload 定义、全局并发=1 排队。
 - 内存协同 llm_mem nap/wake 自动接线（TASK_SUBMITTED 后让位，下轮自动唤醒）；转场=逐对 flf2v 分镜法（SYSTEM+04）。
 - 下一轮测试清单与已知待观察项见 docs/handoff-2026-09-04.md §5/§6。
+
+## 13. 2026-09-04 第二批：Agent 上下文 8192 溢出根因定位与 token 预算化修复（本批）
+
+### 13.1 现场与根因（三层）
+- **现场**：7860 界面长会话点“继续”后，模型工作一会报
+  `[执行出错] ModelServiceError: Error code: 400 … Requested token count exceeds the model's
+  maximum context length of 8192 tokens. … 7177 tokens from the input messages and 2048 tokens
+  for the completion`。SP/引擎侧任务不受影响。
+- **根因（服务端规则，实测确认）**：SGLang max_model_len=8192，请求校验=输入+max_tokens≤8192
+  （/v1/models 确认；本地 curl 验证 6116+2048 通过、57+8192 报 400）。
+- **根因（客户端，三层叠加）**：
+  1. qwen_agent(nous) 每次 LLM 调用把工具定义模板**追加进 system 消息**，固定开销大且不参与其
+     自身截断：实测 SYSTEM_MESSAGE 1828t + nous 工具模板/定义 ≈1270t ⇒ 每轮 ≈3100t
+     （/v1 usage 口径 3040~3093，与本地 QWen tokenizer 差 <3%）。
+  2. qwen_agent 的输入截断按 generate_cfg max_input_tokens 执行，**默认 58000**（≫8192≈从不
+     生效）——须显式传值。
+  3. ui_app 原裁剪是**字符口径** MAX_CTX_CHARS=6000“≈3k token”——中文内容按 token 实算远超
+     3k，且不约束“本回合内”工具往返累积 ⇒ 长历史/长回合输入可达 7177。
+  - 附带发现：scheduler.py LLM_CFG `max_tokens: 8192` ⇒ **CLI 模式任何请求都 400**
+    （57+8192>8192 实测复现），只有界面路径用 2048 覆盖而幸免。
+
+### 13.2 修复内容（代码 commit `dd473e1`）
+- **新增 `runs/agent/ctx_budget.py`**（唯一预算真值源）：常量 MODEL_MAX_CTX_TOKENS=8192 /
+  REPLY_MAX_TOKENS=2048 / TOOL_PRELUDE_TOKENS=1500 / SAFETY_TOKENS=300 /
+  UI_TRIM_TOKENS=1800 / CONV_MSG_BUDGET_TOKENS=2500；count_tokens（精确优先：
+  qwen_agent 自带 QWen tokenizer，缺省保守启发式 CJK=1/字+其余/3）；
+  trim_messages（token 口径：保最新轮次+预算内尽量保留首轮）；
+  request_budgets（max_input_tokens = tokens(system)+2500，钳位 ≤8192−2048−300）；
+  is_context_overflow_error。
+- **ui_app.py**：trim 改 token 口径（UI_TRIM_TOKENS=1800）；每次请求 generate_cfg 带
+  max_tokens=2048 + max_input_tokens（含回合内工具往返的硬预算）；服务端仍报 400 超上下文时
+  自动压缩到仅剩最新消息重试一次并提示，不再裸抛 ModelServiceError。
+- **scheduler.py**：LLM_CFG max_tokens 8192→2048（修 CLI 必 400）；run_cli 同样注入
+  max_input_tokens 并对累积 messages 做同口径 trim（超限打印提示）。
+- 预算推导（实测）：6144 输入预算 − 固定开销 ~3100 ⇒ 对话 ~2500t（≈长会话 4-6 轮），
+  UI 存档裁剪 1800t 给回合内工具往返留余量。
+- **测试**：新增 runs/agent/test_ctx_budget.py（6 项，本机+spark 各 6/6 通过；
+  本机走启发式、spark 走精确 tokenizer）。
+
+### 13.3 端到端验证（spark 真实 SGLang）
+- 复刻现场（超长首轮 ~3k 字 + 10 轮 + “继续”）→ 正常回复，无 400；
+- 巨型单条粘贴（~4 万字符）→ 框架 keep_both_sides 截断兜底，正常回复；
+- 正常短对话 sanity 通过。
+- 7860 界面进程已用新代码重启（tmux qwen-agent）。
+
+### 13.4 仍待观察 / 边界
+- 对话容量仍受服务端 ctx=8192 硬顶（预算机制保证“不越界”，不保证“不裁剪”）：
+  超长交付请分轮 + “继续”；要更大对话窗口需调 SGLang context_length
+  （config/llm_mem.json + llm-memory-optimization.md 的内存账本），并同步 ctx_budget.py。
+- count_tokens 用 qwen_agent 自带 QWen tokenizer 与 SGLang(Qwen3.8-27B) 服务端计数有 <3% 偏差，
+  已由 SAFETY_TOKENS=300 覆盖。
+- 本批改动文件：runs/agent/{ctx_budget.py(新), ui_app.py, scheduler.py, test_ctx_budget.py(新)}；
+  文档：docs/{handoff,reference}-2026-09-04.md、docs/agent-workflow.md、本文件。
+
+### 13.5 提交与同步记录（2026-09-04）
+- Windows 主库（D:\MY_CODING_PROGRAM\videoGenerate-Model-zju）commit：代码 `dd473e1`
+  （fix(agent): 上下文 8192 溢出修复——token 预算化）+ 文档提交（同批）；已 push GitHub
+  origin/master（sakuraahly/videoGenerate-Model-zju）。
+- spark 运行时副本（~/videoGenerate-Model-zju，Z: 挂载）：4 个代码文件与 4 份文档已 scp
+  同步；spark 本地 git 以内联身份 commit（仓库约定永不推 GitHub）。
+- 7860 界面进程已重启（tmux qwen-agent，新代码生效，HTTP 200 已验证）。
+- 验证：test_ctx_budget.py 本机 6/6 + spark 6/6；E2E 真实 SGLang 复刻崩溃现场
+  （超长首轮+10 轮+“继续”）、巨型单条粘贴、正常短对话——全部正常回复、无 400。
+- 遗留：本批 E2E 未动 ComfyUI/SGLang 服务（SGLang 未 nap，仍在 8000 运行）。

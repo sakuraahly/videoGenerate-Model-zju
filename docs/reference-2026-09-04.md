@@ -107,7 +107,11 @@ outputs/ logs/ uploads/ refs/  skills/ docs/ ai_daily_reports/(已删) agent_cha
   服务控制/任意文件）。
 - 界面(ui_app.py)：自动新会话+显示 id；历史加载/删除/刷新；上传(两段式+sha去重+缩略图预览)；
   发送自动清空+幂等锁；⏹中止本轮（服务端请求可能仍在完成）；状态条=`处理中 Ns·LLM:…·引擎:<末行日志>`；
-  上下文预算 MAX_CTX_CHARS=6000（≈3k token）、保留首轮+最近4轮；回复上限 REPLY_MAX_TOKENS=2048；
+  上下文预算（token 口径，见 runs/agent/ctx_budget.py）：ctx=8192 − 每轮固定开销（系统提示+工具
+  定义模板，实测 ≈3.1k token）− 回复 REPLY_MAX_TOKENS=2048 ⇒ 对话消息硬预算
+  CONV_MSG_BUDGET_TOKENS=2500（经 generate_cfg max_input_tokens 传给 qwen_agent，含回合内工具往返）、
+  界面存档裁剪 UI_TRIM_TOKENS=1800（保留最新轮次+预算内尽量保留首轮）；裁剪时对模型附加说明，
+  服务端若仍报“超上下文”400 自动压缩至最新消息重试一次；
   并发放开 default_concurrency_limit=16，send concurrency_limit=1。
 - 会话存档 schema：`logs/agent_chats/<ts>_<rand>.jsonl` 每行 {ts,role,content}（user/assistant）；
   上传缩略图 `logs/agent_chats/thumbs/<sha>.jpg`（allowed_paths 放行 thumbs/user_uploads/uploads）。
@@ -148,6 +152,7 @@ outputs/ logs/ uploads/ refs/  skills/ docs/ ai_daily_reports/(已删) agent_cha
 | 提交后 8000 停了 | 正常：nap 让位 | 下一轮自动 wake |
 | 重复生成/旧档冒充 | last_job.json 残留？ | 直跑成功已自动清；必要时 --force-new |
 | 模型回复被截断 | 单轮太长/ctx 8192 | 发“继续”；控制单轮 ≤600 字 |
+| 红错 `ModelServiceError … maximum context length 8192`（400） | 输入+2048 > 8192（预算机制失效/服务端 ctx 被改） | 2026-09-04 起由 ctx_budget.py 的 token 预算 + max_input_tokens 硬预算拦截、超限自动压缩重试一次；若再现，查 config/llm_mem.json context_length 与 ctx_budget.py 常量是否一致（改服务端 ctx 必须同步） |
 | flf2v/r2v 图不对 | 槽位未设/模板被覆盖 | refimage use --info；重设后提交；结束时 --undo |
 | ninja 缺失 | PATH 未含 venv/bin | 已修复；若再犯手动 export PATH |
 
