@@ -44,11 +44,13 @@ i2v / r2v / flf2v 的参考图）。
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent  # 项目根
@@ -98,6 +100,7 @@ def _rows(dirs: dict) -> list:
     池显示顺序：up（上传收件箱，最近最相关）→ in（ComfyUI input）→ out（ComfyUI
     output 历史产物）；input/uploads 均**递归**扫描（upload_watch 会把图片镜像到
     input/user_uploads/ 子目录，顶层扫描会漏）。
+    跳过 _quarantine/ 目录和 <1KB 图片（疑似无效）。
     """
     out = []
     seen = set()
@@ -106,14 +109,19 @@ def _rows(dirs: dict) -> list:
         p = Path(full)
         if not p.is_file() or p.name.startswith("."):
             return
+        if "_quarantine" in p.parts:
+            return
         key = f"{pool}:{p.name}:{p.stat().st_size}"
         if key in seen:
             return
         seen.add(key)
         ext = p.suffix.lower()
         kind = "video" if ext in VID_EXT else ("image" if ext in IMG_EXT else "other")
+        st = p.stat()
+        if kind == "image" and st.st_size < 1024:
+            return
         out.append({"pool": pool, "name": p.name, "full": str(p),
-                    "size": p.stat().st_size, "mtime": p.stat().st_mtime,
+                    "size": st.st_size, "mtime": st.st_mtime,
                     "kind": kind})
 
     for d, pool in ((dirs["uploads"], "up"), (dirs["input"], "in")):
@@ -142,9 +150,84 @@ def _filter_rows(rows: list, pool: str = "", name: str = "", kinds=(("image", "v
     return res
 
 
+def _load_batch_map() -> dict:
+    """加载 log.jsonl 的 sha→batch_id 映射（带 mtime+size 缓存）。"""
+    log_path = ROOT / "uploads" / "log.jsonl"
+    try:
+        st = log_path.stat()
+        key = (st.st_mtime, st.st_size)
+    except OSError:
+        return {}
+    if hasattr(_load_batch_map, '_cache') and _load_batch_map._cache_key == key:
+        return dict(_load_batch_map._cache)
+    mapping = {}
+    try:
+        for line in log_path.read_text(encoding='utf-8').splitlines():
+            try:
+                d = json.loads(line)
+                sha = d.get('sha', '')
+                bid = d.get('batch_id', '')
+                if sha and bid:
+                    mapping[sha] = bid
+            except Exception:
+                continue
+    except OSError:
+        pass
+    _load_batch_map._cache = mapping
+    _load_batch_map._cache_key = key
+    return dict(mapping)
+
+
+def _get_row_batch(row: dict, batch_map: dict) -> str:
+    """从 row 的 full path 中提取 batch_id（通过 log.jsonl 的 sha 映射）。"""
+    name = row.get('name', '')
+    parts = name.split('_', 1)
+    if len(parts) >= 2 and len(parts[0]) == 8:
+        for sha, bid in batch_map.items():
+            if sha.startswith(parts[0]):
+                return bid
+    return ''
+
+
 def cmd_list(dirs: dict, show_other: bool = False, pool: str = "",
-             name: str = "", limit: int = 25) -> int:
+             name: str = "", limit: int = 25, batch: str = "",
+             recent: int = 0) -> int:
     rows = _filter_rows(_rows(dirs), pool=pool, name=name, show_other=show_other)
+    batch_map = _load_batch_map()
+
+    if batch or not batch:
+        all_batches = {}
+        for r in rows:
+            bid = _get_row_batch(r, batch_map)
+            if bid:
+                if bid not in all_batches:
+                    all_batches[bid] = []
+                all_batches[bid].append(r)
+
+        if batch == 'all':
+            pass
+        elif batch == 'latest' or not batch:
+            if all_batches:
+                latest_bid = max(all_batches.keys(),
+                                 key=lambda b: max(r['mtime'] for r in all_batches[b]))
+                rows = all_batches[latest_bid]
+                print(f"批次过滤: batch={latest_bid}（{len(rows)} 项）")
+            else:
+                print("批次过滤: 无批次数据（素材可能来自旧版本，无 batch_id 记录）")
+        else:
+            if batch in all_batches:
+                rows = all_batches[batch]
+                print(f"批次过滤: batch={batch}（{len(rows)} 项）")
+            else:
+                print(f"批次 {batch} 不存在。可用批次: {', '.join(all_batches.keys()) or '无'}")
+                print("提示: 去掉 --batch 查看全部")
+                return 0
+
+    if recent:
+        import time as _time
+        cutoff = _time.time() - recent * 60
+        rows = [r for r in rows if r['mtime'] >= cutoff]
+
     print(f"素材池位置：{json.dumps(dirs, ensure_ascii=False)}")
     print(f"过滤：池={pool or '全部'} 名称含={name or '-'}（默认仅图片，--all 含视频/其它）")
     print(f"{'id':<10}{'池':<5}{'类型':<7}{'大小':>10}  {'名称'}")
@@ -434,6 +517,37 @@ def cmd_use(dirs: dict, sel: str, stage: str, targets: str, slot: int,
     return 0
 
 
+def cmd_prune(dirs: dict) -> int:
+    """扫描三池，将无效图片（mediacheck 校验失败）移至 quarantine 目录。"""
+    from runs.h3 import mediacheck
+    rows = _rows(dirs)
+    images = [r for r in rows if r["kind"] == "image"]
+    quarantined = 0
+    for r in images:
+        ok, reason = mediacheck.check_image_file(r["full"])
+        if ok:
+            continue
+        src = Path(r["full"])
+        day = datetime.now().strftime("%Y%m%d")
+        q_dir = ROOT / "uploads" / "_quarantine" / day
+        q_dir.mkdir(parents=True, exist_ok=True)
+        sha8 = hashlib.sha256(src.read_bytes()).hexdigest()[:8] if src.exists() else "unknown"
+        dst = q_dir / f"{sha8}_{src.name}"
+        counter = 1
+        while dst.exists():
+            dst = q_dir / f"{sha8}_{src.stem}_{counter}{src.suffix}"
+            counter += 1
+        try:
+            shutil.move(str(src), str(dst))
+            quarantined += 1
+            print(f"  隔离: {r['name']} ({reason}) -> {dst}")
+        except OSError as e:
+            print(f"  失败: {r['name']} — {e}", file=sys.stderr)
+    print(f"隔离完成：{quarantined}/{len(images)} 张图片移至 uploads/_quarantine/")
+    _log(f"prune quarantined={quarantined}/{len(images)}")
+    return 0
+
+
 def cmd_where(dirs: dict) -> int:
     for k, v in dirs.items():
         print(f"{k:<8}: {v}")
@@ -449,6 +563,8 @@ def main(argv=None) -> int:
                         help="只看某个池")
     p_list.add_argument("--name", default="", help="按文件名包含过滤")
     p_list.add_argument("--limit", type=int, default=25, help="每池最多显示行数")
+    p_list.add_argument("--batch", default="", help="按批次过滤: <id>|latest|all")
+    p_list.add_argument("--recent", type=int, default=0, help="最近 N 分钟内的素材")
     p_prom = sub.add_parser("promote")
     p_prom.add_argument("--name", required=True)
     p_prom.add_argument("--as", dest="as_name", default="")
@@ -471,6 +587,7 @@ def main(argv=None) -> int:
     p_grow.add_argument("--total", type=int, default=12,
                         help="目标总槽位数（默认 12）")
     sub.add_parser("where")
+    sub.add_parser("prune", help="扫描三池，将无效图片隔离至 uploads/_quarantine/")
     args = ap.parse_args(argv)
 
     dirs = comfy_dirs()
@@ -489,7 +606,8 @@ def main(argv=None) -> int:
 
     if args.cmd == "list":
         return cmd_list(dirs, show_other=args.all, pool=args.pool,
-                        name=args.name, limit=args.limit)
+                        name=args.name, limit=args.limit, batch=args.batch,
+                        recent=args.recent)
     if args.cmd == "promote":
         return cmd_promote(dirs, args.name, args.as_name)
     if args.cmd == "use":
@@ -520,6 +638,8 @@ def main(argv=None) -> int:
         return 0
     if args.cmd == "where":
         return cmd_where(dirs)
+    if args.cmd == "prune":
+        return cmd_prune(dirs)
     return 0
 
 

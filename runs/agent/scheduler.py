@@ -60,11 +60,13 @@ SYSTEM_MESSAGE = """\
 - flf2v：首末帧转场（首帧+末帧→平滑过渡）
 
 ═══ 工具 ═══
+- batch_submit(stage, images, ...) — 批量提交多图转场（推荐用于多图任务）
 - call_comfyui(stage, prompt, resolution, seconds, ...) — 提交视频生成
 - run_script(script, args) — 运行白名单脚本：
   · h3_text2img.py — 文生图：--prompt "描述" --output 名称
   · h3/idea2prompts.py — 从创意生成提示词
-  · h3/refimage.py — 素材管理：list/promote/use
+  · h3/refimage.py — 素材管理：list/promote/use/prune
+  · h3_batch.py — 批量状态查询/重试：status --wait / retry --batch <dir>
 - modify_workflow(path, changes) — 修改工作流节点
 - read_doc(filename) — 读取参考文档（按需）
 - list_references() — 列出可用素材
@@ -88,12 +90,15 @@ SYSTEM_MESSAGE = """\
 时长 0.1-600秒，推荐 5-15秒。
 
 ═══ 多图转场 ═══
-N 张场景图 → N-1 个 flf2v 镜头。每段：list_references → refimage use --slot 0/1 →
-call_comfyui(stage=flf2v, seconds=5) → 汇报 → 下一段。不要停下来等用户。
+N 张图 → 一次 batch_submit(stage=flf2v, images=逗号分隔) 提交全部 N-1 段；
+然后 run_script("h3_batch.py", "status --wait") 等待并取回全部产物。
+部分段失败时：run_script("h3_batch.py", "retry --batch <dir> --segments <idx>")。
+禁止逐段手动提交。
 
 ═══ 硬性限制 ═══
 ✗ 不能执行 shell 命令、管理服务（ComfyUI/SGLang/tmux）
 ✗ 不能读写白名单目录以外的文件
+✗ 工具返回 ⛔ 时表示不可恢复：不要重试同一调用，改换方案或向用户汇报
 → 用户要求上述操作时，拒绝并告知需人工操作
 
 ═══ 输出纪律 ═══
@@ -105,7 +110,7 @@ call_comfyui(stage=flf2v, seconds=5) → 汇报 → 下一段。不要停下来�
 """
 
 TOOL_NAMES = ['run_script', 'modify_workflow', 'call_comfyui', 'read_doc',
-               'list_references']
+               'list_references', 'batch_submit']
 
 
 def _detect_project_root() -> str:

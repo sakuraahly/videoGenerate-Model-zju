@@ -101,15 +101,18 @@ def _comfy_input_mirror() -> Path:
 
 def scan_once(data_dir: str, dry_run: bool = False) -> tuple:
     """扫描 Open WebUI uploads 目录并归档新文件；返回 (新增数, 跳过数, 错误)。"""
+    from runs.h3 import mediacheck
     upload_dir = Path(data_dir).expanduser() / "uploads"
     if not upload_dir.is_dir():
         return (0, 0, f"Open WebUI uploads 目录不存在: {upload_dir}")
     seen = _seen()
     mirror = _comfy_input_mirror()
-    added = skipped = 0
+    added = skipped = rejected = 0
     errors = []
     for p in sorted(upload_dir.rglob("*")):
         if not p.is_file() or p.name.startswith("."):
+            continue
+        if "_quarantine" in p.parts:
             continue
         sha = hashlib.sha256(p.read_bytes()).hexdigest()[:16]
         if sha in seen:
@@ -117,6 +120,15 @@ def scan_once(data_dir: str, dry_run: bool = False) -> tuple:
             continue
         ext = p.suffix.lower()
         kind = "video" if ext in VID_EXT else ("image" if ext in IMG_EXT else "other")
+        if kind == "image":
+            ok, reason = mediacheck.check_image_file(p)
+            if not ok:
+                if not dry_run:
+                    _record({"ts": _now(), "sha": sha, "src": str(p),
+                             "rejected": reason, "kind": kind})
+                rejected += 1
+                print(f"[upload_watch] 拒绝: {p.name} ({reason})")
+                continue
         day = datetime.now().strftime("%Y%m%d")
         dst_dir = ARCHIVE / day
         dst = dst_dir / f"{sha[:8]}_{p.name}"
@@ -136,6 +148,7 @@ def scan_once(data_dir: str, dry_run: bool = False) -> tuple:
         added += 1
         print(f"[upload_watch] {kind}: {p.name} -> {dst}")
     print(f"[upload_watch] 本轮新增 {added}，跳过 {skipped}"
+          + (f"，拒绝 {rejected}" if rejected else "")
           + (f"，错误 {len(errors)}" if errors else ""))
     return added, skipped, errors
 

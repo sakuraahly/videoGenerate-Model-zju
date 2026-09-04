@@ -368,6 +368,7 @@ class ListReferences(BaseTool):
     description = (
         '列出可作参考的素材：ComfyUI 已保存的图片（历次生成产物）、input 图库、'
         '以及 Open WebUI 上传收件箱里的文件。返回素材 id 列表。'
+        '默认只显示最近上传批次（latest）的素材；batch=all 查全部。'
         '选择参考图时：先调本工具看有哪些可用素材，再用 run_script 运行 '
         'runs/h3/refimage.py promote --name <id|文件名>（放进 ComfyUI input）或 '
         'use --name <id|文件名> --stage r2v（把该图设为某阶段模板的参考图）。'
@@ -375,17 +376,25 @@ class ListReferences(BaseTool):
     )
     parameters = {
         'type': 'object',
-        'properties': {},
+        'properties': {
+            'batch': {
+                'type': 'string',
+                'description': "批次过滤: 'latest'(默认，最近上传)|'all'(全部)|具体batch_id",
+            },
+        },
         'required': [],
     }
 
     def call(self, params: Union[str, dict], **kwargs) -> str:
+        params = self._verify_json_format_args(params) if params else {}
+        batch = (params or {}).get('batch', 'latest') or 'latest'
         script = os.path.join(PROJECT_ROOT, 'runs', 'h3', 'refimage.py')
         if not os.path.isfile(script):
             return f'错误：refimage.py 不存在于 {script}'
+        cmd = [sys.executable, script, 'list', '--batch', batch]
         try:
             result = subprocess.run(
-                [sys.executable, script, 'list'],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=120,
@@ -397,6 +406,73 @@ class ListReferences(BaseTool):
             return f'可用参考素材：\n{out}'
         except subprocess.TimeoutExpired:
             return '错误：列出素材超时'
+        except Exception as e:
+            return f'错误：{e}'
+
+
+@register_tool('batch_submit')
+class BatchSubmit(BaseTool):
+    description = (
+        '批量提交多图转场任务。N 张图 → 一次提交全部 N-1 段 flf2v 转场。'
+        '提交后用 run_script("h3_batch.py", "status --wait") 等待并取回全部产物。'
+        '部分段失败时用 run_script("h3_batch.py", "retry --batch <dir> --segments <idx>")。'
+    )
+    parameters = {
+        'type': 'object',
+        'properties': {
+            'stage': {
+                'type': 'string',
+                'enum': ['flf2v', 'i2v', 'r2v', 't2v'],
+                'description': '生成阶段类型',
+            },
+            'images': {
+                'type': 'string',
+                'description': '逗号分隔的图片路径列表',
+            },
+            'resolution': {
+                'type': 'string',
+                'description': '分辨率（可选），如 360p/720p',
+            },
+            'seconds': {
+                'type': 'integer',
+                'description': '每段视频时长（可选）',
+            },
+            'prompt': {
+                'type': 'string',
+                'description': '提示词（可选）',
+            },
+            'dry_run': {
+                'type': 'boolean',
+                'description': '仅生成 manifest 不实际提交',
+            },
+        },
+        'required': ['stage', 'images'],
+    }
+
+    def call(self, params: Union[str, dict], **kwargs) -> str:
+        params = self._verify_json_format_args(params)
+        batch_script = os.path.join(PROJECT_ROOT, 'runs', 'h3_batch.py')
+        if not os.path.isfile(batch_script):
+            return f'错误：h3_batch.py 不存在于 {batch_script}'
+        cmd = [sys.executable, batch_script, 'submit',
+               '--stage', params['stage'], '--images', params['images']]
+        if params.get('resolution'):
+            cmd.extend(['--resolution', params['resolution']])
+        if params.get('seconds'):
+            cmd.extend(['--seconds', str(params['seconds'])])
+        if params.get('prompt'):
+            cmd.extend(['--prompt', params['prompt']])
+        if params.get('dry_run'):
+            cmd.append('--dry-run')
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True,
+                                    timeout=300, cwd=PROJECT_ROOT)
+            out = (result.stdout or '') + (result.stderr or '')
+            if result.returncode != 0:
+                return f'批量提交失败 (exit {result.returncode})\n{_truncate(out)}'
+            return f'批量提交完成\n{_truncate(out)}'
+        except subprocess.TimeoutExpired:
+            return '错误：批量提交超时（300s）'
         except Exception as e:
             return f'错误：{e}'
 
@@ -447,25 +523,23 @@ class ReadDoc(BaseTool):
 
 
 # read_doc 的工具描述随 docs/agent-reading 目录自动更新（新增文档无需改代码）
-_doc_dir = os.path.join(PROJECT_ROOT, 'docs', 'agent-reading')
-if os.path.isdir(_doc_dir):
-    _doc_files = sorted(f for f in os.listdir(_doc_dir)
-                        if f.lower().endswith(('.md', '.txt')))
+try:
+    from runs.agent.doc_utils import scan_agent_reading_docs
+    _doc_files = [f for f, _, _ in scan_agent_reading_docs()]
     if _doc_files:
-        try:
-            ReadDoc.description = (
-                ReadDoc.description.split('可用文档包括：')[0]
-                + '可用文档包括：' + '、'.join(_doc_files)
-                + '。用于在任务前了解项目能力与执行协议。'
-            )
-        except Exception:  # noqa: BLE001
-            pass
+        ReadDoc.description = (
+            ReadDoc.description.split('可用文档包括：')[0]
+            + '可用文档包括：' + '、'.join(_doc_files)
+            + '。用于在任务前了解项目能力与执行协议。'
+        )
+except Exception:
+    pass
 
 
 # ---- 工具调用审计日志（透明包装：不改变 schema/行为；调用统一落 logs/run_*.log） ----
 _TOOL_NAMES = {RunScript: 'run_script', ModifyWorkflow: 'modify_workflow',
                CallComfyUI: 'call_comfyui', ReadDoc: 'read_doc',
-               ListReferences: 'list_references'}
+               ListReferences: 'list_references', BatchSubmit: 'batch_submit'}
 
 
 def _log_tool(name, event, **fields):
@@ -486,14 +560,40 @@ def _wrap_call(cls):
     name = _TOOL_NAMES[cls]
 
     def wrapped(self, params, **kwargs):
+        import hashlib as _hashlib
+        from runs.agent import turn_state
         p = params if isinstance(params, str) else json.dumps(params, ensure_ascii=False)
+        key = f"{name}:{_hashlib.sha1(p.encode()).hexdigest()[:12]}"
         _log_tool(name, 'call', params=_truncate(p, 300))
         try:
             out = orig(self, params, **kwargs)
         except Exception as e:  # noqa: BLE001
             _log_tool(name, 'error', err=_truncate(str(e), 300))
             raise
-        _log_tool(name, 'ok', out_len=len(out))
+
+        out_str = str(out)
+        is_deterministic = ('exit 3' in out_str or '⛔' in out_str
+                            or 'cannot identify image file' in out_str)
+        is_recoverable = ('exit 2' in out_str or '超时' in out_str
+                          or 'TimeoutExpired' in out_str)
+
+        if is_deterministic:
+            n = turn_state.bump_retry(key, recoverable=False)
+            _log_tool(name, 'det_fail', count=str(n))
+            if n >= turn_state.MAX_DETERMINISTIC_RETRIES:
+                return (f'⛔ 熔断：{name} 同一操作已连续失败 {n} 次（不可恢复）。'
+                        f'不要重试同一调用，改换方案或向用户汇报。'
+                        f'如已更换素材，请重新上传或稍后再试。')
+        elif is_recoverable:
+            n = turn_state.bump_retry(key, recoverable=True)
+            _log_tool(name, 'rec_fail', count=str(n))
+            if n >= turn_state.MAX_RECOVERABLE_RETRIES:
+                return (f'⛔ 熔断：{name} 连续可恢复失败 {n} 次，'
+                        f'建议检查服务状态或更换方案。')
+        else:
+            turn_state.reset_retry(key)
+            _log_tool(name, 'ok', out_len=len(out_str))
+
         return out
 
     wrapped.__name__ = orig.__name__
@@ -503,5 +603,6 @@ def _wrap_call(cls):
     cls.call = wrapped
 
 
-for _cls in (RunScript, ModifyWorkflow, CallComfyUI, ReadDoc, ListReferences):
+for _cls in (RunScript, ModifyWorkflow, CallComfyUI, ReadDoc,
+             ListReferences, BatchSubmit):
     _wrap_call(_cls)

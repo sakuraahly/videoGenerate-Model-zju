@@ -24,6 +24,7 @@ import hashlib
 import json
 import os
 import queue
+import secrets
 import shutil
 import sys
 import threading
@@ -45,6 +46,23 @@ VID_EXT = {'.mp4', '.webm', '.mov', '.mkv', '.gif'}
 
 _active_turn = threading.Lock()  # 发送幂等锁：忙碌时再次点击直接忽略，不产生重复任务
 _stop_requested = threading.Event()  # 停止按钮信号：置位后当前轮尽早收尾（程序级中止）
+_upload_in_progress = False  # 上传进行中标志：防止上传/发送竞争
+_pending_batch_id: str | None = None  # 当前待发送批次的 batch_id
+
+
+# ---------------------------------------------------------------- 状态栏 HTML 常量
+def _pill(text, fg, bg, border):
+    return (f'<div style="padding:4px 8px;background:{bg};'
+            f'border:1px solid {border};border-radius:4px;'
+            f'color:{fg};font-weight:600;font-size:13px">{text}</div>')
+
+
+IDLE_HTML = '<span style="color:green">● 等待输入</span>'
+BUSY_HTML = lambda t: f'<span style="color:#b45309">● {t}</span>'
+ERROR_HTML = '<span style="color:red">● 出错</span>'
+ABORT_HTML = '<span style="color:#b45309">● 已中止</span>'
+UP_IDLE = '<span style="color:#888">尚未上传素材</span>'
+UP_LOADING = lambda n: _pill(f'⏳ 正在上传中… {n} 个文件', '#8a6d1a', '#fff8e1', '#e7d492')
 
 
 
@@ -165,6 +183,10 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     """后台线程：新开一个 Assistant 处理当前轮（无状态，历史由外部传入）。"""
     from qwen_agent.agents import Assistant
     from runs.agent.scheduler import LLM_CFG, SYSTEM_MESSAGE, TOOL_NAMES
+    from runs.agent import turn_state
+    global _pending_batch_id
+    turn_state.begin_turn(batch_id=_pending_batch_id)
+    _pending_batch_id = None
 
     trimmed, dropped = trim_context(history + [{'role': 'user', 'content': user_text}])
     payload = list(trimmed)
@@ -318,8 +340,10 @@ def ingest_upload(paths) -> tuple:
 
     - 任意类型 → 归档 uploads/YYYYMMDD/<sha8>_<原名>（sha 去重）+ log.jsonl 流水；
     - 图片额外镜像到 ComfyUI input/user_uploads/<原名>（LoadImage/refimage 立即可见）。
-    返回 (给用户的中文摘要, 图片预览路径列表)。
+    - 图片类先经 mediacheck 校验，无效图片跳过归档和镜像。
+    返回 (给用户的中文摘要, 图片预览路径列表, 无效文件详情列表, batch_id)。
     """
+    from runs.h3 import mediacheck
     if isinstance(paths, (str, Path)):
         paths = [paths]
     input_mirror = _comfy_input_dir() / 'user_uploads'
@@ -327,6 +351,8 @@ def ingest_upload(paths) -> tuple:
     kinds = []
     seen = _known_shas()
     previews = []
+    invalid_details = []
+    batch_id = 'b_' + secrets.token_hex(4)
     for raw in paths or []:
         p = _to_path(raw)
         if not p or not p.is_file():
@@ -341,6 +367,11 @@ def ingest_upload(paths) -> tuple:
         ext = p.suffix.lower()
         kind = 'video' if ext in VID_EXT else ('image' if ext in IMG_EXT else 'other')
         kinds.append(kind)
+        if kind == 'image':
+            ok, reason = mediacheck.check_image_bytes(data)
+            if not ok:
+                invalid_details.append((p.name, reason))
+                continue
         if sha not in seen:
             day = datetime.now().strftime('%Y%m%d')
             dst_dir = UPLOADS_DIR / day
@@ -350,7 +381,8 @@ def ingest_upload(paths) -> tuple:
                 shutil.copy2(p, dst)
                 with open(UPLOADS_LOG, 'a', encoding='utf-8') as f:
                     f.write(json.dumps({'ts': _now(), 'sha': sha, 'src': str(p),
-                                        'archived': str(dst), 'kind': kind},
+                                        'archived': str(dst), 'kind': kind,
+                                        'batch_id': batch_id},
                                        ensure_ascii=False) + '\n')
                 seen.add(sha)
                 added += 1
@@ -375,11 +407,14 @@ def ingest_upload(paths) -> tuple:
             parts.append(f'⏩ {dup} 个重复已跳过')
         else:
             parts.append(f'⏩ {dup} 个素材已在池中（可直接使用）')
+    if invalid_details:
+        detail_str = '，'.join(f'{name}（{reason}）' for name, reason in invalid_details)
+        parts.append(f'🚫 {len(invalid_details)} 个无效：{detail_str}')
     if err:
         parts.append(f'❌ {err} 项处理失败')
     if not parts:
         parts.append('⚠️ 未收到有效文件')
-    return ' · '.join(parts), previews
+    return ' · '.join(parts), previews, invalid_details, batch_id
 
 
 
@@ -404,6 +439,15 @@ def tail_run_log(max_chars: int = 120) -> str:
         return data[-max_chars:].decode('utf-8', errors='replace').strip().splitlines()[-1]
     except Exception:  # noqa: BLE001
         return ''
+def _prewarm_on_load():
+    """页面加载后预热（daemon 线程中调用）。"""
+    try:
+        from runs.agent import doc_state
+        doc_state.prewarm()
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------- Gradio 界面
 def _choices() -> list:
     return [(label, cid) for cid, label in list_chats()]
@@ -421,15 +465,21 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         user_text = (user_text or '').strip()
         if not _active_turn.acquire(blocking=False):
             yield (fmt_msgs(chat_hist or []),
-                   '⏳ 上一轮仍在处理中，本次点击已忽略',
-                   '上一轮仍在处理中；请等状态变 idle 或点”⏹ 中止本轮”。', gr.update(), cid,
+                   BUSY_HTML('上一轮仍在处理中，本次点击已忽略'),
+                   '上一轮仍在处理中；请等状态变绿或点”⏹ 中止本轮”。', gr.update(), cid,
                    chat_hist or [], gr.update())
             return
         try:
             global _stop_requested
             _stop_requested = threading.Event()
+            if _upload_in_progress:
+                yield (fmt_msgs(chat_hist or []),
+                       BUSY_HTML('上传尚未完成，请稍候再发送'),
+                       '⏳ 素材上传进行中，请等待上传完成后再发送。', gr.update(), cid,
+                       chat_hist or [], gr.update())
+                return
             if not user_text:
-                yield (fmt_msgs(chat_hist or []), '请输入内容。', 'idle', gr.update(), cid,
+                yield (fmt_msgs(chat_hist or []), IDLE_HTML, '请输入内容。', gr.update(), cid,
                        chat_hist or [], gr.update())
                 return
             if not cid:
@@ -445,8 +495,9 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 t0 = time.time()
                 while not stop.is_set():
                     secs = int(time.time() - t0)
-                    text = (f'⏳ 处理中 {secs}s · LLM:{llm_state_text()} · '
-                            f'引擎: {tail_run_log() or "等待引擎事件"}')
+                    text = BUSY_HTML(
+                        f'处理中 {secs}s · LLM:{llm_state_text()} · '
+                        f'引擎: {tail_run_log() or "等待引擎事件"}')
                     ev.put({'kind': 'hb', 'text': text})
                     stop.wait(HEARTBEAT_SEC)
 
@@ -454,7 +505,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                              daemon=True).start()
             threading.Thread(target=_heartbeat, daemon=True).start()
 
-            status = '🔶 处理中…'
+            status = BUSY_HTML('处理中…')
             assistant = ''
             phase = 'ok'
             aborted = False
@@ -485,24 +536,28 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             stop.set()
 
             if aborted:
+                final_status = ABORT_HTML
                 note = ('已中止本轮。若服务端请求仍在执行并可能已提交任务，任务会保留在'
-                        '断点/ComfyUI 队列：想取回就说“无参重跑续传”，想放弃可稍后说'
-                        '“重来”。')
+                        '断点/ComfyUI 队列：想取回就说”无参重跑续传”，想放弃可稍后说'
+                        '”重来”。')
                 msgs.append({'role': 'assistant',
                              'content': '[已中止] 本轮已由用户停止等待（服务端请求可能仍在完成）。'})
             elif phase == 'error':
+                final_status = ERROR_HTML
                 msg = f'[执行出错] {assistant}'
                 msgs.append({'role': 'assistant', 'content': msg})
                 note = '上一轮执行出错：可把报错内容发我，或检查 logs/run_*.log。'
             elif assistant:
+                final_status = IDLE_HTML
                 msgs.append({'role': 'assistant', 'content': assistant})
-                note = ''
+                note = '✅ 本轮完成'
             else:
+                final_status = IDLE_HTML
                 msgs.append({'role': 'assistant',
-                             'content': '（模型未返回内容，可能被截断；发送“继续”重试）'})
-                note = '模型未返回内容（可能被截断），发送“继续”续写。'
+                             'content': '（模型未返回内容，可能被截断；发送”继续”重试）'})
+                note = '模型未返回内容（可能被截断），发送”继续”续写。'
             save_chat(cid, msgs)
-            yield (fmt_msgs(msgs), 'idle', note, gr.update(choices=_choices()), cid,
+            yield (fmt_msgs(msgs), final_status, note, gr.update(choices=_choices()), cid,
                    msgs, clear_box)
         finally:
             _active_turn.release()
@@ -518,7 +573,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             del_btn = gr.Button('删除所选')
             ref_btn = gr.Button('刷新')
             new_btn = gr.Button('＋新对话', variant='primary')
-        status_html = gr.HTML('<span style="color:green">● idle</span>')
+        status_html = gr.HTML(IDLE_HTML)
         with gr.Row():
             stop_btn = gr.Button('⏹ 中止本轮', variant='stop', size='sm')
             gr.Markdown('_程序级状态：随心跳显示 LLM 运行/让位 + 引擎日志行；卡住先看这里，再决定中止_')
@@ -530,7 +585,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             box = gr.Textbox(placeholder='描述你的创意，我来生成视频…（Enter 发送）',
                              show_label=False, lines=2, scale=5)
             send_btn = gr.Button('发送', variant='primary', scale=1)
-        up_status = gr.HTML('<span style="color:#888">尚未上传素材</span>')
+        up_status = gr.HTML(UP_IDLE)
         gallery = gr.Gallery(label='上传预览',
                              columns=6, object_fit='cover', interactive=False)
         note_md = gr.Markdown('_…_')
@@ -540,21 +595,24 @@ def run_app(port: int = 7860, share: bool = False) -> None:
 
         def _auto_new():
             cid = new_chat_id()
-            return ([], 'idle',
+            threading.Thread(
+                target=lambda: _prewarm_on_load(),
+                daemon=True).start()
+            return ([], IDLE_HTML,
                     f'✅ 已自动开启新对话（会话 id：`{cid}`），直接输入即可。',
                     gr.update(choices=_choices()), cid, [])
 
         def _load(sel):
             if not sel:
-                return [], 'idle', '请先选择历史会话。', gr.update(), '', []
+                return [], IDLE_HTML, '请先选择历史会话。', gr.update(), '', []
             msgs = load_chat(sel)
-            return (fmt_msgs(msgs), 'idle',
+            return (fmt_msgs(msgs), IDLE_HTML,
                     f'已加载会话 {sel}（{len(msgs) // 2} 轮），可直接继续提问。',
                     gr.update(), sel, msgs)
 
         def _new():
             cid = new_chat_id()
-            return [], 'idle', f'✅ 已开启新对话（会话 id：`{cid}`）。', \
+            return [], IDLE_HTML, f'✅ 已开启新对话（会话 id：`{cid}`）。', \
                 gr.update(choices=_choices()), cid, []
 
         def _del(sel):
@@ -563,36 +621,42 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             return gr.update(choices=_choices())
 
         def _upload(files):
+            global _upload_in_progress
             n = len(files) if files else 0
-            ack = ('<div style=”padding:4px 8px;background:#fff8e1;'
-                   'border:1px solid #e7d492;border-radius:4px;color:#8a6d1a;'
-                   f'font-weight:600;font-size:13px”>⏳ 正在处理 {n} 个文件…</div>')
-            yield ack, []
-            if not files:
-                yield ('<div style="padding:6px 10px;background:#fdf2f2;'
-                       'border:1px solid #e5b8b8;border-radius:6px;color:#c0392b;'
-                       'font-weight:600">⚠️ 未收到文件（请重新选择图片/视频）。</div>'), []
-                return
+            _upload_in_progress = True
             try:
-                msg, previews = ingest_upload(files)
-                color = '#0a7d32' if '❌' not in msg else '#c0392b'
-                bg = '#f4fbf6' if color == '#0a7d32' else '#fdf2f2'
-                border = '#9dd6ae' if color == '#0a7d32' else '#e5b8b8'
-                html = (f'<div style="padding:4px 8px;background:{bg};'
-                        f'border:1px solid {border};border-radius:4px;'
-                        f'color:{color};font-weight:600;font-size:13px">'
-                        f'{msg}</div>')
-                yield html, previews
-            except Exception as e:  # noqa: BLE001
-                yield (f'<div style="padding:6px 10px;background:#fdf2f2;'
-                       f'border:1px solid #e5b8b8;border-radius:6px;color:#c0392b;'
-                       f'font-weight:600">❌ 上传处理异常：{type(e).__name__}: {e}</div>'), []
+                yield UP_LOADING(n), gr.update()
+                if not files:
+                    yield (_pill('⚠️ 未收到文件（请重新选择图片/视频）',
+                                 '#c0392b', '#fdf2f2', '#e5b8b8'), [])
+                    return
+                try:
+                    msg, previews, _invalid, batch_id = ingest_upload(files)
+                    if '✅' in msg:
+                        global _pending_batch_id
+                        _pending_batch_id = batch_id
+                        from runs.agent import turn_state
+                        turn_state.reset_all_on_upload()
+                    has_reject = '🚫' in msg or '❌' in msg
+                    color = '#0a7d32' if not has_reject else '#c0392b'
+                    bg = '#f4fbf6' if color == '#0a7d32' else '#fdf2f2'
+                    border = '#9dd6ae' if color == '#0a7d32' else '#e5b8b8'
+                    html = (f'<div style=”padding:4px 8px;background:{bg};'
+                            f'border:1px solid {border};border-radius:4px;'
+                            f'color:{color};font-weight:600;font-size:13px”>'
+                            f'{msg}</div>')
+                    yield html, previews
+                except Exception as e:  # noqa: BLE001
+                    yield (_pill(f'❌ 上传处理异常：{type(e).__name__}: {e}',
+                                 '#c0392b', '#fdf2f2', '#e5b8b8'), [])
+            finally:
+                _upload_in_progress = False
 
         def _stop():
             global _stop_requested
             _stop_requested.set()
-            return ('<span style="color:#b45309">⏹ 已发出中止请求：本轮将尽快收尾'
-                    '（若任务已提交仍会在后台完成，可用“无参重跑续传”取回）。</span>',
+            return (ABORT_HTML + ' 已发出中止请求（若任务已提交仍会在后台完成，'
+                    '可用”无参重跑续传”取回）',
                     '已请求中止')
 
         load_btn.click(_load, hist_dd, out)
