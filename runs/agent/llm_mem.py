@@ -39,6 +39,15 @@ NAPKILL_FINISHED = 'llm_mem_nap_done'  # 供测试/日志识别
 
 
 def _log(text: str) -> None:
+    # book-11：关键事件入库（logutil 单一 Writer，进程内同 H3_LOG_FILE）；保留一行 stdout
+    try:
+        if str(PROJECT_ROOT / 'runs') not in sys.path:
+            sys.path.insert(0, str(PROJECT_ROOT / 'runs'))
+        from h3 import logutil
+        logutil.ensure_run_log(PROJECT_ROOT, 'llm-mem')
+        logutil.log_event('llm-mem', text)
+    except Exception:  # noqa: BLE001
+        pass
     print(f'[llm_mem] {text}')
 
 

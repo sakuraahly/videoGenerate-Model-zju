@@ -182,5 +182,9 @@
 
 - **查看/清理**：`python runs/dev.py logs view [-N] [--remote]`（本地 run log 尾部 + 审计 jsonl；`--remote` 追加 spark `~/agent.log` 与 logs/ 清单）、`python runs/dev.py logs check`（格式/坏行/轮转健康；自动跳过 book-11 前旧格式日志）、`python runs/dev.py logs clean [--yes]`（清 `.1` 轮转，默认 dry-run）。
 - **agent 行为审计**：`logs/agent_tool_audit.jsonl`（每工具调用一行：ts/tool/关键参数/stage-resolution-seconds-images-session/prompt_id/result_len/ok）。
-- **`~/agent.log` 运维**：该文件是 tmux 会话 `agent` 的 tee 输出（scheduler 全部 stdout/stderr），会持续增长；**临时排障**用 `tail/grep`，**不要**在 `dev.py logs` 里默认拉全量；建议保留 7~14 天，重启 agent 时顺带 `: > ~/agent.log` 截断，或按机器磁盘情况增加 truncate 频率。文档均以 `~/agent.log` 为准（旧文档 `~/qwen-agent.log` 已作废）。
+- **`~/agent.log` 运维（保留 360 天，用户定稿）**：该文件是 tmux 会话 `agent` 的 tee 输出（scheduler 全部 stdout/stderr），会持续增长；**临时排障**用 `tail/grep`，**不要**在 `dev.py logs` 里默认拉全量。
+  - **轮转**：`python runs/dev.py logs agent-log rotate` —— 必须在 **agent 已停止、重启之前** 调用（先 `tmux kill-session -t agent`）：把当前 `~/agent.log` 归档为 `~/agent.log.<YYYYMMDD>` 并清理超过保留天数（默认 360）的旧归档、再 `touch` 新建。若在 agent 运行时轮转，旧 tee 句柄仍写旧归档（无实效）。
+  - **仅清理旧档**：`python runs/dev.py logs agent-log --mode prune`。
+  - 文档均以 `~/agent.log` 为准（旧文档 `~/qwen-agent.log` 已作废）。
 - **不错失参数**：任务提交日志（submitted/submitted_only）必须含 `imgs/resolution/seconds/seed/steps/prompt_len`——若在日志里看不到这些字段，视为缺失（按 book-11 验收标准回归）。
+- **组件事件统一格式**：`llm_mem`/`task-watch`（状态转移 `poll_state`）走进程内 logutil（run log 入库）；`sync_auto` 走 `logutil.log_file` 写 `logs/sync_auto.log`（同为 `[ts] py: …` 格式）；会话↔日志互链见 `logs/agent_chats/<cid>.meta.json`（run_log 路径）。

@@ -124,7 +124,7 @@
 ---
 
 ## 9. 待用户输入 / 待定项
-- `~/agent.log` 轮转方式（系统 logrotate vs 应用内轮转）与保留天数（建议 7~14 天）。
+- ~~`~/agent.log` 轮转方式与保留天数~~ → **已定稿：保留 360 天**；轮转 = `python runs/dev.py logs agent-log rotate`（agent 停止后、重启前），仅清理 = `--mode prune`。
 - 是否需要「诊断级」日志（DEBUG）开关与默认级别（建议默认 info，诊断可选）。
 - 日志是否加入版本指纹行（建议加：每个 run log 头部写入 `AGENT_VERSION`+root+形态）。
 - 审计 jsonl 的保留策略与是否需要脱敏。
@@ -137,10 +137,11 @@
 - **步骤1 收敛**：`logutil` 增强（5MB 上限+`.1` 轮转、`# TZ=UTC+8` 文件头、`bare` 模式、`fmt`）；`h3_submit` 的 `_ensure_run_log`/`_log_event` 改为委托 logutil（保留同名薄壳，101 单测兼容）。
 - **步骤2 关键参数不错失**：`tools.py` 新增 `_log_tool_audit` → `logs/agent_tool_audit.jsonl`（ts/tool/关键参数 stage-resolution-seconds-images-session-script_name/result_len/ok/prompt_id）；`h3_submit` submitted/submitted_only 行补 `resolution/seconds/seed/steps/prompt_len/imgs`（复用 `_gp_summary`）。
 - **步骤5 可观测**：`dev.py logs view/check/clean`（view 含 `--remote` 跨端查看 spark `~/agent.log` 与 logs/；check 只检 book-11 格式/TZ 头，自动跳过旧格式；clean 清 `.1` 轮转，默认 dry-run）。
-- **测试**：`runs/h3/tests` 101 用例全绿（含修复两处过时用例：refimage 单字节测试数据不满足 book-08 的 ≥1KB 有效图过滤；r2v 模板用例接受 book-10 默认资产守卫新文案）。
+- **测试**：`runs/h3/tests` 用例全绿（101→103：新增 log_file 统一格式/轮转两用例；含修复两处过时用例：refimage 单字节测试数据不满足 book-08 的 ≥1KB 有效图过滤；r2v 模板用例接受 book-10 默认资产守卫新文案）。
+- **批次2（2026-09-04 补）**：`logutil.log_file` 公开接口（指定文件+统一格式+轮转）；`sync_auto._log` → `logs/sync_auto.log` 统一 `[ts] py: sync-auto …` 格式；`llm_mem._log` → 进程内 logutil（run log 入库，保留一行 stdout）；`task_watch` 状态转移持久化（`poll_state prompt_id/batch=… status=… progress=…`，仅变化时落一行，防垃圾）；`ui_app` 会话⇆run_log 互链（`logs/agent_chats/<cid>.meta.json` 记 run_log/ts/n_msgs）+ `tail_run_log` 优先当前任务日志；`~/agent.log` 轮转/保留 360 天（`dev.py logs agent-log rotate/prune`）。
 
 ### 未完成（下一批）
-- task_watch 轮询进度/段完成持久化；ui_app 会话↔run log 互链与 `tail_run_log` 精准定位；llm_mem/sync_auto 关键事件入库（两者现无自建 logger，仅需补事件）。
+- ~~task_watch 轮询进度/段完成持久化；ui_app 会话↔run log 互链与 `tail_run_log` 精准定位；llm_mem/sync_auto 关键事件入库~~ → **批次2 已完成**。
 - 跨端回写：win-remote 下载后把 spark 提交段回写本地 run log（当前提供 `dev.py logs view --remote` 轻量联通观察）。
-- `~/agent.log` 轮转落地方案（见 dev-workflow 文档指引；建议保留 7~14 天，重启 agent 时 `: > ~/agent.log` 或按需 truncate）。
+- `~/agent.log` 轮转落地方案：**已定稿并实现**（`dev.py logs agent-log rotate/prune`，保留 360 天；见 dev-workflow §11）。
 - 步骤6 端到端验收（配合 book-09 黄金路径）。

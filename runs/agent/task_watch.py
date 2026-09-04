@@ -2,6 +2,7 @@
 import time
 import os
 import queue
+import sys
 import threading
 import requests
 from typing import Optional
@@ -35,6 +36,37 @@ def get_queue() -> Optional[dict]:
     return None
 
 
+# book-11：状态转移持久化（只在状态/进度变化时落一行，防垃圾）
+_PROJECT_ROOT = os.environ.get("VIDEOGEN_PROJECT_ROOT", os.path.expanduser("~/videoGenerate-Model-zju"))
+_seen = {}
+
+
+def _log_tw(event: str) -> None:
+    try:
+        _runs = os.path.join(_PROJECT_ROOT, "runs")
+        if _runs not in sys.path:
+            sys.path.insert(0, _runs)
+        from h3 import logutil
+        logutil.ensure_run_log(_PROJECT_ROOT, "task-watch")
+        logutil.log_event("task-watch", event)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _emit(kind: str, key: str, result: dict) -> dict:
+    """状态或进度变化时落一行日志，随后返回 result（原行为不变）。"""
+    try:
+        sig = (result.get("status"), result.get("progress"))
+        k = kind + ":" + key
+        if _seen.get(k) != sig:
+            _seen[k] = sig
+            label = "prompt_id" if kind == "single" else "batch"
+            _log_tw(f"poll_state {label}={key} status={sig[0]} progress={sig[1]}")
+    except Exception:  # noqa: BLE001
+        pass
+    return result
+
+
 def poll_single(prompt_id: str) -> dict:
     """轮询单个任务的当前状态。
     
@@ -48,27 +80,27 @@ def poll_single(prompt_id: str) -> dict:
             result = history[prompt_id]
             status_obj = result.get('status', {})
             if status_obj.get('completed', False):
-                return {'status': 'completed', 'progress': '✅ 已完成'}
+                return _emit('single', prompt_id, {'status': 'completed', 'progress': '✅ 已完成'})
             elif status_obj.get('status_str') == 'error':
                 error_msg = result.get('outputs', {}).get('error', '未知错误')
-                return {'status': 'failed', 'progress': f'❌ 失败: {error_msg}'}
+                return _emit('single', prompt_id, {'status': 'failed', 'progress': f'❌ 失败: {error_msg}'})
         
         # 再查队列队
         queue_info = get_queue()
         if queue_info:
             for item in queue_info.get('queue_running', []):
                 if len(item) > 1 and item[1] == prompt_id:
-                    return {'status': 'running', 'progress': '🔄 生成中...'}
+                    return _emit('single', prompt_id, {'status': 'running', 'progress': '🔄 生成中...'})
             
             for item in queue_info.get('queue_pending', []):
                 if len(item) > 1 and item[1] == prompt_id:
-                    return {'status': 'queued', 'progress': '⏳ 排队中...'}
+                    return _emit('single', prompt_id, {'status': 'queued', 'progress': '⏳ 排队中...'})
         
         # 未找到任务，可能已失效
-        return {'status': 'failed', 'progress': '❌ 任务不存在或已过期'}
+        return _emit('single', prompt_id, {'status': 'failed', 'progress': '❌ 任务不存在或已过期'})
         
     except Exception as e:
-        return {'status': 'failed', 'progress': f'❌ 查询失败: {str(e)}'}
+        return _emit('single', prompt_id, {'status': 'failed', 'progress': f'❌ 查询失败: {str(e)}'})
 
 
 def poll_batch(manifest_path: str) -> dict:
@@ -81,10 +113,10 @@ def poll_batch(manifest_path: str) -> dict:
         done = sum(1 for s in segs if s.get('state') == 'completed')
         failed = sum(1 for s in segs if s.get('state') in ('failed', 'timeout'))
         if failed == 0 and done == total:
-            return {'status': 'completed', 'progress': f'✅ 批量完成 {done}/{total}'}
+            return _emit('batch', manifest_path, {'status': 'completed', 'progress': f'✅ 批量完成 {done}/{total}'})
         if failed and done + failed == total:
-            return {'status': 'failed', 'progress': f'❌ 批量完成 {done}/{total}，失败 {failed}'}
-        return {'status': 'running', 'progress': f'🔄 批量处理中 {done}/{total}'}
+            return _emit('batch', manifest_path, {'status': 'failed', 'progress': f'❌ 批量完成 {done}/{total}，失败 {failed}'})
+        return _emit('batch', manifest_path, {'status': 'running', 'progress': f'🔄 批量处理中 {done}/{total}'})
     except Exception as e:  # noqa: BLE001
         return {'status': 'failed', 'progress': f'❌ 批量状态读取失败: {e}'}
 

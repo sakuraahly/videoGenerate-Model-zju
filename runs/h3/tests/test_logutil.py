@@ -93,6 +93,25 @@ class TestLogutilEvents(unittest.TestCase):
             out = logutil.ensure_run_log(td, "tool-q")
             self.assertEqual(out, "")
 
+    def test_log_file_unified_format(self):
+        # book-11：log_file 写指定文件，统一格式 `[ts] py: <tool> <event>`
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "sync_auto.log"
+            logutil.log_file(str(p), "sync-auto", "合并轮开始……")
+            logutil.log_file(str(p), "sync-auto", "合并轮完成。")
+            lines = p.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), 2)
+            self.assertTrue(lines[0].startswith("[") and "] py: sync-auto " in lines[0])
+
+    def test_log_file_rotate(self):
+        # 超过上限（用极小上限触发）→ 旋转到 .1
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "big.log"
+            logutil.log_file(str(p), "t", "x" * 2000, rotate_mb=0.001)  # 1KB 上限
+            logutil.log_file(str(p), "t", "y" * 2000, rotate_mb=0.001)
+            self.assertTrue((Path(str(p) + ".1")).exists())
+            self.assertTrue(p.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -449,6 +449,40 @@ def cmd_logs(args):
         print("[OK] 日志系统健康" if issues == 0 else f"[FAIL] 日志系统 {issues} 处异常")
         return 0 if issues == 0 else 1
 
+    if args.action == "agent-log":
+        """spark ~/agent.log 轮转与 360 天保留（book-11）。
+        rotate: 仅当 agent 已停止时调用 —— kill 之后、重启之前：
+          把现有 ~/agent.log 归档为 ~/agent.log.<YYYYMMDD>，并清掉超过保留天数的旧归档。
+        prune: 仅清理旧归档（不轮转当前）。
+        """
+        days = args.days or 360
+        if args.mode == "prune":
+            cmd = (f"ls -1t ~/agent.log.* 2>/dev/null | head -200 > /tmp/aglog_list && "
+                   f"while read p; do n=$(stat -c %Y \"$p\" 2>/dev/null); "
+                   f"now=$(date +%s); if [ $((now - n)) -gt $(({days} * 86400)) ]; then rm -f \"$p\"; echo PRUNED \"$p\"; fi; done < /tmp/aglog_list")
+            rc, out, err = _ssh(cmd)
+            pruned = [l for l in (out or err).splitlines() if l.startswith("PRUNED")]
+            print(f"agent.log 旧归档清理：{len(pruned)} 个（保留 {days} 天；None=尚未轮转过）")
+            return 0
+        # rotate
+        rc, out, err = _ssh("test -f ~/agent.log && mv ~/agent.log ~/agent.log.$(date +%Y%m%d) && echo ROTATED; touch ~/agent.log; ls -1 ~/agent.log.* 2>/dev/null | head -6")
+        rotated = "ROTATED" in (out or err)
+        arch = [l for l in (out or err).splitlines() if "agent.log." in l]
+        print(("已轮转: ~/agent.log -> ~/agent.log.<YYYYMMDD>（请确认 agent 已停止，否则老 tee 句柄仍写旧归档）"
+               if rotated else "当前无 ~/agent.log 可轮转（首次启动前无需）"))
+        for l in arch[:6]:
+            print("  归档: " + l)
+        # 轮转后清理超期归档（保留 days 天）
+        pc = (f"ls -1t ~/agent.log.* 2>/dev/null | head -200 > /tmp/aglog_list && "
+              f"while read p; do n=$(stat -c %Y \"$p\" 2>/dev/null); "
+              f"now=$(date +%s); if [ $((now - n)) -gt $(({days} * 86400)) ]; then rm -f \"$p\"; echo PRUNED \"$p\"; fi; done < /tmp/aglog_list")
+        rc2, out2, err2 = _ssh(pc)
+        pruned = [l for l in (out2 or err2).splitlines() if l.startswith("PRUNED")]
+        for p in pruned:
+            print("  清理(>%d 天): %s" % (days, p[7:]))
+        print("[OK] agent-log 轮转/保留完成（保留天数 %d）" % days)
+        return 0
+
     if args.action == "clean":
         # 只清 .1 轮转与超期审计行（默认 dry-run；--yes 才删）
         removed = []
@@ -485,11 +519,14 @@ def main(argv=None):
     t = sub.add_parser("test", help="consistency+unit+smoke")
     t.add_argument("--unit", action="store_true")
     t.add_argument("--smoke", action="store_true")
-    lg = sub.add_parser("logs", help="日志工具盒：view/check/clean（book-11）")
-    lg.add_argument("action", choices=["view", "check", "clean"])
+    lg = sub.add_parser("logs", help="日志工具盒：view/check/clean/agent-log（book-11）")
+    lg.add_argument("action", choices=["view", "check", "clean", "agent-log"])
     lg.add_argument("--limit", type=int, default=None, help="view 显示行数")
     lg.add_argument("--remote", action="store_true", help="view 额外显示 spark 端 agent/日志")
     lg.add_argument("--yes", action="store_true", help="clean 真正删除（默认 dry-run）")
+    lg.add_argument("--mode", choices=["rotate", "prune"], default="rotate",
+                    help="agent-log: rotate(轮转当前+清旧) 或 prune(仅清旧)")
+    lg.add_argument("--days", type=int, default=360, help="agent-log 保留天数（默认 360）")
     args = ap.parse_args(argv)
 
     if args.cmd == "check":

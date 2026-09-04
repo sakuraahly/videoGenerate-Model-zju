@@ -89,6 +89,25 @@ def log_event(tool: str, event: str, bare: bool = False) -> None:
     _append(path, event if (bare or not tool) else f"{tool} {event}")
 
 
+def log_file(path: str, tool: str, event: str, rotate_mb: int = 5) -> None:
+    """向【指定文件】写入统一格式行（book-11：专供 sync_auto 等长生命周期工具）。
+    """
+    import os as _os
+    try:
+        from pathlib import Path as _P
+        _P(path).parent.mkdir(parents=True, exist_ok=True)
+        if rotate_mb > 0:
+            try:
+                if _os.path.getsize(path) > rotate_mb * 1_000_000:
+                    _os.replace(path, path + ".1")
+            except OSError:
+                pass
+        with open(path, "a", encoding="utf-8") as _fh:
+            _fh.write(f"[{_ts()}] py: {tool} {event}\n")
+    except OSError:
+        pass
+
+
 def fmt(**fields) -> str:
     """结构化字段 → 'k=v ...'（值含空格会被原样保留，便于人读）。"""
     return " ".join(f"{k}={v}" for k, v in fields.items())

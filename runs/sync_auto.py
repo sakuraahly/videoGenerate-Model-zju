@@ -51,12 +51,20 @@ def _now() -> str:
 
 
 def _log(text: str) -> None:
+    # book-11：统一格式（logutil 单一 Writer）写 logs/sync_auto.log；保留 stdout 供 agent.log
     try:
-        LOG.parent.mkdir(parents=True, exist_ok=True)
-        with open(LOG, "a", encoding="utf-8") as f:
-            f.write(f"[{_now()}] {text}\n")
-    except OSError:
-        pass
+        import sys as _sys
+        if str(ROOT / "runs") not in _sys.path:
+            _sys.path.insert(0, str(ROOT / "runs"))
+        from h3 import logutil
+        logutil.log_file(str(LOG), "sync-auto", text)
+    except Exception:  # noqa: BLE001
+        try:
+            LOG.parent.mkdir(parents=True, exist_ok=True)
+            with open(LOG, "a", encoding="utf-8") as f:
+                f.write(f"[{_now()}] py: sync-auto {text}\n")
+        except OSError:
+            pass
     print(f"[sync_auto] {text}")
 
 

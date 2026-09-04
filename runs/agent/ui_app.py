@@ -141,7 +141,9 @@ def load_chat(cid: str) -> list:
 
 
 def save_chat(cid: str, msgs: list, append_role: str = '', append_content: str = '') -> None:
-    """整段重写（简单可靠）；可选追加一条消息。"""
+    """整段重写（简单可靠）；可选追加一条消息。
+    book-11：同步写 <cid>.meta.json —— 会话 ↔ run_log 互链（不错失"哪次会话用了哪个日志"）。
+    """
     CHATS_DIR.mkdir(parents=True, exist_ok=True)
     path = _cid_file(cid)
     if append_role and append_content:
@@ -152,6 +154,13 @@ def save_chat(cid: str, msgs: list, append_role: str = '', append_content: str =
                 f.write(json.dumps(
                     {'ts': _now(), 'role': m['role'], 'content': m['content']},
                     ensure_ascii=False) + '\n')
+        try:
+            with open(path.with_suffix('.meta.json'), 'w', encoding='utf-8') as f2:
+                json.dump({'run_log': os.environ.get('H3_LOG_FILE', ''),
+                           'ts': _now(), 'n_msgs': len(msgs)},
+                          f2, ensure_ascii=False)
+        except OSError:
+            pass
     except OSError:
         pass
 
@@ -442,9 +451,13 @@ def llm_state_text() -> str:
 def tail_run_log(max_chars: int = 120) -> str:
     """最新 logs/run_*.log 的末行（引擎真实进展，程序级事实，不依赖模型自述）。"""
     try:
-        logs = (Path(PROJECT_ROOT) / 'logs')
-        files = sorted(logs.glob('run_*.log'),
-                       key=lambda p: p.stat().st_mtime, reverse=True) if logs.is_dir() else []
+        env = os.environ.get('H3_LOG_FILE', '').strip()
+        if env and os.path.isfile(env):
+            files = [Path(env)]  # book-11：优先当前任务日志（会话↔任务精准定位）
+        else:
+            logs = (Path(PROJECT_ROOT) / 'logs')
+            files = sorted(logs.glob('run_*.log'),
+                           key=lambda p: p.stat().st_mtime, reverse=True) if logs.is_dir() else []
         if not files:
             return ''
         data = files[0].read_bytes()
