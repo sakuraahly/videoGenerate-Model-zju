@@ -239,16 +239,24 @@ def cmd_commit(args):
         f"git -c user.name=Developer -c user.email=dev@spark commit "
         f"-m '{safe_msg}' -m 'sync from Windows {win}' 2>&1 | tail -3"
     )
-    rc, out, err = _ssh(ssh_cmd)
-    print("  " + (out or err).strip()[-400:] if (out or err) else "  done")
-    sp = _spark_head()
-    print(f"  spark HEAD = {sp}")
+    try:
+        rc, out, err = _ssh(ssh_cmd)
+        tail = (out or err).strip()
+        print("  " + (tail[-400:] if tail else "done"))
+    except Exception as e:  # noqa: BLE001
+        print(f"  [FAIL] spark commit 异常: {e}")
 
     print("== 核对 ==")
+    try:
+        sp = _spark_head()
+    except Exception:  # noqa: BLE001
+        sp = ""
     gh = _gh_head()
     print(f"  windows={win}  github={gh}  spark={sp}")
     ok = (win == gh) and bool(sp)
-    print("[OK] 提交完成" if ok else "[WARN] 请复核三端 HEAD")
+    if not ok:
+        print("[WARN] 请复核三端 HEAD；可手动：ssh spark 内 git commit（sync from Windows " + win + "）")
+    print("[OK] 提交完成" if ok else "[FAIL] 有未完成项")
     return 0 if ok else 1
 
 
