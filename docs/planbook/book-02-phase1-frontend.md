@@ -166,4 +166,4 @@
 - ✅ 实测证据（spark 实况）：重启 agent 后 `/config` 全部命中（加载所选历史会话/删除所选历史会话/＋新建会话/停止当前任务/开始生成/继续承接任务/本会话专属/版本指纹），端口持有者 PID 838879，`AGENT_VERSION=14800ad`。
 - ⏳ 流式/打字机渲染：与 book-03 联动（本书只做"渲染管道"前置），见 book-03。
 - 🔧 教训（入 book-09 判定）：编辑时把 `_err_hint` 以 0 缩进插入 `run_app` 中间 → **run_app 被提前截断、文件编译通过但 UI 永不构建、进程 RC=0 静默退出**（与"编译通过=正常"反例同源）。修复=AST 校验函数归属（send 须在 run_app 内、_err_hint 在模块级）；已写防绕过：提交前跑 `e2e_smoke` 与 /config 断言。
-
+- 🔧 **修复批次（2026-09-04 用户实测）**：①**新建/加载会话未清空"会话资源池"视图**——`_new`/`_auto_new`/`_load` 的返回未含 `gallery`/`up_status`，旧会话上传预览与状态残留 → 新增 `new_out = out + [gallery, up_status]` 并清空（并提示"新会话素材需重新上传到本会话"）；②**偶发"发消息触发新建会话"**——`send()` 在 `cid` 为空时自行 `new_chat_id()`，与 `demo.load`/新建竞争 → 新增模块级 `_current_cid`（`_auto_new`/`_new`/`_load` 维护），`send` 优先复用；新建时同时清 `_pending_batch_id`。

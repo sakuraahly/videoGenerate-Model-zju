@@ -283,6 +283,7 @@ def _comfy_input_dir() -> Path:
 
 _LOG_MTIME = -1.0
 _SEEN_SHA = set()
+_current_cid = ''  # book：当前会话 cid（_auto_new/_new/_load 维护；send 兜底，防止"发消息触发新建会话"）
 
 
 def _known_shas() -> set:
@@ -552,7 +553,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 return
 
             if not cid:
-                cid = new_chat_id()
+                cid = _current_cid or new_chat_id()  # 优先当前会话，避免与 demo.load/新建竞争而误建新会话
 
             try:
                 from runs.agent import tools as _tools
@@ -766,28 +767,39 @@ def run_app(port: int = 7860, share: bool = False) -> None:
 
         out = [chatbot, status_html, note_md, hist_dd, cid_state, hist_state]
         send_out = out + [box]   # 发送输出追加输入框（提交后自动清空）
+        new_out = out + [gallery, up_status]  # 新建/加载会话时同时清空上传预览与上传状态
 
         def _auto_new():
+            global _current_cid, _pending_batch_id
             cid = new_chat_id()
+            _current_cid = cid
+            _pending_batch_id = None
             threading.Thread(
                 target=lambda: _prewarm_on_load(),
                 daemon=True).start()
             return ([], IDLE_HTML,
-                    f'✅ 已自动开启新对话（会话 id：`{cid}`），直接输入即可。',
-                    gr.update(choices=_choices()), cid, [])
+                    f'✅ 已自动开启新对话（会话 id：`{cid}`），直接输入即可。\n（新会话：上传预览已清空，素材需重新上传到本会话）',
+                    gr.update(choices=_choices()), cid, [],
+                    gr.update(value=[]), UP_IDLE)
 
         def _load(sel):
+            global _current_cid
             if not sel:
-                return [], IDLE_HTML, '请先选择历史会话。', gr.update(), '', []
+                return [], IDLE_HTML, '请先选择历史会话。', gr.update(), '', [], gr.update(value=[]), UP_IDLE
+            _current_cid = sel
             msgs = load_chat(sel)
             return (fmt_msgs(msgs), IDLE_HTML,
-                    f'已加载会话 {sel}（{len(msgs) // 2} 轮），可直接继续提问。',
-                    gr.update(), sel, msgs)
+                    f'已加载会话 {sel}（{len(msgs) // 2} 轮），可直接继续提问。\n（上传预览已清空；本会话素材以 list_references 为准）',
+                    gr.update(), sel, msgs,
+                    gr.update(value=[]), UP_IDLE)
 
         def _new():
+            global _current_cid, _pending_batch_id
             cid = new_chat_id()
-            return [], IDLE_HTML, f'✅ 已开启新对话（会话 id：`{cid}`）。', \
-                gr.update(choices=_choices()), cid, []
+            _current_cid = cid
+            _pending_batch_id = None
+            return [], IDLE_HTML, f'✅ 已开启新对话（会话 id：`{cid}`）。\n（新会话：素材需重新上传到本会话）', \
+                gr.update(choices=_choices()), cid, [], gr.update(value=[]), UP_IDLE
 
         def _del(sel):
             if sel:
@@ -833,8 +845,8 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     '可用"继续"或"取片"查看结果',
                     '已请求停止')
 
-        load_btn.click(_load, hist_dd, out)
-        new_btn.click(_new, None, out)
+        load_btn.click(_load, hist_dd, new_out)
+        new_btn.click(_new, None, new_out)
         del_btn.click(_del, hist_dd, hist_dd)
         ref_btn.click(lambda: gr.update(choices=_choices()), None, hist_dd)
         stop_btn.click(_stop, None, [status_html, note_md])
@@ -847,7 +859,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                            concurrency_limit=1)
         box.submit(send, [hist_state, cid_state, box], send_out,
                    concurrency_limit=1)
-        demo.load(_auto_new, None, out)
+        demo.load(_auto_new, None, new_out)
 
     print(f'Qwen-Agent 调度器 Web UI: http://127.0.0.1:{port}')
     print(f'项目根目录: {PROJECT_ROOT}')
