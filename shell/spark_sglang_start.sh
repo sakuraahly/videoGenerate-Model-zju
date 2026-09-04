@@ -19,6 +19,7 @@ TP="${SGLANG_TP:-1}"
 CTX_LEN="${SGLANG_CTX_LEN:-16384}"
 CHUNK_SIZE="${SGLANG_CHUNK_SIZE:-8192}"
 
+export PATH="$HOME/Qwen3.8-27B/sglang-venv/bin:$PATH"
 export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
 export TRITON_PTXAS_PATH="${CUDA_HOME}/bin/ptxas"
 export MAX_JOBS="${MAX_JOBS:-2}"

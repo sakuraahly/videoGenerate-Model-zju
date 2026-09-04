@@ -97,6 +97,8 @@ def wake(timeout_s: int = 900, progress=None) -> int:
     _log(f'wake: 启动 SGLang（mem={cfg["mem_fraction"]} ctx={cfg["context_length"]}）……')
     _tmux_kill('sglang')
     env = dict(os.environ)
+    env['PATH'] = (str(Path.home() / 'Qwen3.8-27B' / 'sglang-venv' / 'bin')
+                   + os.pathsep + env.get('PATH', ''))
     env['SGLANG_MEM'] = str(cfg['mem_fraction'])
     env['SGLANG_CTX_LEN'] = str(cfg['context_length'])
     subprocess.Popen(

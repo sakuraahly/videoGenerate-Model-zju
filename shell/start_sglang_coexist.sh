@@ -11,6 +11,7 @@
 set -euo pipefail
 
 VENV="$HOME/Qwen3.8-27B/sglang-venv"
+export PATH="$VENV/bin:$PATH"   # flashinfer JIT(ninja) 与启动器同 PATH
 NVFP4_MODEL="$HOME/Qwen3.8-27B/models/NVFP4"
 BF16_MODEL="$HOME/Qwen3.8-27B/models/Qwen--Qwen3.8-27B/snapshots/master"
 
