@@ -581,6 +581,61 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   （超长首轮+10 轮+“继续”）、巨型单条粘贴、正常短对话——全部正常回复、无 400。
 - 遗留：本批 E2E 未动 ComfyUI/SGLang 服务（SGLang 未 nap，仍在 8000 运行）。
 
+## 15. 2026-09-04 第三批：Agent 界面/提示词/体验优化
+
+### 15.1 对话历史丢失修复（关键 bug）
+- **根因**：`ui_app.py` 的 `hist_state`（gr.State）从未出现在 `send_out` 输出列表中，
+  导致每轮 `send()` 收到的 `chat_hist` 始终为初始空列表 `[]`。模型每轮只看到当前一条消息，
+  完全没有上下文。
+- **修复**：将 `hist_state` 加入 `out` 和 `send_out`，所有 yield 点（锁忙/空输入/心跳/完成）
+  均返回更新后的 `msgs` 列表；`_load`/`_new`/`_auto_new` 同步返回 msgs。
+
+### 15.2 禁用自动 nap（模型休眠）
+- 移除 `ui_app.py` 和 `scheduler.py` CLI 中的 `maybe_nap_after()` 调用。
+- 模型提交任务后不再自动停止 SGLang，保持随时响应。nap/wake 机制保留供手动使用。
+
+### 15.3 系统提示词重写（自主性）
+- 重写 `SYSTEM_MESSAGE`：自主行动优先、只问必要问题、工作到完成、"继续"=承接上次工作、
+  创意→成片全流程自主完成。
+- 移除旧的冗长描述，精简为行为导向的准则。
+
+### 15.4 上下文预算调整
+- `UI_TRIM_TOKENS` 从 1800 提升到 2200，允许更多对话历史保留。
+
+### 15.5 上传体验优化
+- 缩略图从 256px/quality=80 降为 128px/quality=60（加速生成和加载）。
+- 上传反馈消息简化：去掉技术性提示（list_references/refimage 命令），改为简洁状态。
+- 页面标题/描述/输入框占位符改为更友好的文案。
+
+### 15.6 改动文件
+- `runs/agent/ui_app.py`：hist_state 修复、禁用 nap、上传优化、UI 文案
+- `runs/agent/scheduler.py`：SYSTEM_MESSAGE 重写、CLI 禁用 nap
+- `runs/agent/ctx_budget.py`：UI_TRIM_TOKENS 1800→2200
+
+## 16. 2026-09-04 第四批：tools.py 超时处理 bug 修复 + 压力测试
+
+### 16.1 tools.py TimeoutExpired bytes/str 拼接 bug
+- **根因**：`subprocess.run(timeout=...)` 超时后，`TimeoutExpired` 异常的 `stdout`/`stderr`
+  在某些情况下仍为 `bytes`（即使 `text=True`），代码直接拼接 `'\n'`（str）导致
+  `TypeError: can't concat str to bytes`。
+- **修复**：在 `TimeoutExpired` 处理块中增加 `isinstance` 检查 + `decode` 回退：
+  ```python
+  _out = e.stdout if isinstance(e.stdout, str) else (e.stdout.decode('utf-8', errors='replace') if e.stdout else '')
+  _err = e.stderr if isinstance(e.stderr, str) else (e.stderr.decode('utf-8', errors='replace') if e.stderr else '')
+  ```
+  两处 `TimeoutExpired` 处理（`run_script` 和 `h3_submit` 工具）均已修复。
+
+### 16.2 压力测试结果
+- **同步**：`python runs/sync_to_spark.py` 增量同步 311 项/5MB 到 spark ✅
+- **服务启动**：Agent(7860) + SGLang(8000) + ComfyUI(8188) 全部 HTTP 200 ✅
+- **tools.py 修复验证**：spark 侧 `grep TimeoutExpired` 确认两处均已包含 `isinstance` 检查 ✅
+- **CLI 多轮对话测试**：LLM 正常接收请求并生成回复（token 从 19→774→1156 增长），
+  新系统提示词下模型自主处理创意请求，未出现"当前没有进行中的任务"等历史丢失症状。
+- **遗留**：完整 E2E 视频生成测试需用户在 UI 上手动验证（Gradio API 参数映射需浏览器交互）。
+
+### 16.3 改动文件
+- `runs/agent/tools.py`：两处 `TimeoutExpired` 处理的 bytes/str 兼容
+
 ## 14. 工作文件夹速查（双端）与 Z: 盘路径规范（2026-09-04 增补）
 
 > 目的：新对话/新 Agent 一次性拿到“所有主要工作文件夹在哪”。**先看本表，再决定用哪个路径。**

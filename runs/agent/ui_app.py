@@ -287,7 +287,7 @@ def _known_shas() -> set:
 
 
 def _make_thumb(src: Path, sha: str):
-    """在项目内 logs/agent_chats/thumbs/ 生成 256px 缩略图（预览走缩略图，
+    """在项目内 logs/agent_chats/thumbs/ 生成 128px 缩略图（预览走缩略图，
     避免整张原图经 SSH 隧道传输导致延迟）。"""
     try:
         from PIL import Image
@@ -296,8 +296,8 @@ def _make_thumb(src: Path, sha: str):
         if out.exists():
             return out
         im = Image.open(src)
-        im.thumbnail((256, 256))
-        im.convert('RGB').save(out, 'JPEG', quality=80)
+        im.thumbnail((128, 128))
+        im.convert('RGB').save(out, 'JPEG', quality=60)
         return out
     except Exception:  # noqa: BLE001  Pillow 不可用时退回原图
         return None
@@ -369,17 +369,17 @@ def ingest_upload(paths) -> tuple:
             previews.append(str(thumb) if thumb else str(input_mirror / p.name))
     parts = []
     if added:
-        parts.append(f'✅ 新增 {added} 项已入素材池（uploads/ 归档'
-                     + ('，图片已镜像到 ComfyUI input/user_uploads/' if 'image' in kinds else '') + '）')
+        parts.append(f'✅ {added} 个新素材已加入素材池')
     if dup:
-        parts.append(f'⏩ {dup} 项与池内已有文件相同（已跳过归档，图片仍确保可用）')
+        if added:
+            parts.append(f'⏩ {dup} 个重复已跳过')
+        else:
+            parts.append(f'⏩ {dup} 个素材已在池中（可直接使用）')
     if err:
-        parts.append(f'❌ {err} 项处理失败（请确认文件格式/服务器可读）')
+        parts.append(f'❌ {err} 项处理失败')
     if not parts:
-        parts.append('⚠️ 未收到有效文件（请确认选择的是图片/视频）')
-    parts.append('提示：现在可以对 agent 说“列出参考素材/list_references”，'
-                 '把对应 <id> 设为参考图（h3/refimage.py use --name <id> --stage r2v --slot N）。')
-    return '\n'.join(parts), previews
+        parts.append('⚠️ 未收到有效文件')
+    return ' · '.join(parts), previews
 
 
 
@@ -422,15 +422,15 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         if not _active_turn.acquire(blocking=False):
             yield (fmt_msgs(chat_hist or []),
                    '⏳ 上一轮仍在处理中，本次点击已忽略',
-                   '上一轮仍在处理中；请等状态变 idle 或点“⏹ 中止本轮”。', gr.update(), cid,
-                   gr.update())
+                   '上一轮仍在处理中；请等状态变 idle 或点”⏹ 中止本轮”。', gr.update(), cid,
+                   chat_hist or [], gr.update())
             return
         try:
             global _stop_requested
             _stop_requested = threading.Event()
             if not user_text:
                 yield (fmt_msgs(chat_hist or []), '请输入内容。', 'idle', gr.update(), cid,
-                       gr.update())
+                       chat_hist or [], gr.update())
                 return
             if not cid:
                 cid = new_chat_id()
@@ -467,13 +467,13 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 try:
                     item = ev.get(timeout=1.0)
                 except queue.Empty:
-                    yield shown, status, '', noop, cid, (clear_box if first else noop)
+                    yield shown, status, '', noop, cid, msgs, (clear_box if first else noop)
                     first = False
                     continue
                 kind = item.get('kind')
                 if kind in ('hb', 'phase'):
                     status = item.get('text', status)
-                    yield shown, status, '', noop, cid, (clear_box if first else noop)
+                    yield shown, status, '', noop, cid, msgs, (clear_box if first else noop)
                     first = False
                 elif kind == 'done':
                     assistant = item.get('text') or ''
@@ -496,38 +496,22 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 note = '上一轮执行出错：可把报错内容发我，或检查 logs/run_*.log。'
             elif assistant:
                 msgs.append({'role': 'assistant', 'content': assistant})
-                if len(assistant) > 600:
-                    tip = '\n\n—— 回复较长，为控制上下文已在此暂停；继续请发送：继续 ——'
-                    msgs[-1]['content'] = msgs[-1]['content'] + tip
-                note = ('本轮完成。若提交了生成任务，取片/查进度请发：无参重跑续传；'
-                        '产出路径以 REMOTE_VIDEO_PATH / LOCAL_OUTPUT 行为准。')
+                note = ''
             else:
                 msgs.append({'role': 'assistant',
                              'content': '（模型未返回内容，可能被截断；发送“继续”重试）'})
                 note = '模型未返回内容（可能被截断），发送“继续”续写。'
             save_chat(cid, msgs)
-            nap_note = ''
-            try:
-                from runs.agent import llm_mem as lmem
-                if not aborted and lmem.maybe_nap_after(assistant):
-                    nap_note = '（已临时让位内存给视频生成；下轮对话会自动唤醒本地模型）'
-            except Exception:  # noqa: BLE001
-                pass
-            if nap_note:
-                note = note + '\n\n' + nap_note
             yield (fmt_msgs(msgs), 'idle', note, gr.update(choices=_choices()), cid,
-                   clear_box)
+                   msgs, clear_box)
         finally:
             _active_turn.release()
-    with gr.Blocks(title='Qwen-Agent 受限调度器', theme=gr.themes.Soft()) as demo:
+    with gr.Blocks(title='H3 视频生成助手', theme=gr.themes.Soft()) as demo:
         # 注意：gr.State 必须在 Blocks 上下文内创建（上下文外创建会 KeyError: 0）
         hist_state = gr.State([])   # 完整消息（存档口径：user/assistant 交替）
         cid_state = gr.State('')    # 会话 id（demo.load / ＋新对话 时自动创建）
-        gr.Markdown('## 🎬 Qwen-Agent 受限调度器\n'
-                    '本地工作流组：t2v / i2v / r2v（多参考图）/ flf2v。\n'
-                    '- 视频任务默认“提交即返回”，后台运行时本页持续显示进度，请勿重复提交；\n'
-                    '- 单轮回复过长会自动暂停（发送 **继续** 续写），避免上下文失控；\n'
-                    '- 页面打开自动开启新对话；历史会话可加载续聊；素材可直接上传到下方按钮。')
+        gr.Markdown('## 🎬 H3 视频生成助手\n'
+                    '说出你的创意，我来生成视频。支持文生视频/图生视频/参考图/首末帧转场。')
         with gr.Row():
             hist_dd = gr.Dropdown(label='历史会话', choices=_choices(), scale=4)
             load_btn = gr.Button('加载所选')
@@ -543,35 +527,35 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             up_btn = gr.UploadButton('📤 上传素材（图片/视频，自动进入素材池）',
                                      file_types=['image', 'video'],
                                      file_count='multiple', scale=3)
-            box = gr.Textbox(placeholder='描述创意 / 查任务进度 / 素材选用…（Enter 发送）',
+            box = gr.Textbox(placeholder='描述你的创意，我来生成视频…（Enter 发送）',
                              show_label=False, lines=2, scale=5)
             send_btn = gr.Button('发送', variant='primary', scale=1)
         up_status = gr.HTML('<span style="color:#888">尚未上传素材</span>')
-        gallery = gr.Gallery(label='本次上传图片预览（可直接引用：list_references）',
+        gallery = gr.Gallery(label='上传预览',
                              columns=6, object_fit='cover', interactive=False)
         note_md = gr.Markdown('_…_')
 
-        out = [chatbot, status_html, note_md, hist_dd, cid_state]
+        out = [chatbot, status_html, note_md, hist_dd, cid_state, hist_state]
         send_out = out + [box]   # 发送输出追加输入框（提交后自动清空）
 
         def _auto_new():
             cid = new_chat_id()
             return ([], 'idle',
                     f'✅ 已自动开启新对话（会话 id：`{cid}`），直接输入即可。',
-                    gr.update(choices=_choices()), cid)
+                    gr.update(choices=_choices()), cid, [])
 
         def _load(sel):
             if not sel:
-                return [], 'idle', '请先选择历史会话。', gr.update(), ''
+                return [], 'idle', '请先选择历史会话。', gr.update(), '', []
             msgs = load_chat(sel)
             return (fmt_msgs(msgs), 'idle',
                     f'已加载会话 {sel}（{len(msgs) // 2} 轮），可直接继续提问。',
-                    gr.update(), sel)
+                    gr.update(), sel, msgs)
 
         def _new():
             cid = new_chat_id()
             return [], 'idle', f'✅ 已开启新对话（会话 id：`{cid}`）。', \
-                gr.update(choices=_choices()), cid
+                gr.update(choices=_choices()), cid, []
 
         def _del(sel):
             if sel:
@@ -579,12 +563,10 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             return gr.update(choices=_choices())
 
         def _upload(files):
-            # 两段式：先立即回执“已接收”，入库完成后再给最终结果
             n = len(files) if files else 0
-            ack = ('<div style="padding:6px 10px;background:#fff8e1;'
-                   'border:1px solid #e7d492;border-radius:6px;color:#8a6d1a;'
-                   f'font-weight:600">⏳ 已接收 {n} 个文件，正在入库（去重/归档/镜像）…'
-                   '</div>')
+            ack = ('<div style=”padding:4px 8px;background:#fff8e1;'
+                   'border:1px solid #e7d492;border-radius:4px;color:#8a6d1a;'
+                   f'font-weight:600;font-size:13px”>⏳ 正在处理 {n} 个文件…</div>')
             yield ack, []
             if not files:
                 yield ('<div style="padding:6px 10px;background:#fdf2f2;'
@@ -596,10 +578,10 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 color = '#0a7d32' if '❌' not in msg else '#c0392b'
                 bg = '#f4fbf6' if color == '#0a7d32' else '#fdf2f2'
                 border = '#9dd6ae' if color == '#0a7d32' else '#e5b8b8'
-                html = (f'<div style="padding:6px 10px;background:{bg};'
-                        f'border:1px solid {border};border-radius:6px;'
-                        f'color:{color};font-weight:600">'
-                        f'{msg.replace(chr(10), "<br>")}</div>')
+                html = (f'<div style="padding:4px 8px;background:{bg};'
+                        f'border:1px solid {border};border-radius:4px;'
+                        f'color:{color};font-weight:600;font-size:13px">'
+                        f'{msg}</div>')
                 yield html, previews
             except Exception as e:  # noqa: BLE001
                 yield (f'<div style="padding:6px 10px;background:#fdf2f2;'

@@ -39,7 +39,7 @@ SAFETY_TOKENS = 300
 
 # 界面/CLI 存档历史裁剪预算（本地计数口径；对话部分在 qwen_agent 层的硬上限
 # 为 framework 预算，本值略小，给「本回合内」工具往返结果留余量）
-UI_TRIM_TOKENS = 1800
+UI_TRIM_TOKENS = 2200
 
 # 对话消息（user/assistant/function 往返，不含 system）在 qwen_agent 截断层允许的
 # 本地计数预算：6144 − 固定开销(~3090~3130) − SAFETY ≈ 2500。

@@ -122,11 +122,13 @@ class RunScript(BaseTool):
             return f'执行成功 (exit 0)\nstdout: {stdout}'
 
         except subprocess.TimeoutExpired as e:
+            _out = e.stdout if isinstance(e.stdout, str) else (e.stdout.decode('utf-8', errors='replace') if e.stdout else '')
+            _err = e.stderr if isinstance(e.stderr, str) else (e.stderr.decode('utf-8', errors='replace') if e.stderr else '')
             partial = _truncate(
-                ((e.stdout or '') + '\n' + (e.stderr or '')).strip()
+                (_out + '\n' + _err).strip()
             )
             pid_line = next(
-                (ln.strip() for ln in (e.stdout or '').splitlines()
+                (ln.strip() for ln in _out.splitlines()
                  if ln.startswith(('TASK_SUBMITTED:', 'prompt_id:'))),
                 '',
             )
@@ -333,11 +335,13 @@ class CallComfyUI(BaseTool):
             return f'提交成功\n{stdout}'
 
         except subprocess.TimeoutExpired as e:
+            _out = e.stdout if isinstance(e.stdout, str) else (e.stdout.decode('utf-8', errors='replace') if e.stdout else '')
+            _err = e.stderr if isinstance(e.stderr, str) else (e.stderr.decode('utf-8', errors='replace') if e.stderr else '')
             partial = _truncate(
-                ((e.stdout or '') + '\n' + (e.stderr or '')).strip()
+                (_out + '\n' + _err).strip()
             )
             pid_line = next(
-                (ln.strip() for ln in (e.stdout or '').splitlines()
+                (ln.strip() for ln in _out.splitlines()
                  if ln.startswith(('TASK_SUBMITTED:', 'prompt_id:'))),
                 '',
             )
