@@ -34,7 +34,10 @@ LLM_CFG = {
     'generate_cfg': {
         'temperature': 0.2,
         'top_p': 0.8,
-        'max_tokens': 8192,
+        # 服务端 ctx=8192：max_tokens 必须 < ctx（曾用 8192 → 任何请求都 400）；
+        # 输入侧预算由各入口经 ctx_budget.request_budgets 显式设置
+        # （max_input_tokens），详见 runs/agent/ctx_budget.py。
+        'max_tokens': 2048,
         'fncall_prompt_type': 'nous',
     },
 }
@@ -154,9 +157,17 @@ def run_gui(port: int = 7860, share: bool = False):
 
 def run_cli():
     from qwen_agent.agents import Assistant
+    from runs.agent import ctx_budget
+
+    llm = dict(LLM_CFG)
+    # 输入硬预算：qwen_agent 截断层按 max_input_tokens − tokens(system) 限制
+    # 对话往返，与回复预算 2048 合计不越 ctx=8192（实测依据见 ctx_budget.py）
+    max_input, _ = ctx_budget.request_budgets(SYSTEM_MESSAGE)
+    llm['generate_cfg'] = {**(llm.get('generate_cfg') or {}),
+                           'max_input_tokens': max_input}
 
     bot = Assistant(
-        llm=LLM_CFG,
+        llm=llm,
         system_message=SYSTEM_MESSAGE,
         function_list=TOOL_NAMES,
     )
@@ -187,6 +198,10 @@ def run_cli():
             continue
 
         messages.append({'role': 'user', 'content': user_input})
+        # 与界面同口径的历史裁剪（token 预算；保留最新轮次+尽量保留首轮）
+        messages, dropped = ctx_budget.trim_messages(messages)
+        if dropped:
+            print('\n[调度器] 较早的轮次已按 token 预算自动压缩，继续对话。')
 
         response = []
         for chunk in bot.run(messages=messages):

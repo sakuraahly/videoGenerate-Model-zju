@@ -9,8 +9,11 @@
      “界面卡住却不知道是否还在跑”。
   3) 输出长度纪律：单轮回复设 max_tokens 上限 + 系统提示约束精炼输出；
      模型超长被截断时自动追加提示“回复较长已在此暂停，发送 继续 即可续写”。
-  4) 上下文防膨胀：每轮调用前按字符预算裁剪历史（保留首轮意图 + 最近若干轮），
-     裁剪发生时在本次请求中附加说明，避免长会话失控。
+  4) 上下文防膨胀（token 口径，见 ctx_budget.py 实测说明）：SGLang ctx=8192、
+     每轮固定开销(系统提示+工具模板)≈3.1k token、回复预留 2048 ⇒ 对话部分预算
+     ≈2.5k token。每轮调用前按该预算裁剪历史（保最新轮次+尽量保留首轮意图），
+     并向 qwen_agent 显式传 max_input_tokens 硬预算（回合内工具往返同样受控），
+     裁剪发生时在本次请求中附加说明；若服务端仍报超上下文（400），自动压缩重试。
 
 用法：由 runs/agent/scheduler.py run_gui() 调用（python3 runs/agent/scheduler.py）。
 本模块不启动任何外部服务；不含服务管理能力。
@@ -45,12 +48,15 @@ _stop_requested = threading.Event()  # 停止按钮信号：置位后当前轮�
 
 
 
-# 上下文预算（字符；模型 ctx=8192，扣除系统/工具定义后按 ~3k token 预算）
-MAX_CTX_CHARS = 6000
-# 裁剪后至少保留的完整轮次数（外加首轮用户意图）
-KEEP_TAIL_TURNS = 4
-# 单轮模型回复 token 上限（防超长输出；长交付请分轮）
-REPLY_MAX_TOKENS = 2048
+from runs.agent import ctx_budget
+from runs.agent.ctx_budget import UI_TRIM_TOKENS, is_context_overflow_error
+REPLY_MAX_TOKENS = ctx_budget.REPLY_MAX_TOKENS  # 兼容旧引用（唯一真值在 ctx_budget）
+
+
+# 上下文预算（token 口径；模型 ctx=8192，扣除固定开销与回复预算后对话部分
+# 约 2.5k token —— 各数值与实测依据见 runs/agent/ctx_budget.py）
+MAX_CTX_CHARS = 6000  # 兼容旧引用（已废弃的字符口径）；新逻辑一律走 token 预算
+KEEP_TAIL_TURNS = 4   # 兼容旧引用；trim 以 token 预算为准
 HEARTBEAT_SEC = 3
 
 
@@ -141,27 +147,17 @@ def delete_chat(cid: str) -> None:
 
 # ---------------------------------------------------------------- 上下文裁剪
 def trim_context(msgs: list) -> tuple:
-    """把 messages 裁到预算内：保留首条用户消息 + 最近 KEEP_TAIL_TURNS 轮。
+    """把 messages 裁到预算内（token 口径，见 ctx_budget.trim_messages）。
+
+    保留最新轮次（含本轮新提问/“继续”）；预算内尽量保留首条用户消息（旧语义
+    “首轮意图”）；发生裁剪时置位返回标志（调用方在最新条附加说明）。
 
     返回 (裁剪后的列表, 是否发生裁剪)。不改动原列表。
     """
     if not msgs:
         return [], False
-    total = sum(len(str(m.get('content', ''))) for m in msgs)
-    if total <= MAX_CTX_CHARS:
-        return list(msgs), False
-    head = [msgs[0]] if msgs[0].get('role') == 'user' else []
-    tail = msgs[-KEEP_TAIL_TURNS * 2:]
-    out = head + tail
-    # 去重防止 head 与 tail 重叠
-    seen = set()
-    dedup = []
-    for m in out:
-        key = id(m)
-        if key not in seen:
-            seen.add(key)
-            dedup.append(m)
-    return dedup, True
+    out, dropped = ctx_budget.trim_messages(msgs, UI_TRIM_TOKENS)
+    return out, dropped
 
 
 # ---------------------------------------------------------------- 模型回合
@@ -173,14 +169,19 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     trimmed, dropped = trim_context(history + [{'role': 'user', 'content': user_text}])
     payload = list(trimmed)
     if dropped:
-        note = ('\n\n[上下文提示] 较早的对话轮次已按预算裁剪（最近轮次与任务状态仍在）。'
-                '如需回顾可让我重述。')
+        note = ('\n\n[上下文提示] 较早的对话轮次已按 token 预算自动压缩'
+                '（最新轮次与任务状态仍在）。如需回顾可让我重述。')
         payload[-1] = {'role': 'user',
                        'content': str(payload[-1].get('content', '')) + note}
 
     llm = dict(LLM_CFG)
+    # 回复上限 + qwen_agent 输入硬预算（实测依据见 ctx_budget.py）：
+    # 截断层 available = max_input_tokens − tokens(system)，保证每次调用
+    # （含回合内工具往返）服务端总输入 ≤ 6144，与 2048 回复合计不越 ctx=8192。
+    max_input, overhead = ctx_budget.request_budgets(SYSTEM_MESSAGE)
     llm['generate_cfg'] = {**(llm.get('generate_cfg') or {}),
-                           'max_tokens': REPLY_MAX_TOKENS}
+                           'max_tokens': REPLY_MAX_TOKENS,
+                           'max_input_tokens': max_input}
     # 内存协同：模型不在跑时先自动唤醒（期间界面心跳继续显示进度）
     try:
         from runs.agent import llm_mem as lmem
@@ -193,17 +194,37 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
         events.put({'kind': 'error', 'text': f'模型唤醒失败: {e}'})
         return
     events.put({'kind': 'phase', 'text': '🔶 模型就绪：推理/工具调度中（长任务期间此状态会持续跳动，请勿重复发送）'})
-    try:
+
+    def _one_run(msgs):
         bot = Assistant(llm=llm, system_message=SYSTEM_MESSAGE,
                         function_list=TOOL_NAMES)
         final = ''
-        for chunk in bot.run(messages=payload):
+        for chunk in bot.run(messages=msgs):
             # chunk: List[Message]; 取最后一个 assistant 文本（可能含工具过程消息）
             for m in chunk:
                 if m.get('role') == 'assistant':
                     final = _content_text(m.get('content'))
+        return final
+
+    try:
+        final = _one_run(payload)
         events.put({'kind': 'done', 'text': final})
     except Exception as e:  # noqa: BLE001
+        # 服务端仍报“超上下文”（如本地计数偏差/超长单条）：压缩到只剩最新
+        # 消息重试一次；仍失败则把可读错误交还界面。
+        if is_context_overflow_error(e) and len(payload) > 1:
+            try:
+                note = ('\n\n[上下文提示] 历史与本次内容超出模型上下文（8192），'
+                        '已自动压缩到仅保留最新消息重试；过长内容请分轮提交。')
+                last = dict(payload[-1])
+                last['content'] = str(last.get('content', '')) + note
+                final = _one_run([last])
+                events.put({'kind': 'done', 'text': final})
+                return
+            except Exception as e2:  # noqa: BLE001
+                events.put({'kind': 'error',
+                            'text': f'[上下文过载] {type(e2).__name__}: {e2}'})
+                return
         events.put({'kind': 'error', 'text': f'{type(e).__name__}: {e}'})
 
 
