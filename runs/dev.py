@@ -13,6 +13,9 @@ runs/dev.py — 变更与交付工作流工具盒（节省 agent token / 提升�
     python runs/dev.py commit -m "<摘要>"    # Windows commit + push GitHub + spark commit（事务化）
     python runs/dev.py docs                  # 校验 START-HERE §2 索引覆盖全部 docs/skills
     python runs/dev.py test [--unit] [--smoke]  # 运行一致性/单测/干跑校验（精简输出）
+    python runs/dev.py logs view [-N]       # 日志尾部/审计 jsonl（book-11）
+    python runs/dev.py logs check           # 日志格式/坏行/轮转健康
+    python runs/dev.py logs clean [--yes]   # 清 .1 轮转（默认 dry-run）
 
 约定与红线（见 docs/dev-workflow.md / START-HERE.md §3.4）：
   - 不重启/不改 ComfyUI systemd；不改 spark 同事模板；不提 api_*；禁 Z:/ 路径。
@@ -346,8 +349,130 @@ def cmd_test(args):
     return fail
 
 
+def _logs_dir():
+    d = ROOT / "logs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def cmd_logs(args):
+    """日志系统工具盒：view / check / clean（book-11）。"""
+    d = _logs_dir()
+    if args.action == "view":
+        # 文件清单
+        files = sorted(d.glob("**/*"), key=lambda x: x.stat().st_mtime if x.is_file() else 0)
+        print(f"== logs/ 共 {len([f for f in files if f.is_file()])} 个文件 ==")
+        tot = 0
+        for f2 in [f for f in files if f.is_file()][-10:]:
+            size = f2.stat().st_size
+            tot += size
+            print(f"  {f2.relative_to(d)}  {size/1024:.1f} KB")
+        print(f"  （近 10 个合计 {tot/1024:.1f} KB；Git 已忽略 logs/）")
+        au = d / "agent_tool_audit.jsonl"
+        if au.exists():
+            lines = au.read_text(encoding="utf-8", errors="replace").splitlines()
+            n = args.limit or 15
+            print(f"== agent_tool_audit.jsonl 共 {len(lines)} 行 / 最近 {min(n, len(lines))} 行 ==")
+            for ln in lines[-n:]:
+                try:
+                    o = json.loads(ln)
+                    pp = o.get("params") or {}
+                    ps = " ".join(f"{k}={v}" for k, v in pp.items())[:80]
+                    pid = o.get("prompt_id", "")[:8]
+                    print(f"  {o.get('ts','?')} {o.get('tool','?'):<16} ok={o.get('ok')} "
+                          f"len={o.get('result_len')} {ps} pid={pid}")
+                except Exception:
+                    print(f"  [BAD] {ln[:120]}")
+        # 运行日志尾部
+        runlogs = sorted(d.glob("**/run_*.log"), key=lambda x: x.stat().st_mtime)
+        if runlogs:
+            rl = runlogs[-1]
+            tail = rl.read_text(encoding="utf-8", errors="replace").splitlines()[-args.limit or 8:]
+            print(f"== {rl.relative_to(d)} 尾部 {len(tail)} 行 ==")
+            for ln in tail:
+                print("  " + ln[:160])
+        if args.remote:
+            # 跨端查看：spark 侧 agent 日志 + 运行日志目录
+            n = args.limit or 15
+            rc, out, err = _ssh(f"tail -n {n} ~/agent.log 2>/dev/null")
+            if rc == 0 and out:
+                print(f"== spark ~/agent.log 尾部 {n} 行 ==")
+                for ln in out.splitlines()[-n:]:
+                    print("  " + ln[:160])
+            else:
+                print(f"== spark ~/agent.log: (不可读 {err.strip()[:60] or '空'}) ==")
+            rc2, out2, _ = _ssh(f"cd {SPARK_REPO} && ls -t logs 2>/dev/null | head -8")
+            if rc2 == 0 and out2:
+                print("== spark logs/ 最近文件 ==")
+                for ln in out2.splitlines():
+                    print("  " + ln)
+        return 0
+
+    if args.action == "check":
+        issues = 0
+        # 1) 库目录存在
+        print(f"== 日志健康 ==")
+        print(f"  logs/ 目录: {'OK' if d.is_dir() else '缺失'}")
+        # 2) agent 工具审计 jsonl
+        au = d / "agent_tool_audit.jsonl"
+        if au.exists():
+            bad = 0
+            lines = au.read_text(encoding="utf-8", errors="replace").splitlines()
+            for ln in lines:
+                try:
+                    json.loads(ln)
+                except Exception:
+                    bad += 1
+            print(f"  agent_tool_audit.jsonl: {len(lines)} 行, 坏行 {bad}")
+            if bad:
+                issues += 1
+        else:
+            print("  agent_tool_audit.jsonl: (尚无 —— agent 调用工具后生成)")
+        # 3) 运行日志格式正则
+        fmt = re.compile(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] py: ")
+        checked = 0
+        badfmt = 0
+        legacy = 0
+        for rl in d.glob("**/run_*.log"):
+            txt = rl.read_text(encoding="utf-8", errors="replace")
+            if "# TZ=" not in txt[:2000]:
+                legacy += 1
+                continue  # book-11 之前旧格式，跳过
+            for x in txt.splitlines()[-200:]:
+                if x.strip():
+                    checked += 1
+                    if not fmt.match(x.strip()):
+                        badfmt += 1
+        print(f"  运行日志样本 {checked} 行, 非标准格式 {badfmt} (跳过旧格式 {legacy} 个)")
+        if badfmt:
+            issues += 1
+        print("[OK] 日志系统健康" if issues == 0 else f"[FAIL] 日志系统 {issues} 处异常")
+        return 0 if issues == 0 else 1
+
+    if args.action == "clean":
+        # 只清 .1 轮转与超期审计行（默认 dry-run；--yes 才删）
+        removed = []
+        kept = []
+        for f2 in d.glob("**/*.1"):
+            if args.yes:
+                f2.unlink(missing_ok=True)
+                removed.append(str(f2.relative_to(d)))
+            else:
+                kept.append(str(f2.relative_to(d)))
+        if args.yes and removed:
+            print("已删除轮转日志: " + " ".join(removed))
+        elif kept:
+            print("将删除轮转日志 (--yes 生效): " + " ".join(kept))
+        else:
+            print("无轮转日志 (.1) 可清。")
+        return 0
+
+    print("未知日志动作: " + args.action)
+    return 2
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="dev 工具盒：check/sync/commit/docs/test")
+    ap = argparse.ArgumentParser(description="dev 工具盒：check/sync/commit/docs/test/logs")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("check", help="双端状态+漂移+一致性+文档索引")
     s = sub.add_parser("sync", help="定点同步本次改动到 spark")
@@ -360,6 +485,11 @@ def main(argv=None):
     t = sub.add_parser("test", help="consistency+unit+smoke")
     t.add_argument("--unit", action="store_true")
     t.add_argument("--smoke", action="store_true")
+    lg = sub.add_parser("logs", help="日志工具盒：view/check/clean（book-11）")
+    lg.add_argument("action", choices=["view", "check", "clean"])
+    lg.add_argument("--limit", type=int, default=None, help="view 显示行数")
+    lg.add_argument("--remote", action="store_true", help="view 额外显示 spark 端 agent/日志")
+    lg.add_argument("--yes", action="store_true", help="clean 真正删除（默认 dry-run）")
     args = ap.parse_args(argv)
 
     if args.cmd == "check":
@@ -374,6 +504,8 @@ def main(argv=None):
         return cmd_docs(args)
     if args.cmd == "test":
         return cmd_test(args)
+    if args.cmd == "logs":
+        return cmd_logs(args)
     return 2
 
 

@@ -17,6 +17,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Optional, Union
 
 from qwen_agent.tools import BaseTool
@@ -586,6 +587,39 @@ def _log_tool(name, event, **fields):
         pass
 
 
+def _log_tool_audit(name, params, result):
+    """结构化审计（book-11）：logs/agent_tool_audit.jsonl —— 时间/工具/关键参数/结果摘要/prompt_id。"""
+    import datetime as _dt
+    import json as _json
+    import re as _re
+    try:
+        key = {'stage': None, 'resolution': None, 'seconds': None, 'images': None,
+               'session': None, 'script_name': None}
+        if isinstance(params, dict):
+            for k in key:
+                key[k] = params.get(k)
+        else:
+            try:
+                pd = _json.loads(str(params or '{}'))
+                for k in key:
+                    key[k] = pd.get(k)
+            except Exception:
+                pass
+        m = _re.search(r'(?:TASK_SUBMITTED|prompt_id):\s*([a-f0-9\-]{36})', str(result or ''))
+        audit = {'ts': _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'tool': name,
+                 'params': {k: v for k, v in key.items() if v},
+                 'result_len': len(str(result or '')),
+                 'ok': not any(mk in str(result or '') for mk in ('exit 3', '⛔', '失败', '超时'))}
+        if m:
+            audit['prompt_id'] = m.group(1)
+        f = Path(PROJECT_ROOT) / 'logs' / 'agent_tool_audit.jsonl'
+        f.parent.mkdir(parents=True, exist_ok=True)
+        with open(f, 'a', encoding='utf-8') as fh:
+            fh.write(_json.dumps(audit, ensure_ascii=False) + '\n')
+    except Exception:
+        pass
+
+
 def _wrap_call(cls):
     orig = cls.call
     name = _TOOL_NAMES[cls]
@@ -600,9 +634,11 @@ def _wrap_call(cls):
             out = orig(self, params, **kwargs)
         except Exception as e:  # noqa: BLE001
             _log_tool(name, 'error', err=_truncate(str(e), 300))
+            _log_tool_audit(name, p, 'EXC ' + _truncate(str(e), 300))
             raise
 
         out_str = str(out)
+        _log_tool_audit(name, p, out_str)
         is_deterministic = ('exit 3' in out_str or '⛔' in out_str
                             or 'cannot identify image file' in out_str)
         is_recoverable = ('exit 2' in out_str or '超时' in out_str

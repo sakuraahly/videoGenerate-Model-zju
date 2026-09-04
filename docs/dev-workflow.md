@@ -173,3 +173,14 @@
 ### 10.4 关联：脚本/字符串转义教训（一并记录）
 - 在 run_code 的 JS 里拼文档/Python 源码时：内容含 **ASCII 单引号** 会中断 `push(…`（改用完整字宽引号 `“ ”` 或 JS 双引号包裹）；含 **反引号** 会中断模板串（需要转义）；`$` 加 `{` 会插值；`\n` 会变成真换行。
 - 经验：**优先「行数组 + join」**；文档内容一律完整字宽引号；给 PowerShell 传含反引号/美元符号的字符串时整体转义，或用 `[char]10` 拼新行，避免多层嵌套。
+
+---
+
+## 11. 日志体系（book-11 约定，2026-09-04）
+
+**口径**：统一 Writer = `runs/h3/logutil.py`（唯一实现）；事件行格式 `[YYYY-MM-DD HH:MM:SS] py: <tool> <event k=v>`；文件头 `# TZ=UTC+8`；`logs/` 目录 Git 忽略、自动轮转（单文件 5MB → `.1`）。
+
+- **查看/清理**：`python runs/dev.py logs view [-N] [--remote]`（本地 run log 尾部 + 审计 jsonl；`--remote` 追加 spark `~/agent.log` 与 logs/ 清单）、`python runs/dev.py logs check`（格式/坏行/轮转健康；自动跳过 book-11 前旧格式日志）、`python runs/dev.py logs clean [--yes]`（清 `.1` 轮转，默认 dry-run）。
+- **agent 行为审计**：`logs/agent_tool_audit.jsonl`（每工具调用一行：ts/tool/关键参数/stage-resolution-seconds-images-session/prompt_id/result_len/ok）。
+- **`~/agent.log` 运维**：该文件是 tmux 会话 `agent` 的 tee 输出（scheduler 全部 stdout/stderr），会持续增长；**临时排障**用 `tail/grep`，**不要**在 `dev.py logs` 里默认拉全量；建议保留 7~14 天，重启 agent 时顺带 `: > ~/agent.log` 截断，或按机器磁盘情况增加 truncate 频率。文档均以 `~/agent.log` 为准（旧文档 `~/qwen-agent.log` 已作废）。
+- **不错失参数**：任务提交日志（submitted/submitted_only）必须含 `imgs/resolution/seconds/seed/steps/prompt_len`——若在日志里看不到这些字段，视为缺失（按 book-11 验收标准回归）。

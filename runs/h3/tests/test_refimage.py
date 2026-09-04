@@ -35,9 +35,10 @@ class TestRows(unittest.TestCase):
         self._td.cleanup()
 
     def test_three_pools_scanned(self):
-        (Path(self.dirs["input"]) / "in_a.png").write_bytes(b"1")
-        (Path(self.dirs["output"]) / "saved.png").write_bytes(b"2")
-        (Path(self.dirs["output"]) / "sub" / "nested.jpg").write_bytes(b"3")
+        # >=1KB 图片才被视作有效（book-08 过滤）；单字节会跳过
+        (Path(self.dirs["input"]) / "in_a.png").write_bytes(b"x" * 2048)
+        (Path(self.dirs["output"]) / "saved.png").write_bytes(b"x" * 2048)
+        (Path(self.dirs["output"]) / "sub" / "nested.jpg").write_bytes(b"x" * 2048)
         (Path(self.dirs["uploads"]) / "up_vid.mp4").write_bytes(b"4")
         rows = refimage._rows(self.dirs)
         names = {(r["pool"], r["name"]) for r in rows}
@@ -47,7 +48,7 @@ class TestRows(unittest.TestCase):
         self.assertIn(("up", "up_vid.mp4"), names)
 
     def test_kinds(self):
-        (Path(self.dirs["input"]) / "a.png").write_bytes(b"1")
+        (Path(self.dirs["input"]) / "a.png").write_bytes(b"x" * 2048)
         (Path(self.dirs["input"]) / "v.mp4").write_bytes(b"2")
         (Path(self.dirs["input"]) / "notes.txt").write_bytes(b"3")
         rows = refimage._rows(self.dirs)
@@ -57,7 +58,7 @@ class TestRows(unittest.TestCase):
         self.assertEqual(kinds["notes.txt"], "other")
 
     def test_resolve_sel(self):
-        (Path(self.dirs["input"]) / "b.png").write_bytes(b"1")
+        (Path(self.dirs["input"]) / "b.png").write_bytes(b"x" * 2048)
         rows = refimage._rows(self.dirs)
         r = refimage._resolve_sel(rows, "in:0")
         self.assertEqual(r["name"], "b.png")
@@ -69,13 +70,13 @@ class TestRows(unittest.TestCase):
             refimage._resolve_sel(rows, "no_such_file_zz.png")
 
     def test_promote_copies_to_input(self):
-        (Path(self.dirs["output"]) / "art.png").write_bytes(b"img")
+        (Path(self.dirs["output"]) / "art.png").write_bytes(b"x" * 2048)
         rows = refimage._rows(self.dirs)
         rc = refimage.cmd_promote(self.dirs, "out:0")
         self.assertEqual(rc, 0)
         dst = Path(self.dirs["input"]) / "art.png"
         self.assertTrue(dst.exists())
-        self.assertEqual(dst.read_bytes(), b"img")
+        self.assertEqual(dst.read_bytes(), b"x" * 2048)
         # 已在 input 中：幂等
         self.assertEqual(refimage.cmd_promote(self.dirs, "out:0"), 0)
 

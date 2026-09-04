@@ -34,10 +34,24 @@ def _ts() -> str:
 
 def _append(path: str, text: str) -> None:
     try:
+        # book-11：单文件上限 5MB，超出旋转到 .1（防无限膨胀）
+        try:
+            if os.path.getsize(path) > 5_000_000:
+                os.replace(path, path + ".1")
+        except OSError:
+            pass
         with open(path, "a", encoding="utf-8") as f:
             f.write(f"[{_ts()}] py: {text}\n")
     except OSError:
         pass
+
+
+def _tz() -> str:
+    """本地时区标注（book-11：日志行无法区分北京/UTC 的防混淆）"""
+    import datetime as _dt
+    off = _dt.datetime.now().astimezone().utcoffset() or _dt.timedelta()
+    hours = off.total_seconds() // 3600
+    return f"UTC{int(hours):+d}"
 
 
 def ensure_run_log(project_dir, tool: str) -> str:
@@ -57,18 +71,22 @@ def ensure_run_log(project_dir, tool: str) -> str:
         name = f"run_{now.strftime('%Y%m%d_%H%M%S')}_{now.microsecond // 1000:03d}.log"
         path = log_dir / name
         _append(str(path), f"=== {tool} run start ===")
+        _append(str(path), f"# TZ={_tz()}")
         os.environ[ENV_NAME] = str(path)
         return str(path)
     except OSError:
         return ""
 
 
-def log_event(tool: str, event: str) -> None:
-    """追加一行 `<tool> <event>`（event 内自带 key=value 或短语）。"""
+def log_event(tool: str, event: str, bare: bool = False) -> None:
+    """追加一行 `<tool> <event>`（event 内自带 key=value 或短语）。
+
+    bare=True 时不加工具前缀（供 h3_submit 等既有同构实现收敛，保持旧行格式）。
+    """
     path = os.environ.get(ENV_NAME, "").strip()
     if not path:
         return
-    _append(path, f"{tool} {event}")
+    _append(path, event if (bare or not tool) else f"{tool} {event}")
 
 
 def fmt(**fields) -> str:

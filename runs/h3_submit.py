@@ -133,31 +133,33 @@ def _ensure_run_log(project_dir: Path):
     existing = os.environ.get(_LOG_ENV, "").strip()
     if existing:
         return existing, False
-    log_dir = Path(project_dir) / "logs"
+    # book-11：收敛到 logutil 唯一实现（保持同名包装与格式兼容）
     try:
-        log_dir.mkdir(parents=True, exist_ok=True)
-        now = datetime.now()
-        name = f"run_{now.strftime('%Y%m%d_%H%M%S')}_{now.microsecond // 1000:03d}.log"
-        path = log_dir / name
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
-                    f"py: === MiniMax H3 run start ===\n")
-        os.environ[_LOG_ENV] = str(path)
-        return str(path), True
-    except OSError:
+        from h3 import logutil
+        path = logutil.ensure_run_log(str(project_dir), "MiniMax H3")
+        if path:
+            return path, True
+        return "", False
+    except Exception:  # noqa: BLE001
         return "", False
 
 
 def _log_event(msg: str) -> None:
-    """追加运行日志（路径：PS 注入或 Python 自举，见 _ensure_run_log）。"""
-    path = os.environ.get(_LOG_ENV, "")
-    if not path:
-        return
+    """追加运行日志（book-11：委托 logutil，格式兼容 `[ts] py: {msg}`）。"""
     try:
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] py: {msg}\n")
-    except OSError:
+        from h3 import logutil
+        logutil.log_event("", msg, bare=True)
+    except Exception:  # noqa: BLE001
         pass
+
+
+def _gp_summary(gp) -> str:
+    """关键参数摘要（book-11：task/submitted/dry_run 共用，参数不错失）。"""
+    if not gp:
+        return ""
+    return (f"resolution={gp.width}x{gp.height}({gp.resolution}) "
+            f"seconds={gp.seconds}s->{gp.length}f@{gp.fps}fps seed={gp.seed} "
+            f"steps={gp.steps} prompt_len={len(gp.prompt or '')}")
 
 
 def _adopt_task_log(project_dir: Path, task_folder: Optional[Path]) -> None:
@@ -588,11 +590,7 @@ def main(argv: Optional[list] = None) -> int:
                        f"nodes={len(wf) if isinstance(wf, dict) else 0} (预览，未提交)")
             if os.environ.get("H3_CONCISE", "").strip().lower() not in ("", "0", "false", "no"):
                 # agent 对话场景（H3_CONCISE=1）不刷整份 JSON，防上下文膨胀/回复截断
-                size = ""
-                if gp:
-                    size = (f"resolution={gp.width}x{gp.height}({gp.resolution}) "
-                            f"seconds={gp.seconds}s->{gp.length}f@{gp.fps}fps seed={gp.seed} "
-                            f"steps={gp.steps}")
+                size = _gp_summary(gp)
                 print(f"[dry-run 预览通过] mode={mode} stage={stage_id} "
                       f"nodes={len(wf) if isinstance(wf, dict) else 0} {size}"
                       f"（校验无误，未提交；完整 JSON 请在人工 CLI 查看）", flush=True)
@@ -644,13 +642,16 @@ def main(argv: Optional[list] = None) -> int:
         if task_folder:
             jobstate.update_task_record(project_dir, task_folder, {"prompt_id": resume_id})
         print(f"prompt_id: {resume_id}\n", flush=True)
-        _log_event(f"submitted stage={stage_id} prompt_id={resume_id}")
+        imgs = ','.join(i.name for i in (images or [])[:3])
+        _log_event(f"submitted stage={stage_id} prompt_id={resume_id} "
+                   f"imgs={imgs} {_gp_summary(gp)}")
 
         if args.submit_only:
             # 提交/等待分离：立即返回，任务在 ComfyUI 后台继续；断点保留供后续
             # 无参重跑/续传查询完成状态（不再出现“600s 超时误报+丢 prompt_id”）。
             print(f"TASK_SUBMITTED: {resume_id}", flush=True)
-            _log_event(f"submitted_only prompt_id={resume_id} (task running in background)")
+            _log_event(f"submitted_only prompt_id={resume_id} imgs={imgs} {_gp_summary(gp)} "
+                       f"(task running in background)")
             return EXIT_OK
 
     # ------------------------------------------------------------ 轮询等待

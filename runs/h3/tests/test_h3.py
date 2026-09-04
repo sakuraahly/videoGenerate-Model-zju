@@ -1114,7 +1114,7 @@ class TestStageCli(unittest.TestCase):
             # 离线或无法转换且无内置 -> 确定性失败并给出指引
             self.assertTrue(
                 any(x in err for x in ("模板缺失", "需要在线", "无法读取节点定义",
-                                       "不是有效的扁平 API")),
+                                       "不是有效的扁平 API", "参考图未指定")),
                 msg=err)
         else:
             self.assertEqual(code, 0)  # 在线 ComfyUI 可把官方 UI 模板转换为 API
