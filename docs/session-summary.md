@@ -176,6 +176,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - `agent-workflow.md`（⭐ 本地 Agent(Qwen) 工作链手册：两入口/工具/提交-续传-取件/素材链/异常处置）
 - `agent-reading/04-agent-workflow.md`（agent 任务执行协议速查，随调度器 read_doc 提供）
 - `handoff-2026-09-04.md`（⭐ 最新交接：服务现状/机制/界面能力/测试清单/待观察项）
+- `reference-2026-09-04.md`（⭐ 总参考手册：配置注册表/运行形态/引擎与工具契约/模板明细/故障字典/测试模板）
 
 ## 10. 待办 / 下一步（给新对话的明确任务）
 1. **ComfyUI 依赖已修复（2026-09-03）**：`comfy_kitchen` 已升级到 0.2.31。
