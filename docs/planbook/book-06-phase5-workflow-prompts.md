@@ -61,7 +61,7 @@
 | 文件 | 拟改内容 | 目的 |
 |---|---|---|
 | `workflows/remote_workflows/video_minimax_h3_{t2v,i2v,r2v,flf2v}.json` | 删节点内嵌 story 提示词（`widgets_values[0]`/`PrimitiveStringMultiline`），改为**图像属性 token 模板**；保留各 LoadImage/槽位接线 | 清故事、留质量词 |
-| `config/prompt_blueprints.json` | 增加「图像属性 token 保留清单」与「逐段转场提示词」指导 | 供 idea2prompts 生成属性词+逐段描述 |
+| `config/prompt_blueprints.json` | 增加「图像属性 token 保留清单」（依 `docs/prompt-taxonomy.md` 10 正 + 9 负）与「逐段转场提示词」指导 | 供 idea2prompts 生成属性词+逐段描述 |
 | `runs/h3/idea2prompts.py` | 支持 `--segments N`/`--per-segment`：为每个 flf2v 段生成独立 {positive,negative}；输出结构含段索引 | 逐段提示词 |
 | `runs/h3_batch.py` | manifest 每段加 `prompt`/`negative_prompt` 字段；提交时按段注入各自提示词（而非共享 `--prompt`） | 杜绝五个一样 |
 | `runs/h3_submit.py` | `inject_local_prompts` 支持**视频模型节点 widget**（video_* 的 widgets_values[0]）与 api 节点的 inputs.prompt；按段提示词注入 | 让注入真正落到节点 |
@@ -123,6 +123,6 @@
 ---
 
 ## 9. 待用户输入 / 待定项
-- 需要保留的图像属性 token 清单（用户举例「不要模糊/大师杰作」；建议主清单 + 可扩展）。
-- 是否支持参考视频（当前不支持；若需，需新增 LoadVideo 链路，改动较大）。
-- 质量 token 与画面主体由 agent 注入的分工确认。
+- ✅ 图像属性 token 清单已定：见 `docs/prompt-taxonomy.md`（10 正向 + 9 负向大类）；模板只保留基础质量/属性词，其余由 agent 注入。
+- 参考视频：用户定级为「甜点/低优先」，列入待做清单（见 book-07 §9）。
+- ✅ 质量 token 与画面主体分工确认：模板固定属性词；画面主体/动作/镜头/音频由 agent 逐段注入。
