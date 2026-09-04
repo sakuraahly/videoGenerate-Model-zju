@@ -557,6 +557,34 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 delete_chat(sel)
             return gr.update(choices=_choices())
 
+        def _upload(files):
+            # 两段式：先立即回执“已接收”，入库完成后再给最终结果
+            n = len(files) if files else 0
+            ack = ('<div style="padding:6px 10px;background:#fff8e1;'
+                   'border:1px solid #e7d492;border-radius:6px;color:#8a6d1a;'
+                   f'font-weight:600">⏳ 已接收 {n} 个文件，正在入库（去重/归档/镜像）…'
+                   '</div>')
+            yield ack, []
+            if not files:
+                yield ('<div style="padding:6px 10px;background:#fdf2f2;'
+                       'border:1px solid #e5b8b8;border-radius:6px;color:#c0392b;'
+                       'font-weight:600">⚠️ 未收到文件（请重新选择图片/视频）。</div>'), []
+                return
+            try:
+                msg, previews = ingest_upload(files)
+                color = '#0a7d32' if '❌' not in msg else '#c0392b'
+                bg = '#f4fbf6' if color == '#0a7d32' else '#fdf2f2'
+                border = '#9dd6ae' if color == '#0a7d32' else '#e5b8b8'
+                html = (f'<div style="padding:6px 10px;background:{bg};'
+                        f'border:1px solid {border};border-radius:6px;'
+                        f'color:{color};font-weight:600">'
+                        f'{msg.replace(chr(10), "<br>")}</div>')
+                yield html, previews
+            except Exception as e:  # noqa: BLE001
+                yield (f'<div style="padding:6px 10px;background:#fdf2f2;'
+                       f'border:1px solid #e5b8b8;border-radius:6px;color:#c0392b;'
+                       f'font-weight:600">❌ 上传处理异常：{type(e).__name__}: {e}</div>'), []
+
         def _stop():
             global _stop_requested
             _stop_requested.set()
