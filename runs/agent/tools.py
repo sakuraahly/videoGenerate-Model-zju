@@ -396,8 +396,12 @@ class ListReferences(BaseTool):
         if session and session != 'all':
             cmd = [sys.executable, script, 'list', '--session', session]
         else:
-            # 无会话上下文（CLI/手工）或显式 all → 全部（带上说明）
+            # 无会话上下文（CLI/手工）或显式 all → 全部（带未授权警示）
+            _warn = ('⚠️ 正在列出**全部**素材（含其他会话/历史产物）。'
+                     '仅当用户已明确授权 "查询全部素材" 时使用；否则请改为默认的本会话素材，'
+                     '并告知用户 "请先上传/指明素材"。\n')
             cmd = [sys.executable, script, 'list', '--scope-all']
+            _force_warn = _warn
         try:
             result = subprocess.run(
                 cmd,
@@ -409,7 +413,8 @@ class ListReferences(BaseTool):
             out = _truncate((result.stdout or '') + (result.stderr or ''))
             if result.returncode != 0:
                 return f'列出素材失败 (exit {result.returncode})\n{out}'
-            return f'可用参考素材：\n{out}'
+            prefix = _force_warn if session == 'all' else ''
+            return f'{prefix}可用参考素材：\n{out}'
         except subprocess.TimeoutExpired:
             return '错误：列出素材超时'
         except Exception as e:

@@ -133,5 +133,6 @@
 - ✅ **工具层**：`list_references` 新增 `session` 参数（默认=CURRENT_SESSION；all=全部），描述明确"默认仅当前会话、复用历史需授权"；无会话上下文（CLI）回退 `--scope-all`。
 - ✅ **模型侧边界**：SYSTEM_MESSAGE 新增「素材边界（book-05）」。
 - ✅ **测试**：`tests/test_session_filter_unit.py` 7/7 UNIT_OK；spark 实机受控验证 **ISOLATION_OK**（会话 testS 只见其 2 项、otherS 暂无、事后恢复 log.jsonl）。
-- 📌 说明：旧上传（本特性前）无 cid → 默认不可见，需 `--scope-all`（不迁移/删除任何现有产物）；`turn_state._active_batch` 仍未被消费（下一批接 cid 或清理）；`agent-reading/01` 本无 list_references 章节，工具描述已更新。
+- 📌 说明：旧上传（本特性前）无 cid → 默认不可见，需 `--scope-all`（不迁移/删除任何现有产物）；`turn_state._active_batch` 仍未被消费（下一批接 cid 或清理）；`agent-reading/01` 本无 list_references 章节，工具描述已更新。- 🔧 **修复批次（2026-09-04 用户实测反馈）**：会话内"⏩ N 个素材已在本会话池中（重复跳过）"后 `list_references` 仍"暂无"——根因：**重复上传走了 dup 分支，未登记当前会话 cid** → 会话过滤查不到。修复：①`ingest_upload` dup 也写 log.jsonl（带 cid + `dup:True`，同一图可属于多个会话）；②`_load_batch_map` 改为 sha→{"bid","cids(集合)"}，`_filter_by_session` 匹配 cids 集合；③`list_references` 的 `session=all` 路径输出**未授权强警示**（"仅当用户已明确授权查询全部素材时使用"）。单测更新至 6/6 UNIT_OK（含"同图多会话"）。**注意：修复前已发生的重复上传无法回填 sha 记录 → 请用户在该会话**重新上传**同一批图片即可登记。
+
 

@@ -390,6 +390,17 @@ def ingest_upload(paths, cid='') -> tuple:
                 err += 1
                 continue
         else:
+            # book-05 修复：重复素材也要登记「当前会话归属」（同一图可属于多个会话），
+            # 否则会话过滤看不到"重传"的素材（用户反馈：5 张重复图 → 当前会话暂无）
+            try:
+                with open(UPLOADS_LOG, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({'ts': _now(), 'sha': sha, 'src': str(p),
+                                        'archived': '', 'kind': kind,
+                                        'batch_id': batch_id, 'cid': cid,
+                                        'dup': True},
+                                       ensure_ascii=False) + '\n')
+            except OSError:
+                pass
             dup += 1
         if kind == 'image':
             try:

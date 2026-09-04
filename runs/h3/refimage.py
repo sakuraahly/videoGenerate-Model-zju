@@ -169,30 +169,35 @@ def _load_batch_map() -> dict:
                 bid = d.get('batch_id', '')
                 cid = str(d.get('cid', '') or '')
                 if sha:
-                    mapping[sha] = {"bid": bid or '', "cid": cid}
+                    entry = mapping.setdefault(sha, {"bid": bid or '', "cids": set()})
+                    entry["bid"] = bid or entry.get("bid", '')
+                    if cid:
+                        entry["cids"].add(cid)
             except Exception:
                 continue
     except OSError:
         pass
+    for e in mapping.values():
+        e["cids"] = set(e["cids"])
     _load_batch_map._cache = mapping
     _load_batch_map._cache_key = key
     return dict(mapping)
 
 
 def _get_row_meta(row: dict, batch_map: dict) -> dict:
-    """从 row 的 name 前缀 sha 提取 {'bid','cid'}（book-05：会话归属）。"""
+    """从 row 的 name 前缀 sha 提取 {'bid','cids'}（book-05：会话归属；同图上多个会话）。"""
     name = row.get('name', '')
     parts = name.split('_', 1)
     if len(parts) >= 2 and len(parts[0]) == 8:
         for sha, meta in batch_map.items():
             if sha.startswith(parts[0]):
-                return {"bid": meta.get("bid", ""), "cid": meta.get("cid", "")}
-    return {"bid": "", "cid": ""}
+                return {"bid": meta.get("bid", ""), "cids": set(meta.get("cids", set()))}
+    return {"bid": "", "cids": set()}
 
 
 def _filter_by_session(rows: list, batch_map: dict, session: str) -> list:
     """只保留本会话（cid）的素材行（book-05 资源隔离核心）。"""
-    return [r for r in rows if _get_row_meta(r, batch_map).get('cid') == session]
+    return [r for r in rows if session in _get_row_meta(r, batch_map).get('cids')]
 
 
 def cmd_list(dirs: dict, show_other: bool = False, pool: str = "",
