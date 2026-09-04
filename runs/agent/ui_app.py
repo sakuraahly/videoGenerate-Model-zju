@@ -33,10 +33,10 @@ PROJECT_ROOT = os.environ.get(
 )
 CHATS_DIR = Path(PROJECT_ROOT) / 'logs' / 'agent_chats'
 
-# 上下文预算（字符，约 1 字符≈0.5 token；预算≈13k token）
-MAX_CTX_CHARS = 28000
+# 上下文预算（字符；模型 ctx=8192，扣除系统/工具定义后按 ~3k token 预算）
+MAX_CTX_CHARS = 6000
 # 裁剪后至少保留的完整轮次数（外加首轮用户意图）
-KEEP_TAIL_TURNS = 8
+KEEP_TAIL_TURNS = 4
 # 单轮模型回复 token 上限（防超长输出；长交付请分轮）
 REPLY_MAX_TOKENS = 2048
 HEARTBEAT_SEC = 3
