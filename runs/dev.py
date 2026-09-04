@@ -232,7 +232,7 @@ def cmd_commit(args):
 
     print("== spark commit ==")
     # 简化并避免远端 shell 引号问题：消息去除单/双引号，用单引号包裹
-    safe_msg = re.sub(r"[^\\w\\s\\-._:()]", "", msg).strip()[:100] or "chore(dev): sync"
+    safe_msg = re.sub(r"[^\w\s\-._:()]", "", msg).strip()[:100] or "chore(dev): sync"
     remote_files = [f'"{SPARK_REPO}/{f}"' for f in files]
     ssh_cmd = (
         f"cd {SPARK_REPO} && git add {' '.join(remote_files)} && "
