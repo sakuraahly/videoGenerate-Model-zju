@@ -134,3 +134,11 @@
 - ✅ **逐段提示词（核心，治"五个一样"）**：`h3_batch submit --prompts-file <json>`（`{"0":"...","1":"..."}` 按段索引）→ manifest 每段存 `prompt` → 提交时**按段 `--prompt` 注入**（不再全局共享）；`retry` 也按段取提示词。spark 实测：2 段 dry-run `per-seg distinct=2`（提示词不同）。
 - ✅ **验证**：`h3_submit t2v --dry-run` rc=0（模板清理未破坏注入）；spark 组合验证脚本通过。
 - ⏳ 设计待做（下一批）：`idea2prompts --segments N`（自动产出 N 段转场提示词写入 `video_flf2v.segment_<i>.positive.txt`，再由 agent 传 `--prompts-file`）；`注入后 dry-run 断言各段提示词已替换`（book-09 黄金路径步骤 7）。
+---
+
+## 11. 端到端事故记录与补丁（2026-09-04 用户实测：两图丝滑转场）
+
+- **事故**：agent 提交 flf2v `TASK_SUBMITTED 5344eab7...`（agent 自写提示词"飞船发射台→房间"），但**成片内容是别人的图/早期视频内容**（前段与旧工作流+参考图提示词导出的视频相同）。用户还反馈：提交后**等待期无任何输出**（界面只有"任务排队中"，40 分钟无内容）。
+- **根因（spark 取证）**：任务 API 工作流 `LoadImage 114/121` 仍是模板**默认旧资产**（`drama_asset_*`）——①`call_comfyui` 无图参数、模板无 `{{imageN}}` 占位符、`--image` 对 video_* 无效 → agent 无法把图注入槽位（其"refimage use"未生效/未调用）；②`prompts/workflows/video_flf2v.positive.txt`（hero→alley 文本）等在未传 `--prompt` 时被注入，兜底污染；③模板清理只清了内嵌 prompt，未清 LoadImage 默认图。
+- **补丁**：①`refimage.bind_images_to_template(stage, names)`（把上传后的图名绑定 LoadImage 槽位：flf2v slot0/1、i2v slot0、r2v 前 N）；②`refimage.check_default_refs(stage)` 守卫——图生类阶段未传图且模板仍是默认旧资产 → **h3_submit 拒绝提交**（dry-run 也拦截，报错给指引）；③`h3_submit` 在 i2v/r2v/flf2v 且传 `--image` 时自动绑定（dry-run 仅提示）；④`call_comfyui` 新增 `images` 参数（逗号分隔，直接走绑定路径）；⑤`prompts/workflows/{video_flf2v,i2v,r2v}.positive.txt` 清为属性词（原 story 文本删除）。
+- ✅ **验证**：spark 见下（dry-run 绑定提示 + 无图默认资产守卫报错 + 模板槽位未被 dry-run 污染）。

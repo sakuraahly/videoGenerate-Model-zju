@@ -282,6 +282,10 @@ class CallComfyUI(BaseTool):
                 'type': 'string',
                 'description': '覆盖默认提示词（可选，默认从槽位文件读取）',
             },
+            'images': {
+                'type': 'string',
+                'description': '逗号分隔的参考图（文件名或素材 id）。i2v/flf2v 传入即绑定模板首帧/末帧槽位；r2v 按顺序绑定；不传则要求模板已用 refimage use 设好（否则报错）',
+            },
         },
         'required': ['stage'],
     }
@@ -315,6 +319,9 @@ class CallComfyUI(BaseTool):
             cmd.append('--force-new')
         if params.get('prompt'):
             cmd.extend(['--prompt', params['prompt']])
+        if params.get('images'):
+            for _img in [x.strip() for x in str(params['images']).split(',') if x.strip()]:
+                cmd.extend(['--image', _img])
 
         tool_timeout = 600 if params.get('wait_until_done') else 180
 

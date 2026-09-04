@@ -407,6 +407,24 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
 
     tpath = Path(args.template).resolve() if args.template else \
         h3stage.template_path(pcfg, project_dir, stage)
+
+    # book-06/07 补丁：图生类阶段的"参考图绑定"与"默认资产守卫"（防再生成别人的图/旧资产）
+    if stage_id in ("i2v", "r2v", "flf2v") and tpath and tpath.name.startswith("video_"):
+        from h3 import refimage as _refimg
+        if images:
+            if dry_run:
+                print(f"[提示] 将把 {len(images)} 张参考图绑定到模板 {tpath.name} 的 LoadImage 槽位（dry-run 未实际修改）",
+                      flush=True)
+            else:
+                remote_names = [(image_names.get(f'image{i}') or img.name)
+                                for i, img in enumerate(images)]
+                _refimg.bind_images_to_template(stage_id, remote_names)
+                print(f"[提示] 参考图已绑定模板 {tpath.name}: {remote_names}", flush=True)
+        else:
+            ok, msg = _refimg.check_default_refs(stage_id)
+            if not ok:
+                raise h3params.ParamError(f"参考图未指定，且{msg}")
+
     used_builtin = False
     token_map = h3stage.text_token_map(gp)
     template_usable = bool(tpath.name) and tpath.exists()

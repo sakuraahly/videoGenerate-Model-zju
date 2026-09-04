@@ -153,6 +153,53 @@ def _filter_rows(rows: list, pool: str = "", name: str = "", kinds=(("image", "v
     return res
 
 
+DEFAULT_ASSET_MARKERS = ("drama_asset_", "my_cat.png", "character.png", "scene_00001_")
+
+
+def check_default_refs(stage: str) -> tuple:
+    """图生类阶段模板是否仍引用默认旧资产（book-06/07 守卫；防"生成别人的图"）。返回 (ok, 说明)。"""
+    tpl = _stage_template(stage)
+    if not tpl.exists():
+        return True, ""
+    try:
+        slots = template_slots(tpl)
+    except Exception:  # noqa: BLE001
+        return True, ""
+    bad = [s[1] for s in slots if any(m in s[1] for m in DEFAULT_ASSET_MARKERS)]
+    if bad:
+        return False, ("模板 %s 参考图仍是默认旧资源: %s"
+                       % (tpl.name, bad[:3]))
+    return True, ""
+
+
+def bind_images_to_template(stage: str, image_names: list) -> str:
+    """把图片名绑定到模板 LoadImage 槽位（book-06/07：h3_submit --image / call_comfyui images）。
+
+    i2v/flf2v 按槽位顺序（flf2v: slot0=首帧、slot1=末帧）；r2v 前 N 个槽位并启用。
+    image_names 须为已上传到 ComfyUI input 的文件名。返回模板路径。
+    """
+    tpl = _stage_template(stage)
+    data = json.loads(tpl.read_text(encoding="utf-8-sig"))
+    nodes = data.get("nodes") or []
+    slots = [n for n in nodes if isinstance(n, dict) and n.get("type") == "LoadImage"]
+    if not slots:
+        raise ValueError(f"模板 {tpl.name} 无 LoadImage 槽位")
+    bound = 0
+    for n in slots:
+        if bound >= len(image_names):
+            break
+        vals = n.get("widgets_values") or []
+        if not vals:
+            vals = [""]
+            n["widgets_values"] = vals
+        vals[0] = image_names[bound]
+        n["mode"] = 0
+        bound += 1
+    tpl.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    _log(f"bind_images stage={stage} bound={bound} -> {tpl.name}")
+    return str(tpl)
+
+
 def _load_batch_map() -> dict:
     """加载 log.jsonl 的 sha→batch_id 映射（带 mtime+size 缓存）。"""
     log_path = ROOT / "uploads" / "log.jsonl"

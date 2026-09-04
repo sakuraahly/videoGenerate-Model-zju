@@ -132,15 +132,41 @@ def gather_images(
     if not raw:
         raw = [str(p) for p in (stage.get("default_images") or [])]
     out: List[Path] = []
+    # book-06/07：补丁——像 h3_batch 一样在 uploads/ 与 ComfyUI input/ 中做智能查找
+    # （agent 传 "up:1 房间.png"/"d42fe581_飞船发射台.png" 这类素材名也能解析）
     for p in raw:
-        p = Path(p)
-        if not p.is_absolute():
-            p = Path(project_dir) / p
-        p = p.resolve()
-        if not p.exists():
-            raise ParamError(f"输入图不存在: {p}")
-        out.append(p)
+        cand = _resolve_input_image(project_dir, p)
+        out.append(cand)
     return out
+
+
+def _resolve_input_image(project_dir: Path, ref: str) -> Path:
+    """解析输入图：绝对/相对路径 > 项目 uploads/**（按文件名）> ComfyUI input/**（按文件名）。"""
+    p = Path(ref)
+    if p.is_absolute() and p.exists():
+        return p.resolve()
+    if not p.is_absolute():
+        rel = (project_dir / p)
+        if rel.exists():
+            return rel.resolve()
+        # 素材名可能带 "up:1 " 前缀（list 输出）或纯文件名
+        name = ref.split(":", 1)[-1].split("/")[-1].strip()
+        for base in (project_dir / "uploads", Path.home() / "ai" / "ComfyUI" / "input"):
+            try:
+                env = json.loads((project_dir / "config" / "environment.json").read_text(encoding="utf-8-sig"))
+                if "ai" in str(base) or "ComfyUI" in str(base):
+                    base = Path(str(env.get("remote_comfyui_dir", "~/ai/ComfyUI")).replace("~", str(Path.home()))) / "input"
+            except Exception:
+                pass
+            for sub in sorted(base.iterdir(), reverse=True) if base.is_dir() else []:
+                if sub.is_dir():
+                    hit = sub / name
+                    if hit.is_file():
+                        return hit.resolve()
+                elif sub.name == name and sub.is_file():
+                    return sub.resolve()
+        raise ParamError(f"输入图不存在（请用本会话素材名或绝对路径）: {ref}")
+    raise ParamError(f"输入图不存在: {ref}")
 
 
 def read_stage_texts(
