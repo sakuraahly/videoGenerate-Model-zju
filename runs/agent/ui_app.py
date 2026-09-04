@@ -17,9 +17,11 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import queue
+import shutil
 import sys
 import threading
 import time
@@ -32,6 +34,10 @@ PROJECT_ROOT = os.environ.get(
     os.path.expanduser('~/videoGenerate-Model-zju'),
 )
 CHATS_DIR = Path(PROJECT_ROOT) / 'logs' / 'agent_chats'
+UPLOADS_DIR = Path(PROJECT_ROOT) / 'uploads'
+UPLOADS_LOG = UPLOADS_DIR / 'log.jsonl'
+IMG_EXT = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
+VID_EXT = {'.mp4', '.webm', '.mov', '.mkv', '.gif'}
 
 # 上下文预算（字符；模型 ctx=8192，扣除系统/工具定义后按 ~3k token 预算）
 MAX_CTX_CHARS = 6000
@@ -201,6 +207,103 @@ def _content_text(content) -> str:
 
 
 
+# ---------------------------------------------------------------- 素材上传入口
+def _comfy_input_dir() -> Path:
+    """ComfyUI input 目录（agent 跑在 spark 上，取本机路径）。"""
+    comfy = '~/ai/ComfyUI'
+    try:
+        env = json.loads((PROJECT_ROOT / 'config' / 'environment.json')
+                         .read_text(encoding='utf-8-sig'))
+        comfy = env.get('remote_comfyui_dir') or comfy
+    except Exception:  # noqa: BLE001
+        pass
+    return Path(comfy.replace('~', str(Path.home()))) / 'input'
+
+
+def _known_shas() -> set:
+    if not UPLOADS_LOG.exists():
+        return set()
+    seen = set()
+    try:
+        for line in UPLOADS_LOG.read_text(encoding='utf-8').splitlines():
+            try:
+                seen.add(json.loads(line).get('sha'))
+            except Exception:  # noqa: BLE001
+                continue
+    except OSError:
+        pass
+    return seen
+
+
+def ingest_upload(paths) -> str:
+    """把界面/上传文件收进素材池（与 upload_watch 同语义）：
+
+    - 任意类型 → 归档 uploads/YYYYMMDD/<sha8>_<原名>（sha 去重）+ log.jsonl 流水；
+    - 图片额外镜像到 ComfyUI input/user_uploads/<原名>（LoadImage/refimage 立即可见）。
+    返回给用户的中文摘要。
+    """
+    if isinstance(paths, (str, Path)):
+        paths = [paths]
+    input_mirror = _comfy_input_dir() / 'user_uploads'
+    added = dup = err = 0
+    kinds = []
+    seen = _known_shas()
+    for raw in paths:
+        p = raw
+        if isinstance(raw, dict):
+            p = raw.get('name') or raw.get('path')
+        p = Path(str(p)).expanduser()
+        if not p.is_file():
+            err += 1
+            continue
+        try:
+            data = p.read_bytes()
+        except OSError:
+            err += 1
+            continue
+        sha = hashlib.sha256(data).hexdigest()[:16]
+        ext = p.suffix.lower()
+        kind = 'video' if ext in VID_EXT else ('image' if ext in IMG_EXT else 'other')
+        kinds.append(kind)
+        if sha not in seen:
+            day = datetime.now().strftime('%Y%m%d')
+            dst_dir = UPLOADS_DIR / day
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            dst = dst_dir / f'{sha[:8]}_{p.name}'
+            try:
+                shutil.copy2(p, dst)
+                with open(UPLOADS_LOG, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({'ts': _now(), 'sha': sha, 'src': str(p),
+                                        'archived': str(dst), 'kind': kind},
+                                       ensure_ascii=False) + '\n')
+                seen.add(sha)
+                added += 1
+            except OSError:
+                err += 1
+                continue
+        else:
+            dup += 1
+        if kind == 'image':
+            try:
+                input_mirror.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(p, input_mirror / p.name)
+            except OSError:
+                err += 1
+    parts = []
+    if added:
+        parts.append(f'新增 {added} 项已入素材池（uploads/ 归档'
+                     + ('，图片已镜像到 ComfyUI input/user_uploads/' if 'image' in kinds else '') + '）')
+    if dup:
+        parts.append(f'{dup} 项与池内已有文件相同（已跳过归档，图片仍确保可用）')
+    if err:
+        parts.append(f'{err} 项处理失败')
+    if not parts:
+        parts.append('未收到有效文件')
+    parts.append('现在可以对 agent 说：list_references，把 <id> 设为参考图'
+                 '（h3/refimage.py use --name <id> --stage r2v --slot N）。')
+    return '\n'.join(parts)
+
+
 # ---------------------------------------------------------------- Gradio 界面
 def _choices() -> list:
     return [(label, cid) for cid, label in list_chats()]
@@ -296,7 +399,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     '本地工作流组：t2v / i2v / r2v（多参考图）/ flf2v。\n'
                     '- 视频任务默认“提交即返回”，后台运行时本页持续显示进度，请勿重复提交；\n'
                     '- 单轮回复过长会自动暂停（发送 **继续** 续写），避免上下文失控；\n'
-                    '- 历史会话可加载续聊，随时“＋新对话”开新会话。')
+                    '- 页面打开自动开启新对话；历史会话可加载续聊；素材可直接上传到下方按钮。')
         with gr.Row():
             hist_dd = gr.Dropdown(label='历史会话', choices=_choices(), scale=4)
             load_btn = gr.Button('加载所选')
@@ -304,14 +407,23 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             ref_btn = gr.Button('刷新')
             new_btn = gr.Button('＋新对话', variant='primary')
         status_html = gr.HTML('<span style="color:green">● idle</span>')
-        chatbot = gr.Chatbot(type='messages', height=500, label='对话')
+        chatbot = gr.Chatbot(type='messages', height=440, label='对话')
         with gr.Row():
-            box = gr.Textbox(placeholder='描述创意 / 查任务进度 / 上传素材选用…（Enter 发送）',
+            up_btn = gr.UploadButton('📤 上传素材（图片/视频，自动进入素材池）',
+                                     file_types=['image', 'video'],
+                                     file_count='multiple', scale=3)
+            box = gr.Textbox(placeholder='描述创意 / 查任务进度 / 素材选用…（Enter 发送）',
                              show_label=False, lines=2, scale=5)
             send_btn = gr.Button('发送', variant='primary', scale=1)
         note_md = gr.Markdown('_…_')
 
         out = [chatbot, status_html, note_md, hist_dd, cid_state]
+
+        def _auto_new():
+            cid = new_chat_id()
+            return ([], 'idle',
+                    f'✅ 已自动开启新对话（会话 id：`{cid}`），直接输入即可。',
+                    gr.update(choices=_choices()), cid)
 
         def _load(sel):
             if not sel:
@@ -322,20 +434,28 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     gr.update(), sel)
 
         def _new():
-            return [], 'idle', '已开启新对话。', gr.update(choices=_choices()), ''
+            cid = new_chat_id()
+            return [], 'idle', f'✅ 已开启新对话（会话 id：`{cid}`）。', \
+                gr.update(choices=_choices()), cid
 
         def _del(sel):
             if sel:
                 delete_chat(sel)
             return gr.update(choices=_choices())
 
+        def _upload(files):
+            if not files:
+                return '未收到文件。'
+            return ingest_upload(files)
+
         load_btn.click(_load, hist_dd, out)
         new_btn.click(_new, None, out)
         del_btn.click(_del, hist_dd, hist_dd)
         ref_btn.click(lambda: gr.update(choices=_choices()), None, hist_dd)
+        up_btn.upload(_upload, up_btn, note_md)
         send_btn.click(send, [hist_state, cid_state, box], out)
         box.submit(send, [hist_state, cid_state, box], out)
-        demo.load(lambda: gr.update(choices=_choices()), None, hist_dd)
+        demo.load(_auto_new, None, out)
 
     print(f'Qwen-Agent 调度器 Web UI: http://127.0.0.1:{port}')
     print(f'项目根目录: {PROJECT_ROOT}')
