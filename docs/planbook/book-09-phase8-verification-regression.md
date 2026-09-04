@@ -91,3 +91,12 @@
 ## 7. 待用户输入 / 待定项
 - 是否要求"每阶段都要跑完整黄金路径"，还是允许"阶段内最小自测 + 里程碑黄金路径"→ 建议里程碑（集齐 N 个阶段）跑一次完整黄金路径。
 - 是否需要用户协助（spark 重启授权、真实素材提供）才能完成黄金路径验证。
+---
+
+## 6b. 黄金路径闭环记录（2026-09-04，引擎级端到端）
+
+- **提交**：`tests/golden_path.py submit --stage flf2v --images d42fe581_飞船发射台.png,a81ba0a0_房间.png --resolution 360p --seconds 5` → `TASK_SUBMITTED 87dccd14-180a-4a2a-aa0a-1f93715210de`。
+- **绑定断言（机器可验证）**：`/queue` 任务 API 流 `LoadImage 114 inputs.image = d42fe581_飞船发射台...`——**参考图正确绑定、非默认旧资产**（与此前"drama_asset_* 旧图"事故形成对照，详见 book-06 §11 修复）。
+- **生成与取片**：任务完成（/history 出现、队列清空）→ `fetch` → `Status: success`、`REMOTE_VIDEO_PATH: ~/ai/ComfyUI/output/video/MiniMax_H3_00055_.mp4`、`LOCAL_OUTPUT: outputs/video_11.mp4 size=521015` → **GOLDEN_OK**。
+- **剩余人工项**：产物**画面内容**与两张参考图一致性的最终确认（机器可验证的"绑定+产物存在"已过；画面一致性建议用户查看 `outputs/video_11.mp4`）。
+- **可复现脚本**：`tests/golden_path.py`（submit/fetch 两命令，标记 GOLDEN_SUBMITTED/PENDING/OK/FAIL）——今后每次回归可用它重放。
