@@ -85,7 +85,17 @@ def cmd_submit(args) -> int:
         print('[错误] 至少需要 2 张图片才能生成转场', file=sys.stderr)
         return 3
 
-    from runs.h3 import mediacheck
+    # 修复导入路径：支持从项目根目录或直接运行
+    try:
+        from runs.h3 import mediacheck
+    except ImportError:
+        import sys
+        import os
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+        from runs.h3 import mediacheck
+    
     resolved = []
     for name in images:
         try:
