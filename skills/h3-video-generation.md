@@ -31,6 +31,27 @@ Local Windows repo + remote `spark` (ComfyUI + H3 models). The toolbox:
 
 ---
 
+## 0b. 工作目录与环境约定（双端路径速查，2026-09-04）
+
+### ⚠️ Z: 盘 = 网络映射盘 —— 禁止使用 `Z:\…` 路径
+- 本机 Windows 的 `Z:\` 是 SSHFS-Win 把 **spark 主目录**（`/home/Developer`）映射出来的
+  **网络盘**，仅本机调试读取方便，不属于项目正式路径；换机器/会话即不存在。
+- **红线：任何脚本 / 命令 / 配置 / 文档 / 本 skill / git 提交都不得写 `Z:\…` 路径**。
+  写路径一律用 spark 真实路径（`~/…`）或 Windows 主库（`D:\MY_CODING_PROGRAM\videoGenerate-Model-zju`）。
+
+### 主要工作文件夹
+| 规范路径 | 内容 |
+|---|---|
+| `D:\MY_CODING_PROGRAM\videoGenerate-Model-zju`（Windows 主库） | git 主库，唯一推 GitHub（sakuraahly/videoGenerate-Model-zju）的一端；代码/文档都改这里再同步 |
+| `~/videoGenerate-Model-zju`（spark 运行时） | 同仓库 spark-local 运行时；agent 与引擎在此跑；`logs/agent_chats/`=会话存档；`runs/agent/`=调度器代码 |
+| `~/ai`（spark） | AI 平台：`ComfyUI/`（systemd 服务 8188，勿重启）、`venv/`、`models_dl/`、H3 清单 sha |
+| `~/ai/ComfyUI/` | `models/`=H3 四件套；`input/`（含 `user_uploads/` 上传镜像）；`output/`（视频产物在 `output/video/`）；`user/default/workflows/`=同事模板（**只读，永不修改**） |
+| `~/Qwen3.8-27B/`（spark） | Qwen 全家桶：`models/`（NVFP4 ≈21GB / bf16）、`sglang-venv/`（8000）、`vllm-venv/`、启动脚本、`start_qwen_agent.py`（7860 入口）、`PROJECT-STATUS.md` |
+| agent（spark） | 代码=仓库 `runs/agent/`；venv=`~/qwen-agent-venv`；入口=`~/Qwen3.8-27B/start_qwen_agent.py`；tmux `qwen-agent`；日志 `~/qwen-agent.log` |
+| 注意 | Windows 侧 `C:\Users\39163\ai`、`C:\Users\39163\videoGenerate-Model-zju` 是残留部分副本，勿用；全表见 `docs/session-summary.md §14` |
+
+---
+
 ## 1. Recommended path (use the automation, not raw ssh)
 
 ### 1.1 Preflight (do NOT skip)
@@ -87,12 +108,22 @@ manually (human mode — see `docs/workflow-and-prompt.md` §2).
 ### 1.3c Local LLM serving notes (Qwen3.8-27B SGLang on spark)
 
 - Serve: tmux session `sglang`，端口 8000（127.0.0.1）。
-  启动命令见 `shell/start_sglang_coexist.sh`（共存模式 mem=0.55）或
+  启动命令见 `shell/start_sglang_coexist.sh`（共存模式 **mem=0.50 / ctx=8192**，实测预载
+  ≈49GB、120s 就绪；0.40 必失败；mem 0.55+32k 旧方案超载已弃）或
   `shell/start_all_services.sh`（协调启动：先停 ComfyUI → 加载 SGLang → 再启 ComfyUI）。
 - Local access is via SSH tunnel; local port 8000 may be blocked by a stale listener, use e.g.
   `ssh -N -L 8011:127.0.0.1:8000 spark` and point `config/llm.json` `base_url` at `8011`.
-- **Keep `max_tokens` small in `llm.json` (~500)**. Without it the server may emit up to its
-  `max_model_len` (65536) and stall the whole queue for many minutes.
+- **`llm.json` 的 `max_tokens` 保持小值（~500，AI 桥 idea2prompts 用；槽位生成可 4096）**——
+  这是「填词桥」的输出上限，与下面「调度器」的 2048 不是同一处。
+- **上下文预算机制（2026-09-04 起，`runs/agent/ctx_budget.py`）**：SGLang ctx=8192 硬顶，
+  服务端校验=输入+max_tokens≤8192，超出即 HTTP 400。每轮存在固定开销（系统提示+工具定义
+  模板，实测 ≈3.1k token），因此：调度器每次调用回复上限 2048 + 输入硬预算
+  max_input_tokens（对话部分 ~2.5k token）；界面/CLI 历史按 token 口径裁剪
+  （UI_TRIM_TOKENS=1800，保最新轮次）；服务端仍报「超上下文」时自动压缩到最新消息重试一次
+  ——**长对话不再报 `ModelServiceError … maximum context length`**（旧根因已修：
+  原字符口径 6k≈3k token 低估中文 + qwen_agent 默认 max_input_tokens=58000 从不生效 +
+  CLI `LLM_CFG max_tokens=8192` 使任何请求必 400，均已修）。推论：**对话与单轮回复务必
+  精炼（≤600 字），超长交付分轮 + 让用户发“继续”**；别试图一次塞长历史。
 - Qwen-Agent 调度器：tmux `qwen-agent`，端口 7860（Gradio Web UI）。
   **注意**：Open WebUI (端口 3000) 是纯聊天界面，无工具调用能力。
   带工具的调度器在端口 7860（Qwen-Agent Gradio UI）。
@@ -210,8 +241,6 @@ Facts to remember:
 ### 1.6 Deliver the result
 
 Video lands at `outputs\video_N.mp4`. Per-task artifacts in
-
-Video lands at `outputs\video_N.mp4`. Per-task artifacts in
 `workflows\h3_<ts>_<ms>\`: `workflow_api.json`, `workflow_ui.json` (full LiteGraph links,
 loadable in ComfyUI), and `job.json` (automatic audit: stage, params, prompt_id, remote
 path, status) — the modern replacement for manual run logs.
@@ -250,6 +279,11 @@ path, status) — the modern replacement for manual run logs.
    become usable lightweight flat-API templates (no subgraph; team's 《于勒》 used
    `api_minimax_h3_r2v` as its core). For unattended **local** runs use the `video_*` templates
    or the built-in H3 T2V graph.
+9. **路径规范**：禁止使用 `Z:\…`（网络映射盘，见 §0b）；一律用 spark 真实路径 `~/…` 或
+   Windows 主库 `D:\MY_CODING_PROGRAM\videoGenerate-Model-zju`。
+10. **上下文纪律**：SGLang ctx=8192 + 每轮固定开销 ≈3.1k token ⇒ 对话预算有限；单轮回复
+    精炼 ≤600 字，长内容分轮 + “继续”，不要单轮塞长历史（预算机制详见 §1.3c 与
+    `runs/agent/ctx_budget.py`）。
 
 ---
 

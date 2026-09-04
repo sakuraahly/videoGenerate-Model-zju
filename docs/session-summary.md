@@ -579,3 +579,30 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - 验证：test_ctx_budget.py 本机 6/6 + spark 6/6；E2E 真实 SGLang 复刻崩溃现场
   （超长首轮+10 轮+“继续”）、巨型单条粘贴、正常短对话——全部正常回复、无 400。
 - 遗留：本批 E2E 未动 ComfyUI/SGLang 服务（SGLang 未 nap，仍在 8000 运行）。
+
+## 14. 工作文件夹速查（双端）与 Z: 盘路径规范（2026-09-04 增补）
+
+> 目的：新对话/新 Agent 一次性拿到“所有主要工作文件夹在哪”。**先看本表，再决定用哪个路径。**
+> 同一套速查也写入 `skills/h3-video-generation.md §0b`（agent 侧必读）。
+
+### 14.1 ⚠️ Z: 盘 = 网络映射盘，禁止使用 Z: 路径
+- 本机（Windows 调试机）的 `Z:\` 是经 SSHFS-Win 把 **spark 主目录**（`/home/Developer`）挂载成
+  网络盘得来的映射，**仅限本机调试读取方便**，不属于项目正式路径。
+- **红线：任何脚本 / 命令 / 配置 / 文档 / skill / git 提交都不得出现 `Z:\…` 路径**——
+  换台机器/换个会话就不存在；写路径一律用 spark 侧真实路径（`~/…` 或 `/home/Developer/…`），
+  或 Windows 主库路径（`D:\MY_CODING_PROGRAM\videoGenerate-Model-zju`）。
+
+### 14.2 主要工作文件夹一览（实测核对于 2026-09-04）
+| # | 位置（规范路径） | 是什么 / 里面有什么 | 维护约定 |
+|---|---|---|---|
+| 1 | Windows 主库 `D:\MY_CODING_PROGRAM\videoGenerate-Model-zju` | **git 主库**（唯一推 GitHub 的一端，`sakuraahly/videoGenerate-Model-zju`）：全部代码+文档；改代码/文档都在这里 → commit → push → 同步 spark | 配置类机器文件（deploy/llm/llm_mem 等）不入库 |
+| 2 | spark 程序副本 `~/videoGenerate-Model-zju` | **spark-local 运行时**：同仓库同结构（本机 Z: 即它的挂载视图）；agent/引擎在此运行；含 `runs/agent/`（ui_app/scheduler/tools/ctx_budget/llm_mem）、`logs/agent_chats/`（会话存档）、`tmp_transfer/`（临时中转） | 随 Windows 同步（sync_to_spark / scp）；spark git 内联身份提交、永不推 GitHub |
+| 3 | spark `~/ai/` | **AI 平台目录**：`ComfyUI/`（ComfyUI 代码与运行，systemd `comfyui.service`，端口 8188）、`venv/`（ComfyUI venv）、`models_dl/`（模型下载暂存）、`logs/ runs/ tools/ workflows/`、H3 模型清单 sha（h3-t2v / h3-ref2va.sha256） | ComfyUI **勿重启/勿改 systemd**；同事工作流在 `~/ai/ComfyUI/user/default/workflows/` **只读永不修改** |
+| 3a | spark `~/ai/ComfyUI/` 子目录 | `models/`：H3 四件套（diffusion_models 21GB / text_encoders 16GB / vae 5.2GB…）；`input/`（素材，`user_uploads/`=界面直传镜像）；`output/`（产物，视频在 `output/video/`） | 参考图先入 input 再被模板引用；产物由引擎自动落位 |
+| 4 | spark `~/Qwen3.8-27B/` | **Qwen 全家桶**：`models/`（NVFP4 ≈21GB 优先，或 `Qwen--Qwen3.8-27B` bf16）、`sglang-venv/`（SGLang 服务 8000）、`vllm-venv/`（备用）、`start_sglang.sh / start_vllm.sh / install_flashinfer.sh`、`start_qwen_agent.py`（**7860 agent 入口**）、`manage_services.sh`、`PROJECT-STATUS.md` | 内存协同见 llm_mem（nap/wake）；ctx=8192 服务端配置在 config/llm_mem.json |
+| 5 | spark agent 相关 | 代码=仓库 `runs/agent/`（见 #2）；venv=`~/qwen-agent-venv`；入口=`~/Qwen3.8-27B/start_qwen_agent.py`；tmux 会话 `qwen-agent`（端口 7860）；运行日志 `~/qwen-agent.log`；聊天存档=仓库 `logs/agent_chats/*.jsonl`（缩略图 `thumbs/`） | 重启/查错先看 §12.7/handoff §1；日志时间=北京时间 |
+| 6 | spark Open WebUI | venv `~/open-webui-venv2`、tmux `webui`（端口 3000，当前未运行） | 重启必须保留 `HF_HUB_OFFLINE=1` |
+| 7 | Windows 侧残留副本 | `C:\Users\39163\ai`（仅 `ComfyUI\input`）、`C:\Users\39163\videoGenerate-Model-zju`（仅 `uploads\`，含 2026-09-04 10:06 一次上传测试产物）——**早期/测试残留的部分副本，不是可用工作副本** | 勿在其中读写；正式路径见 #1/#2 |
+
+- 文档更新范围：本表与 `skills/h3-video-generation.md §0b`、`docs/reference-2026-09-04.md §1`、
+  `docs/handoff-2026-09-04.md §6` 口径一致（2026-09-04）。

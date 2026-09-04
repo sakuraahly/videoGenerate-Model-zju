@@ -18,6 +18,8 @@
 | 运行时形态 | `config/deploy.json` site：**spark-local（现状/交付）** / win-remote（本机+隧道） |
 | 时间口径 | 本地日志=北京时间；spark ls/journalctl=UTC（差 8h） |
 | 文档同步 | 改 Windows→commit→`git push`→`sync_to_spark.py`（排除机器配置/产物）→spark commit；自动合并 `sync_auto.py` |
+| 工作文件夹（双端全景） | spark `~/ai`（ComfyUI 平台）· `~/Qwen3.8-27B`（Qwen 模型/venv/启动脚本/agent 入口）· `~/videoGenerate-Model-zju`（运行时仓库，含 runs/agent）· Windows `D:\MY_CODING_PROGRAM\videoGenerate-Model-zju`（主库）——逐项明细见 `docs/session-summary.md §14`（同口径：`skills/h3-video-generation.md §0b`） |
+| ⚠️ Z: 盘规范 | 本机 `Z:\` = SSHFS-Win 映射 spark 主目录的网络盘，**仅本机调试读取用；脚本/文档/skill/git 一律禁用 `Z:\…` 路径**，写 spark 真实路径 `~/…` 或 Windows 主库路径 |
 
 ## 2. 目录结构全图（项目根，spark 侧同构）
 
