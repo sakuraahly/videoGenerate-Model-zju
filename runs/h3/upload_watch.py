@@ -36,6 +36,9 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
+_RUNS_DIR = str(ROOT / 'runs')
+if _RUNS_DIR not in sys.path:  # book-07：确保 runs/ 在 path，可用 from h3 import ...
+    sys.path.insert(0, _RUNS_DIR)
 CFG = ROOT / "config" / "upload_watch.json"
 ARCHIVE = ROOT / "uploads"
 LOGJSON = ARCHIVE / "log.jsonl"
@@ -101,7 +104,7 @@ def _comfy_input_mirror() -> Path:
 
 def scan_once(data_dir: str, dry_run: bool = False) -> tuple:
     """扫描 Open WebUI uploads 目录并归档新文件；返回 (新增数, 跳过数, 错误)。"""
-    from runs.h3 import mediacheck
+    from h3 import mediacheck
     upload_dir = Path(data_dir).expanduser() / "uploads"
     if not upload_dir.is_dir():
         return (0, 0, f"Open WebUI uploads 目录不存在: {upload_dir}")

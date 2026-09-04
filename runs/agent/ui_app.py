@@ -642,6 +642,11 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     if prompt_ids:
                         tasks = [{'prompt_id': pid, 'type': 'single'} for pid in prompt_ids]
                         all_pending_tasks.extend(tasks)
+                    # book-07：批量任务入会话任务表（BATCH_MANIFEST: <dir>）
+                    import re as _re
+                    bm = _re.findall(r'BATCH_MANIFEST:\s*(\S+)', final_text or '')
+                    for d in bm:
+                        all_pending_tasks.append({'manifest': d, 'type': 'batch'})
 
                     needs_continuation = should_continue(
                         user_text, final_text, prompt_ids)

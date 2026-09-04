@@ -121,3 +121,11 @@
 - ✅ 参考视频：用户定级为**甜点/低优先**，列入待做清单（`docs/planbook/` 附录「待做-低优先」）；当前维持「不支持 + 替代建议」即可，不阻塞主线。
 - 批量任务的断点续跑与「取消」交互（配合 handoff 提到的任务取消）。
 - 时间上限与进度显示粒度的偏好。
+---
+
+## 10. 实施记录（2026-09-04，与 book-06 联动）
+
+- ✅ **导入统一（修 ModuleNotFoundError 家族）**：`h3_batch.py` 改 `from h3 import mediacheck`（原 try/except 方案移除）；`refimage.py`/`upload_watch.py` 模块顶保证 `runs/` 入 sys.path 后改 `from h3 import mediacheck`（原裸 `runs.h3` 隐疾修复）；`fcntl` 导入加降级（Windows 空锁，spark 不变）。
+- ✅ **status 超时/边界修复**：默认 `--timeout 600→100`（与 run_script 工具超时 120s 对齐，长任务多次查询）；空 `prompt_id` 段归一为 `failed`（不再永久空转）；`except Exception` 也归一 `failed + all_done=False`（修复"异常仍提前判成功"边界 bug）。实测：dry-run 批次 status **即时返回**（0.0s），失败态正确。
+- ✅ **会话级批量跟踪**：`send` 解析 `BATCH_MANIFEST: <dir>` → `type:batch` 任务；`task_watch.poll_batch` 真实现（读 manifest 段状态 → running/completed/failed + done/total）。
+- 📌 已知（记录）：status 每段仍走 `h3_submit --resume` 轮询（每段 ≤30s），多段长任务建议**多次短查询**而非一次 --wait（已在工具描述/文档体现）；参考视频维持"甜点/低优先"，不阻塞主线。

@@ -126,3 +126,11 @@
 - ✅ 图像属性 token 清单已定：见 `docs/prompt-taxonomy.md`（10 正向 + 9 负向大类）；模板只保留基础质量/属性词，其余由 agent 注入。
 - 参考视频：用户定级为「甜点/低优先」，列入待做清单（见 book-07 §9）。
 - ✅ 质量 token 与画面主体分工确认：模板固定属性词；画面主体/动作/镜头/音频由 agent 逐段注入。
+---
+
+## 10. 实施记录（2026-09-04，与 book-07 联动）
+
+- ✅ **模板清理**：video_* 四份模板内嵌 story 提示词删除，仅保留图像属性词（t2v 1647→154ch、i2v/flf2v 1501→154ch、r2v 319→227ch 并保留 `<Picture 1/2>` 结构占位）；`prompts/positive_prompts.txt` 与受污染的 `api_t2v.positive.txt` 清为属性词；模板全文已无 story 标记（grep=0），质量词 4/4 命中。
+- ✅ **逐段提示词（核心，治"五个一样"）**：`h3_batch submit --prompts-file <json>`（`{"0":"...","1":"..."}` 按段索引）→ manifest 每段存 `prompt` → 提交时**按段 `--prompt` 注入**（不再全局共享）；`retry` 也按段取提示词。spark 实测：2 段 dry-run `per-seg distinct=2`（提示词不同）。
+- ✅ **验证**：`h3_submit t2v --dry-run` rc=0（模板清理未破坏注入）；spark 组合验证脚本通过。
+- ⏳ 设计待做（下一批）：`idea2prompts --segments N`（自动产出 N 段转场提示词写入 `video_flf2v.segment_<i>.positive.txt`，再由 agent 传 `--prompts-file`）；`注入后 dry-run 断言各段提示词已替换`（book-09 黄金路径步骤 7）。

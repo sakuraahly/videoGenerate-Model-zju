@@ -16,7 +16,6 @@ retry: 重新提交失败段（--force-new 绕过断点）
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import os
 import subprocess
@@ -29,6 +28,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SUBMIT_SCRIPT = PROJECT_ROOT / 'runs' / 'h3_submit.py'
 BATCH_DIR = PROJECT_ROOT / 'workflows'
 LOCK_FILE = BATCH_DIR / '.batch_lock'
+
+# 跨平台文件锁：spark(posix) 用 fcntl；Windows 降级为空锁（记录不阻塞）
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None
+
+if fcntl is None:
+    def _acquire_lock():  # Windows 降级：无锁（batch 单机使用，风险低）
+        BATCH_DIR.mkdir(parents=True, exist_ok=True)
+        return None
+
+    def _release_lock(fd):
+        pass
 
 
 def _now() -> str:
@@ -85,16 +98,8 @@ def cmd_submit(args) -> int:
         print('[错误] 至少需要 2 张图片才能生成转场', file=sys.stderr)
         return 3
 
-    # 修复导入路径：支持从项目根目录或直接运行
-    try:
-        from runs.h3 import mediacheck
-    except ImportError:
-        import sys
-        import os
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if project_root not in sys.path:
-            sys.path.insert(0, project_root)
-        from runs.h3 import mediacheck
+    # book-07：导入统一为 from h3 import ...（与 h3_submit.py 一致；本脚本在 runs/ 下，runs/ 必在 sys.path）
+    from h3 import mediacheck
     
     resolved = []
     for name in images:
@@ -124,6 +129,18 @@ def cmd_submit(args) -> int:
     batch_id = f'batch_{ts}'
     manifest_dir = BATCH_DIR / batch_id
     manifest_dir.mkdir(parents=True, exist_ok=True)
+
+    # book-06：逐段提示词（--prompts-file JSON: {"0":"...","1":"..."} 按段索引；缺省用共享 --prompt）
+    per_seg_prompts = {}
+    if args.prompts_file:
+        try:
+            data = json.loads(Path(args.prompts_file).read_text(encoding='utf-8'))
+            per_seg_prompts = {str(k): str(v) for k, v in data.items()}
+        except Exception as e:  # noqa: BLE001
+            print(f'[错误] 解析 --prompts-file 失败: {e}', file=sys.stderr)
+            return 3
+    for seg in segments:
+        seg['prompt'] = per_seg_prompts.get(str(seg['idx'])) or args.prompt or ''
 
     manifest = {
         'batch_id': batch_id,
@@ -158,8 +175,8 @@ def cmd_submit(args) -> int:
                 cmd.extend(['--resolution', args.resolution])
             if args.seconds:
                 cmd.extend(['--seconds', str(args.seconds)])
-            if args.prompt:
-                cmd.extend(['--prompt', args.prompt])
+            if seg.get('prompt'):
+                cmd.extend(['--prompt', seg['prompt']])  # book-06：按段注入各自提示词
             cmd.extend(['--force-new'])
 
             seg['submit_time'] = time.time()
@@ -203,7 +220,7 @@ def cmd_status(args) -> int:
         print(f'[错误] manifest 不存在: {manifest_path}', file=sys.stderr)
         return 3
     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-    timeout = args.timeout or 600
+    timeout = args.timeout or 100  # book-07：与 run_script 工具超时(120s)对齐；长任务分多次查询，不假死等
     t0 = time.time()
 
     while True:
@@ -212,6 +229,9 @@ def cmd_status(args) -> int:
             if seg['state'] in ('completed', 'failed'):
                 continue
             if not seg['prompt_id']:
+                # book-07：无 prompt_id 且未完成 = 提交失败态，标记 failed（避免永久空转）
+                seg['state'] = 'failed'
+                seg['error'] = seg.get('error') or '无 prompt_id（提交未成功）'
                 all_done = False
                 continue
             cmd = [sys.executable, str(SUBMIT_SCRIPT), '--resume', seg['prompt_id']]
@@ -236,7 +256,10 @@ def cmd_status(args) -> int:
             except subprocess.TimeoutExpired:
                 all_done = False
             except Exception as e:
+                # book-07：异常归一为 failed（终态），避免"异常但 all_done 仍 True→提前判成功"的边界 bug
+                seg['state'] = 'failed'
                 seg['error'] = str(e)[:200]
+                all_done = False
             _save_manifest(batch_dir, manifest)
 
         if all_done or (not args.wait):
@@ -300,8 +323,8 @@ def cmd_retry(args) -> int:
                 cmd.extend(['--resolution', manifest['resolution']])
             if manifest.get('seconds'):
                 cmd.extend(['--seconds', str(manifest['seconds'])])
-            if manifest.get('prompt'):
-                cmd.extend(['--prompt', manifest['prompt']])
+            if seg.get('prompt') or manifest.get('prompt'):
+                cmd.extend(['--prompt', seg.get('prompt') or manifest['prompt']])
             try:
                 result = subprocess.run(cmd, capture_output=True, text=True,
                                         timeout=60, cwd=str(PROJECT_ROOT))
@@ -346,11 +369,12 @@ def main(argv=None) -> int:
     p_sub.add_argument('--seconds', type=int, default=None)
     p_sub.add_argument('--resolution', default=None)
     p_sub.add_argument('--prompt', default='')
+    p_sub.add_argument('--prompts-file', default='', help='逐段提示词 JSON 文件：{"0":"...","1":"..."}（按段索引；缺省用 --prompt 共享）')
     p_sub.add_argument('--dry-run', action='store_true')
 
     p_stat = sub.add_parser('status')
     p_stat.add_argument('--wait', action='store_true')
-    p_stat.add_argument('--timeout', type=int, default=600)
+    p_stat.add_argument('--timeout', type=int, default=100)
     p_stat.add_argument('--batch', default=None)
     p_stat.add_argument('--json', action='store_true')
 

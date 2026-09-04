@@ -54,6 +54,9 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent  # 项目根
+_RUNS_DIR = str(ROOT / 'runs')
+if _RUNS_DIR not in sys.path:  # book-07：确保 runs/ 在 path，可用 from h3 import ...
+    sys.path.insert(0, _RUNS_DIR)
 IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 VID_EXT = {".mp4", ".webm", ".mov", ".mkv", ".gif"}
 
@@ -575,7 +578,7 @@ def cmd_use(dirs: dict, sel: str, stage: str, targets: str, slot: int,
 
 def cmd_prune(dirs: dict) -> int:
     """扫描三池，将无效图片（mediacheck 校验失败）移至 quarantine 目录。"""
-    from runs.h3 import mediacheck
+    from h3 import mediacheck
     rows = _rows(dirs)
     images = [r for r in rows if r["kind"] == "image"]
     quarantined = 0

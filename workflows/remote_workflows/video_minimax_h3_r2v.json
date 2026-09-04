@@ -939,7 +939,7 @@
         "Node name for S&R": "PrimitiveStringMultiline"
       },
       "widgets_values": [
-        "<Picture 1> is the main character and <Picture 2> is the location/scene. Match the character, clothing, art style, mood and lighting of the reference pictures exactly. One continuous cinematic shot: [describe the action and camera here]. Audio: [describe the sound here]. No dialogue unless specified, no text, no cuts."
+        "<Picture 1> is the main character and <Picture 2> is the location/scene. sharp focus, high detail, cinematic lighting, masterpiece quality, photorealistic, 8k, no blur, no distortion, no text, no watermark, smooth motion, 24fps"
       ],
       "color": "#322",
       "bgcolor": "#533"

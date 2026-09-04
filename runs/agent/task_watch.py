@@ -72,12 +72,21 @@ def poll_single(prompt_id: str) -> dict:
 
 
 def poll_batch(manifest_path: str) -> dict:
-    """轮询批量任务的状态（简化实现：读取 manifest 文件）。
-    
-    TODO: 根据实际的批量任务格式实现。
-    """
-    # 占位实现
-    return {'status': 'running', 'progress': '🔄 批量任务处理中...'}
+    """轮询批量任务状态（book-07：读取 manifest.json 的段状态）。"""
+    try:
+        import json
+        m = json.loads(Path(manifest_path).read_text(encoding='utf-8'))
+        segs = m.get('segments', [])
+        total = len(segs)
+        done = sum(1 for s in segs if s.get('state') == 'completed')
+        failed = sum(1 for s in segs if s.get('state') in ('failed', 'timeout'))
+        if failed == 0 and done == total:
+            return {'status': 'completed', 'progress': f'✅ 批量完成 {done}/{total}'}
+        if failed and done + failed == total:
+            return {'status': 'failed', 'progress': f'❌ 批量完成 {done}/{total}，失败 {failed}'}
+        return {'status': 'running', 'progress': f'🔄 批量处理中 {done}/{total}'}
+    except Exception as e:  # noqa: BLE001
+        return {'status': 'failed', 'progress': f'❌ 批量状态读取失败: {e}'}
 
 
 def _monitor_worker(cid: str, turn_id: int, out_queue: queue.Queue, stop_event: threading.Event):
