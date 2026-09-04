@@ -35,7 +35,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 | 7 | `skills/h3-prompt-engineering.md` | 提示词工程规则（结构/中文渲染/音频句等） | 写任何生成提示词前 |
 | 8 | `docs/agent-workflow.md`、`docs/agent-reading/00–04` | 7860 Agent 工作链手册与执行协议（提交/续传/取件、素材链、输出纪律） | 调度/使用 Agent 完成任务 |
 | 9 | `docs/quickstart.md` / `docs/user-guide.md` / `docs/deploy-modes.md` / `docs/llm-memory-optimization.md` / `docs/qwen38-deployment.md` / `docs/h3-workflow-architecture.md` / `docs/h3-troubleshooting.md` / `docs/long-term-maintenance.md` 等 | 新手入门 / 用户手册 / 部署形态 / 内存账本 / Qwen 部署 / 工作流架构 / 故障排查 / 长期维护 | 按需定向阅读 |
-| 10 | **`docs/planbook/book-00-overview.md`**（+ book-01…book-12） | **系统性修复计划书**：痛点→阶段映射、基座/可信部署、前端/输出/自动完成/资源隔离/工作流/引擎/风格、验收门禁与黄金路径 | 修复负责人（多轮校验先读 book-00） |
+| 10 | **`docs/planbook/book-00-overview.md`**（+ book-01…book-13） | **系统性修复计划书**：痛点→阶段映射、基座/可信部署、前端/输出/自动完成/资源隔离/工作流/引擎/风格、验收门禁与黄金路径 | 修复负责人（多轮校验先读 book-00） |
 | 11 | `docs/dev-workflow.md` / `skills/dev-workflow.md` | **变更与交付工作流**：执行→修改→测试→自测通过→写入文档→双端核对→git 提交（含如何操作） | 所有改动者（改任何文件前必读） |
 | 12 | `docs/prompt-taxonomy.md` | **H3 提示词属性词库**：10 正向 + 9 负向分类（book-06 保留/注入的图像属性词） | 工作流/提示词维护者 |
 | 13 | `docs/code-fact-registry.md` | **代码事实登记表**：路径/端口/常量/工具数/部署形态/模型模板唯一口径（冲突以运行代码为准） | 所有改动者（改前查表） |
@@ -128,6 +128,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 | 日期 | 变更 |
 |---|---|
 | 2026-09-04 工具模块化计划 | 新增 docs/planbook/book-12-agent-tool-modular.md：Agent 工具自动化/模块化/通用化 + 多工作流配置驱动与便捷更换（注册表+适配器+动态 digest） |
+| 2026-09-04 待做池 | 新增 docs/planbook/book-13-backlog.md：实施状态总览 + P0-P2 待办 + 架构优化任务（绑定统一/解析收敛/单源/轮询成本）+ 新观察 |
 | 2026-09-04 日志计划 | 新增 docs/planbook/book-11-logging-system.md：日志系统治理与升级（全场景稳定/无垃圾/不错失 agent 行为与参数，含 dev.py logs 子命令规划） |
 | 2026-09-04 EIO经验 | docs/dev-workflow.md §10 记录 Windows ReplaceFileW EIO(1175) 根因与处置（重试/WriteAllText/读写顺序/转义教训）；skills 同步一行 |
 | 2026-09-04 基座实施 | book-01 第一轮：version.py / runtime_check.py / tests/e2e_smoke.py / consistency_check 扩展 / code-fact-registry.md；修复 project_root 误入残留副本 |
