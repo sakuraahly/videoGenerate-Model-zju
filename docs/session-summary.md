@@ -642,6 +642,62 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 ### 16.3 改动文件
 - `runs/agent/tools.py`：两处 `TimeoutExpired` 处理的 bytes/str 兼容
 
+## 17. 2026-09-04 第五批：Agent 体验/性能/隔离 6 阶段优化
+
+> 设计文档：`docs/optimization-plan-2026-09-04.md`（7 问题 → 6 Phase）
+
+### 17.1 Phase 1 — 上传多态状态 + 状态栏 HTML（P1+P6）
+- **文件**：`runs/agent/ui_app.py`
+- 新增状态 HTML 常量：`IDLE_HTML`（绿●等待）、`BUSY_HTML(t)`（橙●处理中）、`ERROR_HTML`（红●出错）、`ABORT_HTML`（橙●已中止）、`UP_IDLE`、`UP_LOADING(n)`（黄色药丸）
+- `_upload()` 改为三态生成器：loading → 处理 → 成功/失败，`try/finally` 保证 `_upload_in_progress` 复位
+- `send()` 开头检查上传中标志 → 提示等待
+- 心跳状态改用 `BUSY_HTML(...)`，完成 → `✅ 本轮完成`
+
+### 17.2 Phase 2 — 无效图片拦截（P5）
+- **新建**：`runs/h3/mediacheck.py` — `check_image_bytes(data)`：大小检查 + PIL verify + 像素解码 + 尺寸校验，全异常捕获
+- **修改**：`ui_app.py` `ingest_upload()` — 图片先过 mediacheck，无效跳过归档/镜像，返回 `invalid_details`
+- **修改**：`upload_watch.py` `scan_once()` — 归档前校验，无效记录 `rejected` 到 log
+- **修改**：`refimage.py` — `_rows()` 跳过 <1KB + 排除 `_quarantine/`；新增 `prune` 子命令（无效图片移至 `uploads/_quarantine/`）
+
+### 17.3 Phase 3 — 失败处理 + 熔断器（P7）
+- **新建**：`runs/agent/turn_state.py` — 双计数器（不可恢复 max 3 / 可恢复 max 5），per-key SHA 追踪
+- **修改**：`tools.py` `_wrap_call()` — 分类返回值（确定/可恢复/成功），超阈值返回熔断消息，成功重置计数
+- **修改**：`scheduler.py` SYSTEM_MESSAGE — 硬性限制段增加 `⛔ 不可恢复` 指令
+
+### 17.4 Phase 4 — 批量提交工具（P4）
+- **新建**：`runs/h3_batch.py` — submit/status/retry 子命令，manifest 编排，文件锁
+- **修改**：`tools.py` — 新增 `BatchSubmit` 工具类（`batch_submit`）
+- **修改**：`scheduler.py` — TOOL_NAMES + SYSTEM_MESSAGE 多图转段改用 batch_submit
+
+### 17.5 Phase 5 — 任务级素材隔离（P2）
+- **修改**：`ui_app.py` — `_pending_batch_id` 追踪，`ingest_upload()` 生成 `secrets.token_hex(4)`
+- **修改**：`refimage.py` `cmd_list()` — 新增 `--batch latest|all|<id>` 和 `--recent <minutes>` 过滤
+- **修改**：`tools.py` `ListReferences` — 新增 `batch` 参数（默认 'latest'）
+
+### 17.6 Phase 6 — 文档状态追踪 + 预热（P3）
+- **新建**：`runs/agent/doc_utils.py` — 提取 `scan_agent_reading_docs()` 避免循环导入
+- **新建**：`runs/agent/doc_state.py` — sha256 变更检测 + 单飞预热（Lock + Event）
+- **修改**：`ui_app.py` `_auto_new()` — 启动预热守护线程
+
+### 17.7 改动文件汇总
+| 文件 | 操作 |
+|---|---|
+| `runs/agent/ui_app.py` | 修改（Phase 1/2/3/5/6） |
+| `runs/agent/tools.py` | 修改（Phase 3/4/5） |
+| `runs/agent/scheduler.py` | 修改（Phase 3/4） |
+| `runs/h3/refimage.py` | 修改（Phase 2/5） |
+| `runs/h3/upload_watch.py` | 修改（Phase 2） |
+| `runs/h3/mediacheck.py` | **新建**（Phase 2） |
+| `runs/agent/turn_state.py` | **新建**（Phase 3） |
+| `runs/h3_batch.py` | **新建**（Phase 4） |
+| `runs/agent/doc_utils.py` | **新建**（Phase 6） |
+| `runs/agent/doc_state.py` | **新建**（Phase 6） |
+
+### 17.8 验证
+- 6 Phase 全部语法检查通过
+- git commit + push → sync_to_spark.py 双端同步
+- spark 侧 agent 已重启（端口 7860 监听中，PID 待查）
+
 ## 14. 工作文件夹速查（双端）与 Z: 盘路径规范（2026-09-04 增补）
 
 > 目的：新对话/新 Agent 一次性拿到“所有主要工作文件夹在哪”。**先看本表，再决定用哪个路径。**
