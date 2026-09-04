@@ -41,6 +41,9 @@ IMG_EXT = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
 VID_EXT = {'.mp4', '.webm', '.mov', '.mkv', '.gif'}
 
 _active_turn = threading.Lock()  # 发送幂等锁：忙碌时再次点击直接忽略，不产生重复任务
+_stop_requested = threading.Event()  # 停止按钮信号：置位后当前轮尽早收尾（程序级中止）
+
+
 
 # 上下文预算（字符；模型 ctx=8192，扣除系统/工具定义后按 ~3k token 预算）
 MAX_CTX_CHARS = 6000
@@ -184,11 +187,12 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
         lmem.ensure_llm_up(
             timeout_s=900,
             progress=lambda s: events.put(
-                {'kind': 'hb',
+                {'kind': 'phase',
                  'text': f'⏳ 正在唤醒本地模型…（{s}s；仅首次或让位后需要）'}))
     except Exception as e:  # noqa: BLE001
         events.put({'kind': 'error', 'text': f'模型唤醒失败: {e}'})
         return
+    events.put({'kind': 'phase', 'text': '🔶 模型就绪：推理/工具调度中（长任务期间此状态会持续跳动，请勿重复发送）'})
     try:
         bot = Assistant(llm=llm, system_message=SYSTEM_MESSAGE,
                         function_list=TOOL_NAMES)
@@ -357,6 +361,28 @@ def ingest_upload(paths) -> tuple:
     return '\n'.join(parts), previews
 
 
+
+# ---------------------------------------------------------------- 程序级状态源
+def llm_state_text() -> str:
+    try:
+        from runs.agent import llm_mem as _lm
+        return '运行中' if _lm.is_up(1.5) else '让位/停止'
+    except Exception:  # noqa: BLE001
+        return '未知'
+
+
+def tail_run_log(max_chars: int = 120) -> str:
+    """最新 logs/run_*.log 的末行（引擎真实进展，程序级事实，不依赖模型自述）。"""
+    try:
+        logs = (Path(PROJECT_ROOT) / 'logs')
+        files = sorted(logs.glob('run_*.log'),
+                       key=lambda p: p.stat().st_mtime, reverse=True) if logs.is_dir() else []
+        if not files:
+            return ''
+        data = files[0].read_bytes()
+        return data[-max_chars:].decode('utf-8', errors='replace').strip().splitlines()[-1]
+    except Exception:  # noqa: BLE001
+        return ''
 # ---------------------------------------------------------------- Gradio 界面
 def _choices() -> list:
     return [(label, cid) for cid, label in list_chats()]
@@ -370,17 +396,20 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 for m in msgs if m.get('role') in ('user', 'assistant')]
 
     def send(chat_hist, cid, user_text):
-        # 幂等性：忙碌期间重复点击发送 → 直接忽略并提示，保证“多次点击=单次结果”
+        # 幂等：忙碌期重复点击 → 忽略并提示（多次点击=单次结果）
         user_text = (user_text or '').strip()
         if not _active_turn.acquire(blocking=False):
             yield (fmt_msgs(chat_hist or []),
-                   '⏳ 上一轮仍在处理中，本次点击已忽略（请勿重复发送）',
-                   '上一轮仍在处理中；请等它结束（状态栏变回 idle）再发下一条。',
-                   gr.update(), cid)
+                   '⏳ 上一轮仍在处理中，本次点击已忽略',
+                   '上一轮仍在处理中；请等状态变 idle 或点“⏹ 中止本轮”。', gr.update(), cid,
+                   gr.update())
             return
         try:
+            global _stop_requested
+            _stop_requested = threading.Event()
             if not user_text:
-                yield fmt_msgs(chat_hist or []), '请输入内容。', 'idle', gr.update(), cid
+                yield (fmt_msgs(chat_hist or []), '请输入内容。', 'idle', gr.update(), cid,
+                       gr.update())
                 return
             if not cid:
                 cid = new_chat_id()
@@ -389,13 +418,15 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             shown = fmt_msgs(msgs)
             ev = queue.Queue()
             stop = threading.Event()
+            clear_box = gr.update(value='')
 
             def _heartbeat():
                 t0 = time.time()
                 while not stop.is_set():
-                    ev.put({'kind': 'hb',
-                            'text': f'⏳ 模型/任务进行中（{int(time.time() - t0)}s）… '
-                                    f'视频长任务会持续数分钟，请勿重复提交；完成后对我说“取片”'})
+                    secs = int(time.time() - t0)
+                    text = (f'⏳ 处理中 {secs}s · LLM:{llm_state_text()} · '
+                            f'引擎: {tail_run_log() or "等待引擎事件"}')
+                    ev.put({'kind': 'hb', 'text': text})
                     stop.wait(HEARTBEAT_SEC)
 
             threading.Thread(target=run_turn, args=(msgs[:-1], user_text, ev),
@@ -405,17 +436,24 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             status = '🔶 处理中…'
             assistant = ''
             phase = 'ok'
+            aborted = False
             noop = gr.update()
+            first = True
             while True:
+                if _stop_requested.is_set():
+                    aborted = True
+                    break
                 try:
                     item = ev.get(timeout=1.0)
                 except queue.Empty:
-                    yield fmt_msgs(msgs), status, '', noop, cid
+                    yield shown, status, '', noop, cid, (clear_box if first else noop)
+                    first = False
                     continue
                 kind = item.get('kind')
-                if kind == 'hb':
+                if kind in ('hb', 'phase'):
                     status = item.get('text', status)
-                    yield fmt_msgs(msgs), status, '', noop, cid
+                    yield shown, status, '', noop, cid, (clear_box if first else noop)
+                    first = False
                 elif kind == 'done':
                     assistant = item.get('text') or ''
                     break
@@ -425,7 +463,13 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     break
             stop.set()
 
-            if phase == 'error':
+            if aborted:
+                note = ('已中止本轮。若服务端请求仍在执行并可能已提交任务，任务会保留在'
+                        '断点/ComfyUI 队列：想取回就说“无参重跑续传”，想放弃可稍后说'
+                        '“重来”。')
+                msgs.append({'role': 'assistant',
+                             'content': '[已中止] 本轮已由用户停止等待（服务端请求可能仍在完成）。'})
+            elif phase == 'error':
                 msg = f'[执行出错] {assistant}'
                 msgs.append({'role': 'assistant', 'content': msg})
                 note = '上一轮执行出错：可把报错内容发我，或检查 logs/run_*.log。'
@@ -441,19 +485,17 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                              'content': '（模型未返回内容，可能被截断；发送“继续”重试）'})
                 note = '模型未返回内容（可能被截断），发送“继续”续写。'
             save_chat(cid, msgs)
-            # 内存协同：回合确认提交了真实生成任务 → nap 让位（下轮自动唤醒）
             nap_note = ''
             try:
                 from runs.agent import llm_mem as lmem
-                if lmem.maybe_nap_after(assistant):
+                if not aborted and lmem.maybe_nap_after(assistant):
                     nap_note = '（已临时让位内存给视频生成；下轮对话会自动唤醒本地模型）'
             except Exception:  # noqa: BLE001
                 pass
             if nap_note:
                 note = note + '\n\n' + nap_note
-            # 只在终局刷新一次历史下拉，避免每轮心跳重读会话文件
-            yield (fmt_msgs(msgs), 'idle', note,
-                   gr.update(choices=_choices()), cid)
+            yield (fmt_msgs(msgs), 'idle', note, gr.update(choices=_choices()), cid,
+                   clear_box)
         finally:
             _active_turn.release()
     with gr.Blocks(title='Qwen-Agent 受限调度器', theme=gr.themes.Soft()) as demo:
@@ -472,6 +514,9 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             ref_btn = gr.Button('刷新')
             new_btn = gr.Button('＋新对话', variant='primary')
         status_html = gr.HTML('<span style="color:green">● idle</span>')
+        with gr.Row():
+            stop_btn = gr.Button('⏹ 中止本轮', variant='stop', size='sm')
+            gr.Markdown('_程序级状态：随心跳显示 LLM 运行/让位 + 引擎日志行；卡住先看这里，再决定中止_')
         chatbot = gr.Chatbot(type='messages', height=440, label='对话')
         with gr.Row():
             up_btn = gr.UploadButton('📤 上传素材（图片/视频，自动进入素材池）',
@@ -486,6 +531,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         note_md = gr.Markdown('_…_')
 
         out = [chatbot, status_html, note_md, hist_dd, cid_state]
+        send_out = out + [box]   # 发送输出追加输入框（提交后自动清空）
 
         def _auto_new():
             cid = new_chat_id()
@@ -511,40 +557,23 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 delete_chat(sel)
             return gr.update(choices=_choices())
 
-        def _upload(files):
-            # 两段式：先立即回执“已接收”，入库完成后再给最终结果（避免等待中无反馈）
-            n = len(files) if files else 0
-            ack = ('<div style="padding:6px 10px;background:#fff8e1;'
-                   'border:1px solid #e7d492;border-radius:6px;color:#8a6d1a;'
-                   f'font-weight:600">⏳ 已接收 {n} 个文件，正在入库（去重/归档/镜像）…'
-                   '</div>')
-            yield ack, []
-            if not files:
-                yield ('<div style="padding:6px 10px;background:#fdf2f2;'
-                       'border:1px solid #e5b8b8;border-radius:6px;color:#c0392b;'
-                       'font-weight:600">⚠️ 未收到文件（请重新选择图片/视频）。</div>'), []
-                return
-            try:
-                msg, previews = ingest_upload(files)
-                color = '#0a7d32' if '❌' not in msg else '#c0392b'
-                bg = '#f4fbf6' if color == '#0a7d32' else '#fdf2f2'
-                border = '#9dd6ae' if color == '#0a7d32' else '#e5b8b8'
-                html = (f'<div style="padding:6px 10px;background:{bg};'
-                        f'border:1px solid {border};border-radius:6px;'
-                        f'color:{color};font-weight:600">'
-                        f'{msg.replace(chr(10), "<br>")}</div>')
-                yield html, previews
-            except Exception as e:  # noqa: BLE001
-                yield (f'<div style="padding:6px 10px;background:#fdf2f2;'
-                       f'border:1px solid #e5b8b8;border-radius:6px;color:#c0392b;'
-                       f'font-weight:600">❌ 上传处理异常：{type(e).__name__}: {e}</div>'), []
+        def _stop():
+            global _stop_requested
+            _stop_requested.set()
+            return ('<span style="color:#b45309">⏹ 已发出中止请求：本轮将尽快收尾'
+                    '（若任务已提交仍会在后台完成，可用“无参重跑续传”取回）。</span>',
+                    '已请求中止')
+
         load_btn.click(_load, hist_dd, out)
         new_btn.click(_new, None, out)
         del_btn.click(_del, hist_dd, hist_dd)
         ref_btn.click(lambda: gr.update(choices=_choices()), None, hist_dd)
+        stop_btn.click(_stop, None, [status_html, note_md])
         up_btn.upload(_upload, up_btn, [up_status, gallery])
-        send_btn.click(send, [hist_state, cid_state, box], out)
-        box.submit(send, [hist_state, cid_state, box], out)
+        send_btn.click(send, [hist_state, cid_state, box], send_out,
+                       concurrency_limit=1)
+        box.submit(send, [hist_state, cid_state, box], send_out,
+                   concurrency_limit=1)
         demo.load(_auto_new, None, out)
 
     print(f'Qwen-Agent 调度器 Web UI: http://127.0.0.1:{port}')
@@ -553,5 +582,6 @@ def run_app(port: int = 7860, share: bool = False) -> None:
     # 预览白名单：Gradio 默认只服务临时目录文件，需放行素材镜像/归档目录
     allowed = [str(THUMBS_DIR), str(_comfy_input_dir() / 'user_uploads'),
                str(UPLOADS_DIR)]
+    demo.queue(default_concurrency_limit=16)
     demo.launch(server_name='0.0.0.0', server_port=port, share=share,
                 show_error=True, quiet=True, allowed_paths=allowed)
