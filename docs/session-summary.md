@@ -724,3 +724,48 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 
 - 文档更新范围：本表与 `skills/h3-video-generation.md §0b`、`docs/reference-2026-09-04.md §1`、
   `docs/handoff-2026-09-04.md §6` 口径一致（2026-09-04）。
+
+## 18. 2026-09-04 第六批：会话状态管理 + 任务监控基础架构
+
+### 18.1 新增模块
+- **session_state.py**：会话级状态管理中心
+  - `_session_tasks`: cid → 任务列表（支持多轮 auto-continue 累积）
+  - `_session_turn_ids`: cid → UI 更新令牌（防止旧状态覆盖）
+  - `_stop_events`: cid → threading.Event（会话级停止信号）
+  - 提供原子操作函数：get/add/clear_tasks, increment/check_turn_id, get_stop_event
+  
+- **task_watch.py**：ComfyUI 任务后台监控
+  - `poll_single(prompt_id)`: HTTP API 查询单任务状态（history/queue 端点）
+  - `_monitor_worker(cid, turn_id, queue, stop_event)`: 后台线程，15s 间隔轮询
+  - 通过队列推送更新消息（update/done），主循环非阻塞消费
+  
+- **ui_app.py**：添加 `extract_prompt_ids(text)` 函数
+  - 正则匹配 `prompt_id: <uuid>` 和 `TASK_SUBMITTED: <uuid>`
+  - 用于从工具输出中提取任务 ID 供监控使用
+
+### 18.2 设计要点
+- **避免循环导入**：session_state 为独立模块，不依赖 ui_app/tools
+- **非阻塞监控**：后台线程 + queue，主循环用短超时（0.5s）保持响应
+- **状态优先级**：turn_id 令牌验证，只有最新 turn 的更新才生效
+- **任务累积**：add_tasks() 支持追加，auto-continue 多轮不会丢失前序任务
+
+### 18.3 测试状态
+- ✅ session_state.py 语法检查通过
+- ✅ task_watch.py 语法检查通过  
+- ✅ ui_app.py 语法检查通过（含新增 extract_prompt_ids）
+- ✅ 同步 spark 并重启 agent（端口 7860 正常响应）
+- ⏳ 待测试：上传大文件反馈、后台监控非阻塞、auto-continue 集成
+
+### 18.4 下一步工作
+需要继续重构 `ui_app.py` 的 `send()` 函数以集成：
+1. Change 1: 上传按钮 elem_id + JS 即时反馈
+2. Change 2: 按钮文案改为"加载所选历史"/"删除所选历史"
+3. Change 4: send() 重构（auto-continue 循环 + 任务提取 + 监控启动）
+4. scheduler.py Change 4c: SYSTEM_MESSAGE 输出纪律强化
+
+### 18.5 改动文件汇总
+| 文件 | 操作 |
+|---|---|
+| `runs/agent/session_state.py` | 新建（64 行） |
+| `runs/agent/task_watch.py` | 新建（175 行） |
+| `runs/agent/ui_app.py` | 修改（+30 行，添加 extract_prompt_ids） |
