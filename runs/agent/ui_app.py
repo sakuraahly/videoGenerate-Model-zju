@@ -680,3 +680,28 @@ def run_app(port: int = 7860, share: bool = False) -> None:
     demo.queue(default_concurrency_limit=16)
     demo.launch(server_name='0.0.0.0', server_port=port, share=share,
                 show_error=True, quiet=True, allowed_paths=allowed)
+
+# ---------------------------------------------------------------- 任务 ID 提取
+def extract_prompt_ids(text: str) -> list:
+    """从工具输出文本中提取所有 prompt_id。
+    
+    支持格式：
+    - prompt_id: xxx-xxx-xxx
+    - TASK_SUBMITTED: xxx-xxx-xxx
+    """
+    import re
+    ids = []
+    if not text:
+        return ids
+    
+    # 匹配 prompt_id: <uuid> 或 TASK_SUBMITTED: <uuid>
+    patterns = [
+        r'prompt_id:\s*([a-f0-9\-]{36})',
+        r'TASK_SUBMITTED:\s*([a-f0-9\-]{36})',
+    ]
+    
+    for pattern in patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        ids.extend(matches)
+    
+    return list(set(ids))  # 去重
