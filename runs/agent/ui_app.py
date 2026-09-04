@@ -789,7 +789,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 delete_chat(sel)
             return gr.update(choices=_choices())
 
-        def _upload(files):
+        def _upload(files, cid):
             global _upload_in_progress
             n = len(files) if files else 0
             _upload_in_progress = True
@@ -800,7 +800,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                                  '#c0392b', '#fdf2f2', '#e5b8b8'), [])
                     return
                 try:
-                    msg, previews, _invalid, batch_id = ingest_upload(files, cid_state.value)
+                    msg, previews, _invalid, batch_id = ingest_upload(files, cid)
                     if '✅' in msg:
                         global _pending_batch_id
                         _pending_batch_id = batch_id
@@ -833,7 +833,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         del_btn.click(_del, hist_dd, hist_dd)
         ref_btn.click(lambda: gr.update(choices=_choices()), None, hist_dd)
         stop_btn.click(_stop, None, [status_html, note_md])
-        up_btn.upload(_upload, up_btn, [up_status, gallery])
+        up_btn.upload(_upload, [up_btn, cid_state], [up_status, gallery])
         def _continue(hist, cid):
             yield from send(hist, cid, '继续')
         send_btn.click(send, [hist_state, cid_state, box], send_out,
