@@ -60,6 +60,8 @@
 ### 步骤 1：确认服务端/框架的 finish_reason 可达性
 - 查 qwen_agent/SGLang 返回是否带 `finish_reason`（`stop`/`length`）或 `usage.completion_tokens` 等。记录结论。
 
+### 步骤 0（2026-09-04 实机，阻塞）：**自动续接不得追加 role:system** — book-03 §0 已修（改 role:user）；本册步骤 2 的"继续"系统消息一并照此，禁止 system 追加；`_err_hint` 对 one-system-message 400 给出正确建议。
+
 ### 步骤 2：给「截断」打标记并自动续
 - 若 `finish_reason==length`：追加一个"继续"系统消息（如已存在 `[系统自动续接]`，可复用），再发一次 completion；循环上限（如 3~5）防死循环；超限则向用户说明"内容较长，已分成多段：需要我继续还是直接给最终结论？"。
 

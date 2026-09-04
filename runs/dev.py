@@ -189,7 +189,7 @@ def cmd_sync(args):
     # 先确保远端目标目录存在（scp 不能自动建目录）
     dirs = sorted({str(Path(f).parent) for f in files if Path(f).parent != Path('.')})
     if dirs:
-        mk = " ".join(f'mkdir -p \"{SPARK_REPO}/{d}\"' for d in dirs)
+        mk = "mkdir -p " + " ".join(f'\"{SPARK_REPO}/{d}\"' for d in dirs)
         _ssh(mk)
     ok = 0
     for f in files:

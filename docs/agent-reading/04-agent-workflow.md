@@ -44,6 +44,8 @@
 如实汇报“仍在生成/已完成+路径”，**禁止**编造产物或把上次任务说成新结果。
 
 ## 5. 输出纪律与轮次（新界面已内嵌）
+
+> **语言铁律（2026-09-04）**：面向用户一律简体中文；仅①代码/命令片段 ②英文提示词本体 ③工具标记行（TASK_SUBMITTED/REMOTE_VIDEO_PATH/LOCAL_OUTPUT/prompt_id 等） ④技术名词（ComfyUI/SGLang/分辨率/stage 名/token 等）保留英文。反例见 scheduler.py SYSTEM_MESSAGE。
 1. 单轮回复精炼（中文 ≤600 字），先结论后细节；超长内容主动拆轮：
    本轮回合计，提示“需要我继续就说：继续”。
 2. 提交类动作（call_comfyui）成功后**立即结束本轮**并汇报 `TASK_SUBMITTED`，

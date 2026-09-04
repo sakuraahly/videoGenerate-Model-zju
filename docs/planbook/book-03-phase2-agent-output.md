@@ -5,6 +5,18 @@
 
 ---
 
+
+---
+
+## 0. 阻塞性发现（2026-09-04 实机复现 —— 必须先修）
+
+- **现象**：book-02 界面验证后，发送"你好"即返回：`[执行出错] ModelServiceError: Error code: 400. Error message: The input messages must contain no more than one system message. And the system message, if exists, must be the first message.`
+- **根因**：`runs/agent/ui_app.py:606` 自动续接向 `messages` 追加 `{"role": "system", "content": "[系统自动续接] 请继续完成当前任务。"}`；qwen_agent 每次调用会再注入自己的 `system_message` → 对话中出现两条 system 消息（且续接那条不在首位）→ SGLang 400。触发条件＝agent 回复纯文本（无工具调用），如"你好"的寒暄回复后 `needs_continuation` 判定成立 → 续接循环 → 400。
+- **修复**：① 续接提示改为 `{"role": "user", "content": "[系统自动续接] 请继续完成当前任务。"}`（语义上仍被模型视为"继续"指令，且不违反单 system 约束）；② `_err_hint` 增加"one system message"类 400 的正确建议（并把 ModelServiceError/400 从"上下文超限"分类中拆出，避免误导）。
+- **归属**：机制属 book-04（自动续接）；因阻塞基本使用且用户点名本册先行，故在 book-03 先修（book-04 同步参考此根因）。
+- **验证**：spark 上跑"你好"回归（`tests/regress_auto_continue_round.py` 或真实 UI 发送），并跑 `e2e_smoke`（含 UI /config 实况）。
+
+
 ## 1. 问题背景（用户可见现象）
 - "agent 的输出不是流式输出，而是一次性全部输出然后等待用户输入。"
 - "并且主要是英文，需要强制为输出为中文（但是英文原文如代码等就保留）。"
@@ -101,3 +113,15 @@
 ## 9. 待用户输入 / 待定项
 - "流式"期望到哪种粒度：逐 token / 逐句 / 打字机即可 → 建议先满足"逐块+打字机"，逐 token 作为增强。
 - 是否接受"生成提示词本体仍英文"作为语言铁律的豁免（用户已明确"英文原文如代码等保留"，提示词属此类）。
+
+---
+
+## 10. 实施记录（2026-09-04 第一批，book-03）
+
+- ✅ **阻塞修复（§0）**：ui_app.py:606 自动续接 追加 role:user（原 role:system → SGLang 400）。spark 回归：tests/regress_auto_continue_round.py 两轮通过 REGRESS_OK（round1 你好，round2 续接），无 one-system-message 400；round1 输出为中文。
+- ✅ **错误分类修正**：_err_hint 增加 "one system message / system message" 分支（正确建议"已修复为 user 角色"）；把 ModelServiceError/400 从"上下文超限"拆分为独立"接口 400"提示。
+- ✅ **语言铁律**：scheduler SYSTEM_MESSAGE 新增"语言铁律（优先级最高）"：面向用户一律简体中文；仅 ①代码/命令 ②英文提示词本体 ③工具标记行 ④技术名词 豁免；并给正反例。同步 agent-reading/02（提示词=英文、回复=中文）、04 §5、skills §1.3c。
+- ✅ **流式可行性调研**（docs/test-results/streaming-findings.md）：qwen_agent 0.0.34 仅消息级粒度、无 stream；逐 token 流式需直连 SGLang SSE（低优先）；可行路径＝消息级分批渲染（待重构 send/run_turn，列为增强）+ 心跳持续反馈。
+- ⏳ 增强（未做，列入本册待办）：消息级分批渲染（逐批 yield 而非最后一次性）；打字机（需自定义前端 JS）。
+- ⚠️ 观察：round2 对续接消息的**内部**思考输出可能含英文（模型对"[系统自动续接]"消息的转述）；用户可见回复以中文为准，风格问题由 book-08 继续收紧。
+

@@ -105,7 +105,9 @@ python runs\h3_submit.py --stage r2v --force-new                 # then run that
 Without a configured LLM (`enabled=false`), still offer `--dry-run`, and fill the slot files
 manually (human mode — see `docs/workflow-and-prompt.md` §2).
 
-### 1.3c Local LLM serving notes (Qwen3.8-27B SGLang on spark)
+### 1.3c Local LLM serving notes
+
+> **语言铁律**：agent 面向用户一律简体中文（代码/提示词/工具标记行/技术名词除外）；提示词本体仍英文（见 `docs/prompt-taxonomy.md`）。 (Qwen3.8-27B SGLang on spark)
 
 - Serve: tmux session `sglang`，端口 8000（127.0.0.1）。
   启动命令见 `shell/start_sglang_coexist.sh`（共存模式 **mem=0.50 / ctx=8192**，实测预载

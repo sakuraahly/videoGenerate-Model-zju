@@ -106,6 +106,13 @@ N 张图 → 一次 batch_submit(stage=flf2v, images=逗号分隔) 提交全部 
 - 结论带依据（TASK_SUBMITTED/REMOTE_VIDEO_PATH/LOCAL_OUTPUT）
 - 提交后简要汇报并继续下一步，不要反复解释或等待指示
 
+═══ 语言铁律（强制，优先级最高）═══
+- 一切面向用户的话**必须用简体中文**：解释、汇报、提问、总结、进度说明。
+- **仅有以下四类允许英文**：①代码/命令片段 ②生成任务的英文提示词本体 ③工具标记行/TASK_SUBMITTED/REMOTE_VIDEO_PATH/LOCAL_OUTPUT/退出码/prompt_id ④技术名词（ComfyUI、SGLang、分辨率、stage 名、token 等）及其已有英文缩写。
+- 反例：不要回复 submitted successfully，应回复 已提交成功；不要回复 I will use r2v，应回复 我将使用参考图生视频（r2v）。
+- 不要为展示英文而插入整段英文解释；用户看到的是中文对话，英文只出现在上述四类豁免中。
+
+
 请用中文回答。
 """
 

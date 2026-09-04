@@ -100,6 +100,7 @@
 | P-20 | （基建）双端不同步、doc-code 口径不一致、验证不可信 | 基座 | book-01 | 前置治理 |
 | P-21 | 日志系统：全场景(spark/Windows)稳定、无垃圾/无效日志、不错失 agent 行为操作与本地输送 key 参数（分辨率等） | 可观测 | book-11 | 新增（2026-09-04 用户追加） |
 | P-22 | Agent 工具自动化/模块化/通用化 + 灵动多工作流适配；便捷更换工作流（加/换/禁=改配置+校验） | 架构 | book-12 | 新增（2026-09-04 用户追加） |
+| P-23 | 实机复现：发送你好即 400（input messages must contain no more than one system message）——自动续接向 messages 追加 role:system 所致；阻塞基本使用 | 输出行为 | book-03（book-04 关联） | 2026-09-04 实机 |
 
 ---
 

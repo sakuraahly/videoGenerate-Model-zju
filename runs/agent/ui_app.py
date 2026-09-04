@@ -458,12 +458,16 @@ def _err_hint(t: str) -> str:
     t = t or ''
     if 'maximum context length' in t or 'ModelServiceError' in t:
         return '上下文超限：请精简对话或点"继续"分轮；已自动压缩一次'
+    if 'one system message' in t.lower() or 'system message' in t.lower():
+        return '消息格式错误：自动续接曾注入重复 system 消息，已修复为 user 角色；若再现请反馈'
     if 'ModuleNotFoundError' in t or 'No module named' in t:
         return '脚本导入异常：已记录待修；可重试一次'
     if '⛔' in t or '熔断' in t or '不可恢复' in t:
         return '已连续失败熔断：请更换素材或稍后再试，勿连续重试'
     if 'TimeoutExpired' in t or '超时' in t:
         return '提交/轮询卡顿：任务可能在后台运行，用"继续"/"取片"确认，勿重复提交'
+    if 'ModelServiceError' in t or 'error code: 400' in t.lower():
+        return '接口 400：消息/参数格式错误（详见日志）；自动续接 system 冲突已修复，若重复出现请反馈'
     if 'comfyui' in t.lower() or '8188' in t or 'connection' in t.lower():
         return '生成服务未就绪：请人工检查 spark 的 ComfyUI（勿自行重启）'
     return '请按上述信息排查；可点"继续"重试或查看日志'
@@ -603,7 +607,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     if not needs_continuation or attempt >= MAX_AUTO_CONTINUE:
                         break
 
-                    msgs.append({"role": "system", "content": '[系统自动续接] 请继续完成当前任务。'})
+                    msgs.append({"role": "user", "content": '[系统自动续接] 请继续完成当前任务。'})
                     user_text = None
                     yield (shown, BUSY_HTML('自动续接中...'), ' 自动续接中...', noop, cid, msgs, noop)
 
