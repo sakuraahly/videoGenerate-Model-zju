@@ -290,18 +290,27 @@ def ingest_upload(paths) -> str:
             except OSError:
                 err += 1
     parts = []
+    previews = []
     if added:
-        parts.append(f'新增 {added} 项已入素材池（uploads/ 归档'
+        parts.append(f'✅ 新增 {added} 项已入素材池（uploads/ 归档'
                      + ('，图片已镜像到 ComfyUI input/user_uploads/' if 'image' in kinds else '') + '）')
     if dup:
-        parts.append(f'{dup} 项与池内已有文件相同（已跳过归档，图片仍确保可用）')
+        parts.append(f'⏩ {dup} 项与池内已有文件相同（已跳过归档，图片仍确保可用）')
     if err:
-        parts.append(f'{err} 项处理失败')
+        parts.append(f'❌ {err} 项处理失败（请确认文件格式）')
     if not parts:
-        parts.append('未收到有效文件')
-    parts.append('现在可以对 agent 说：list_references，把 <id> 设为参考图'
-                 '（h3/refimage.py use --name <id> --stage r2v --slot N）。')
-    return '\n'.join(parts)
+        parts.append('⚠️ 未收到有效文件')
+    parts.append('提示：现在可以对 agent 说“列出参考素材/list_references”，'
+                 '把对应 <id> 设为参考图（h3/refimage.py use --name <id> --stage r2v --slot N）。')
+    # 预览：图片镜像产物（持久路径，随上传永久可见）
+    for raw in paths:
+        p = raw
+        if isinstance(raw, dict):
+            p = raw.get('name') or raw.get('path')
+        p = Path(str(p)).expanduser()
+        if p.suffix.lower() in IMG_EXT:
+            previews.append(str(input_mirror / p.name))
+    return '\n'.join(parts), previews
 
 
 # ---------------------------------------------------------------- Gradio 界面
@@ -311,9 +320,6 @@ def _choices() -> list:
 
 def run_app(port: int = 7860, share: bool = False) -> None:
     import gradio as gr
-
-    hist_state = gr.State([])   # 完整消息（存档口径：user/assistant 交替）
-    cid_state = gr.State('')    # 会话 id（首次发送时自动创建）
 
     def fmt_msgs(msgs):
         return [{'role': m['role'], 'content': str(m.get('content', ''))}
@@ -395,6 +401,9 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         yield fmt_msgs(msgs), 'idle', note, gr.update(choices=_choices()), cid
 
     with gr.Blocks(title='Qwen-Agent 受限调度器', theme=gr.themes.Soft()) as demo:
+        # 注意：gr.State 必须在 Blocks 上下文内创建（上下文外创建会 KeyError: 0）
+        hist_state = gr.State([])   # 完整消息（存档口径：user/assistant 交替）
+        cid_state = gr.State('')    # 会话 id（demo.load / ＋新对话 时自动创建）
         gr.Markdown('## 🎬 Qwen-Agent 受限调度器\n'
                     '本地工作流组：t2v / i2v / r2v（多参考图）/ flf2v。\n'
                     '- 视频任务默认“提交即返回”，后台运行时本页持续显示进度，请勿重复提交；\n'
@@ -415,6 +424,9 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             box = gr.Textbox(placeholder='描述创意 / 查任务进度 / 素材选用…（Enter 发送）',
                              show_label=False, lines=2, scale=5)
             send_btn = gr.Button('发送', variant='primary', scale=1)
+        up_status = gr.HTML('<span style="color:#888">尚未上传素材</span>')
+        gallery = gr.Gallery(label='本次上传图片预览（可直接引用：list_references）',
+                             columns=6, object_fit='cover', interactive=False)
         note_md = gr.Markdown('_…_')
 
         out = [chatbot, status_html, note_md, hist_dd, cid_state]
@@ -445,14 +457,19 @@ def run_app(port: int = 7860, share: bool = False) -> None:
 
         def _upload(files):
             if not files:
-                return '未收到文件。'
-            return ingest_upload(files)
+                return '<span style="color:#c33">未收到文件，请重新选择。</span>', []
+            msg, previews = ingest_upload(files)
+            ok = '✅' in msg or '已入素材池' in msg
+            color = '#0a7d32' if ok else '#c0392b'
+            html = f'<div style="padding:6px 10px;background:#f4fbf6;border:1px solid #9dd6ae;'
+            html += f'border-radius:6px;color:{color};font-weight:600">{msg.replace(chr(10), "<br>")}</div>'
+            return html, previews
 
         load_btn.click(_load, hist_dd, out)
         new_btn.click(_new, None, out)
         del_btn.click(_del, hist_dd, hist_dd)
         ref_btn.click(lambda: gr.update(choices=_choices()), None, hist_dd)
-        up_btn.upload(_upload, up_btn, note_md)
+        up_btn.upload(_upload, up_btn, [up_status, gallery])
         send_btn.click(send, [hist_state, cid_state, box], out)
         box.submit(send, [hist_state, cid_state, box], out)
         demo.load(_auto_new, None, out)
