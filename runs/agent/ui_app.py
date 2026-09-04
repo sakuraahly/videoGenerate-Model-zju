@@ -235,12 +235,22 @@ def _known_shas() -> set:
     return seen
 
 
-def ingest_upload(paths) -> str:
+def _to_path(raw) -> Path:
+    """兼容各种上传事件值：str / os.PathLike / dict{path|name} / FileData 等对象。"""
+    if isinstance(raw, dict):
+        raw = raw.get('path') or raw.get('name') or raw.get('orig_name')
+    elif not isinstance(raw, (str, Path)):
+        raw = (getattr(raw, 'path', None) or getattr(raw, 'name', None)
+                or getattr(raw, 'orig_name', None))
+    return Path(str(raw)).expanduser() if raw else Path('')
+
+
+def ingest_upload(paths) -> tuple:
     """把界面/上传文件收进素材池（与 upload_watch 同语义）：
 
     - 任意类型 → 归档 uploads/YYYYMMDD/<sha8>_<原名>（sha 去重）+ log.jsonl 流水；
     - 图片额外镜像到 ComfyUI input/user_uploads/<原名>（LoadImage/refimage 立即可见）。
-    返回给用户的中文摘要。
+    返回 (给用户的中文摘要, 图片预览路径列表)。
     """
     if isinstance(paths, (str, Path)):
         paths = [paths]
@@ -248,12 +258,10 @@ def ingest_upload(paths) -> str:
     added = dup = err = 0
     kinds = []
     seen = _known_shas()
-    for raw in paths:
-        p = raw
-        if isinstance(raw, dict):
-            p = raw.get('name') or raw.get('path')
-        p = Path(str(p)).expanduser()
-        if not p.is_file():
+    previews = []
+    for raw in paths or []:
+        p = _to_path(raw)
+        if not p or not p.is_file():
             err += 1
             continue
         try:
@@ -287,6 +295,7 @@ def ingest_upload(paths) -> str:
             try:
                 input_mirror.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(p, input_mirror / p.name)
+                previews.append(str(input_mirror / p.name))
             except OSError:
                 err += 1
     parts = []
@@ -297,19 +306,11 @@ def ingest_upload(paths) -> str:
     if dup:
         parts.append(f'⏩ {dup} 项与池内已有文件相同（已跳过归档，图片仍确保可用）')
     if err:
-        parts.append(f'❌ {err} 项处理失败（请确认文件格式）')
+        parts.append(f'❌ {err} 项处理失败（请确认文件格式/服务器可读）')
     if not parts:
-        parts.append('⚠️ 未收到有效文件')
+        parts.append('⚠️ 未收到有效文件（请确认选择的是图片/视频）')
     parts.append('提示：现在可以对 agent 说“列出参考素材/list_references”，'
                  '把对应 <id> 设为参考图（h3/refimage.py use --name <id> --stage r2v --slot N）。')
-    # 预览：图片镜像产物（持久路径，随上传永久可见）
-    for raw in paths:
-        p = raw
-        if isinstance(raw, dict):
-            p = raw.get('name') or raw.get('path')
-        p = Path(str(p)).expanduser()
-        if p.suffix.lower() in IMG_EXT:
-            previews.append(str(input_mirror / p.name))
     return '\n'.join(parts), previews
 
 
@@ -456,14 +457,26 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             return gr.update(choices=_choices())
 
         def _upload(files):
-            if not files:
-                return '<span style="color:#c33">未收到文件，请重新选择。</span>', []
-            msg, previews = ingest_upload(files)
-            ok = '✅' in msg or '已入素材池' in msg
-            color = '#0a7d32' if ok else '#c0392b'
-            html = f'<div style="padding:6px 10px;background:#f4fbf6;border:1px solid #9dd6ae;'
-            html += f'border-radius:6px;color:{color};font-weight:600">{msg.replace(chr(10), "<br>")}</div>'
-            return html, previews
+            try:
+                if not files:
+                    return ('<span style="color:#b8860b">⚠️ 未收到文件（可能是浏览器未选中，'
+                            '请重新选择图片/视频后重试）。</span>', [])
+                msg, previews = ingest_upload(files)
+                ok = '✅' in msg and '❌' not in msg.split('；')[0] if '；' in msg else '✅' in msg
+                color = '#0a7d32' if (ok and previews) or (ok and '新增' in msg) else \
+                    ('#c0392b' if '❌' in msg else '#0a7d32')
+                bg = '#f4fbf6' if color == '#0a7d32' else '#fdf2f2'
+                border = '#9dd6ae' if color == '#0a7d32' else '#e5b8b8'
+                html = (f'<div style="padding:6px 10px;background:{bg};'
+                        f'border:1px solid {border};border-radius:6px;'
+                        f'color:{color};font-weight:600">'
+                        f'{msg.replace(chr(10), "<br>")}</div>')
+                return html, previews
+            except Exception as e:  # noqa: BLE001  错误必须可见，不留空横幅
+                return (f'<div style="padding:6px 10px;background:#fdf2f2;'
+                        f'border:1px solid #e5b8b8;border-radius:6px;color:#c0392b;'
+                        f'font-weight:600">❌ 上传处理异常：{type(e).__name__}: {e}'
+                        f'<br>请把此行反馈给维护者。</div>', [])
 
         load_btn.click(_load, hist_dd, out)
         new_btn.click(_new, None, out)
@@ -477,5 +490,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
     print(f'Qwen-Agent 调度器 Web UI: http://127.0.0.1:{port}')
     print(f'项目根目录: {PROJECT_ROOT}')
     print(f'历史会话目录: {CHATS_DIR}')
+    # 预览白名单：Gradio 默认只服务临时目录文件，需放行素材镜像/归档目录
+    allowed = [str(_comfy_input_dir() / 'user_uploads'), str(UPLOADS_DIR)]
     demo.launch(server_name='0.0.0.0', server_port=port, share=share,
-                show_error=True, quiet=True)
+                show_error=True, quiet=True, allowed_paths=allowed)
