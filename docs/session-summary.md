@@ -175,6 +175,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - `skills/h3-video-generation.md`（智能体技能卡）、`skills/h3-prompt-engineering.md`（提示词规则）
 - `agent-workflow.md`（⭐ 本地 Agent(Qwen) 工作链手册：两入口/工具/提交-续传-取件/素材链/异常处置）
 - `agent-reading/04-agent-workflow.md`（agent 任务执行协议速查，随调度器 read_doc 提供）
+- `handoff-2026-09-04.md`（⭐ 最新交接：服务现状/机制/界面能力/测试清单/待观察项）
 
 ## 10. 待办 / 下一步（给新对话的明确任务）
 1. **ComfyUI 依赖已修复（2026-09-03）**：`comfy_kitchen` 已升级到 0.2.31。
@@ -503,3 +504,13 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   - **SGLang ninja 问题**：`ninja` 已安装在 sglang-venv 内（1.13.2），此前启动失败是
     因为未正确激活 venv；`start_all_services.sh` 用 `source activate` 方式已解决。
   - 协调启动实测：SGLang 加载 121s，全服务 2 分 15 秒就绪（共存模式 mem=0.55）。
+
+### 12.9 2026-09-04：Agent 界面/内存/上传 批次（交接见 docs/handoff-2026-09-04.md）
+- 服务现状：ComfyUI(systemd, 勿动, 曾 /free 卸载权重 49→18GB)；SGLang mem 0.50/ctx 8192
+  （0.40 实测不足：NVFP4 预载≈49GB）；7860 新自研界面运行中；Open WebUI/upload-watch 未运行（可 7860 直传替代）。
+- 自研界面 ui_app.py：自动新会话/历史加载/素材直传(两段式反馈+缩略图)/发送自动清空/幂等锁/
+  停止按钮/程序级状态条(LLM+引擎日志行)/并发放开(16)/上下文预算 6k 字符。
+- 修复链：FileData 取值、allowed_paths、缩略图、st_mtime 格式化红错、残留 previews 清空、
+  接线丢 _upload 定义、全局并发=1 排队。
+- 内存协同 llm_mem nap/wake 自动接线（TASK_SUBMITTED 后让位，下轮自动唤醒）；转场=逐对 flf2v 分镜法（SYSTEM+04）。
+- 下一轮测试清单与已知待观察项见 docs/handoff-2026-09-04.md §5/§6。
