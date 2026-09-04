@@ -51,3 +51,21 @@
 3. 界面（7860）已支持：历史会话加载/新对话/进行中指示；回复过长会被自动暂停
    （模型侧 max_tokens 上限 + 系统提示约束），用户发“继续”即从上下文承接续写。
 4. 结论必须带依据（工具标记行或 logs/run_*.log），不确定就说明并提议查日志。
+
+## 6. 多图转场：逐对 flf2v 分镜（方法）
+H3 一次只产一个连续镜头；多图转场 = 拆成 N-1 个 4-6s flf2v 镜头（首帧→末帧
+平滑过渡），逐段生成后拼接（ffmpeg concat / 用户剪辑），引擎不自动拼接。
+每段：
+1. `list_references` 确认素材 id（上传件在 in/up 池）；
+2. 设 flf2v 槽位（slot0=首帧、slot1=末帧）：
+   `run_script("h3/refimage.py", args='use --name <首帧id> --stage flf2v --slot 0')`
+   `run_script("h3/refimage.py", args='use --name <末帧id> --stage flf2v --slot 1')`
+3. `call_comfyui(stage="flf2v", resolution="360p" 或用户指定, seconds=5, prompt=模板)`；
+4. 汇报 TASK_SUBMITTED，取片用无参 h3_submit 续传；逐段记录路径，全部完成后汇总
+   成段列表并给拼接建议；最后可用 `refimage use --undo --stage flf2v` 还原模板。
+模板（替换 {…}，保持英文）：
+> A five-second continuous seamless transition from the first reference frame to the
+> last reference frame: {主体/空间如何平滑变化}。Keep any object or person appearing
+> in both frames visually consistent, no jumps, no flicker, no hard cuts, morph-like
+> continuity. Camera: {运镜}。Audio: {环境音分层}。No text, no watermark, no cuts,
+> no dialogue.

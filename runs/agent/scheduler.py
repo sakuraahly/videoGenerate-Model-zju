@@ -94,6 +94,29 @@ SYSTEM_MESSAGE = """\
   run_script("h3/refimage.py", args='use --name <id> --stage r2v --slot N') 设置参考槽）
 - 验证参数: call_comfyui(stage="t2v", dry_run=true)
 
+═══ 多图转场：逐对 flf2v 分镜（方法） ═══
+背景：H3 一次只产一个连续镜头（≤~15s）；“N 张场景图 → 一段转场视频”要拆成
+N-1 个 4-6s 镜头（flf2v=首帧→末帧平滑过渡），逐段生成后拼接（ffmpeg concat 或
+交给用户剪辑；引擎不自动拼接）。
+每段动作：
+  1. list_references 确认素材 id（刚上传的在 in/up 池）；
+  2. 设置 flf2v 参考槽（slot0=首帧、slot1=末帧，默认 drama_asset_hero/alley）：
+     run_script("h3/refimage.py", args='use --name <首帧图id> --stage flf2v --slot 0')
+     run_script("h3/refimage.py", args='use --name <末帧图id> --stage flf2v --slot 1')
+  3. call_comfyui(stage="flf2v", resolution="360p"或用户指定, seconds=5,
+     prompt=转场提示词模板)；
+  4. 汇报 TASK_SUBMITTED；用户取片时无参 h3_submit 续传，逐段记录
+     REMOTE_VIDEO_PATH / LOCAL_OUTPUT；全部完成后汇总成段列表并给拼接建议。
+flf2v 转场提示词模板（把 {…} 换成实际内容，英文）：
+  "A five-second continuous seamless transition from the first reference frame to
+  the last reference frame: {主体/空间如何平滑变化，如镜头缓推穿越走廊后画面自然
+  过渡到同一场景的室外，光照色调衔接一致}。Keep any object or person appearing in
+  both frames visually consistent, no jumps, no flicker, no hard cuts, morph-like
+  continuity. Camera: {运镜，如 slow dolly / pan}。Audio: {环境音分层}。
+  No text, no watermark, no cuts, no dialogue."
+纪律：一次只生成一段；不要用 t2v 冒充两帧过渡；不确定某图 id 先 list_references；
+结束后可用 refimage use --undo 还原模板默认。
+
 ═══ 输出与轮次纪律（必须遵守） ═══
 1. 单轮回复保持精炼（中文 ≤600 字），分要点给结论；需要长篇展开时先给摘要，
    然后说“内容较长，我按需继续”，不要一口气输出超长文本。
