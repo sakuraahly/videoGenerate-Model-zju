@@ -425,6 +425,14 @@ class ListReferences(BaseTool):
             out = _truncate((result.stdout or '') + (result.stderr or ''))
             if result.returncode != 0:
                 return f'列出素材失败 (exit {result.returncode})\n{out}'
+            # 体验补丁：本会话为空 → 附带"最近其他会话上传"线索，供用户确认授权（不越权）
+            if session and session != 'all' and '暂无可用素材' in out:
+                try:
+                    r2 = subprocess.run([sys.executable, script, 'list', '--hint-recent', '6'],
+                                        capture_output=True, text=True, timeout=60, cwd=PROJECT_ROOT)
+                    out = out + '\n' + _truncate((r2.stdout or '') + (r2.stderr or ''))
+                except Exception:  # noqa: BLE001
+                    pass
             prefix = _force_warn if session == 'all' else ''
             return f'{prefix}可用参考素材：\n{out}'
         except subprocess.TimeoutExpired:

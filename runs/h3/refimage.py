@@ -284,9 +284,24 @@ def _dedupe_by_prefix(rows: list) -> tuple:
 
 def cmd_list(dirs: dict, show_other: bool = False, pool: str = "",
              name: str = "", limit: int = 25, batch: str = "",
-             recent: int = 0, session: str = "", scope_all: bool = False) -> int:
+             recent: int = 0, session: str = "", scope_all: bool = False,
+             hint_recent: int = 0) -> int:
     rows = _filter_rows(_rows(dirs), pool=pool, name=name, show_other=show_other)
     batch_map = _load_batch_map()
+
+    if hint_recent and not session and not scope_all:
+        # book-05 体验补丁：本会话为空时给出"最近其他会话上传"线索（不越权，仅供用户确认授权）
+        up_rows = [r for r in _filter_rows(_rows(dirs), pool='up') if _get_row_meta(r, batch_map).get('cids')]
+        up_rows.sort(key=lambda r: -r['mtime'])
+        for r in up_rows[:hint_recent]:
+            m = _get_row_meta(r, batch_map)
+            cids = sorted(m.get('cids') or set())
+            cid = cids[0] if cids else ''
+            when = datetime.fromtimestamp(r['mtime']).strftime('%m-%d %H:%M')
+            print(f"  [最近上传·会话{cid[:13]}..·{when}] {r['name']}")
+        if up_rows:
+            print("  → 本会话以上素材不可见（会话隔离）。如需复用，请用户明确授权并指明；授权后可用 session=all。")
+        return 0
 
     if session:
         # book-05：默认只看本会话素材（上传时记录 cid）；其他历史产物需 --scope-all
@@ -672,6 +687,7 @@ def main(argv=None) -> int:
     p_list.add_argument("--batch", default="", help="按批次过滤: <id>|latest|all")
     p_list.add_argument("--session", default="", help="只显示某会话（cid）上传的素材（book-05 默认隔离；其他历史产物需 --scope-all）")
     p_list.add_argument("--scope-all", action="store_true", help="显示全部素材（含其他会话/历史产物）")
+    p_list.add_argument("--hint-recent", type=int, default=0, help="展示最近 N 个其他会话上传的素材线索（不越权，供用户确认授权）")
     p_list.add_argument("--recent", type=int, default=0, help="最近 N 分钟内的素材")
     p_prom = sub.add_parser("promote")
     p_prom.add_argument("--name", required=True)
@@ -716,7 +732,7 @@ def main(argv=None) -> int:
         return cmd_list(dirs, show_other=args.all, pool=args.pool,
                         name=args.name, limit=args.limit, batch=args.batch,
                         recent=args.recent, session=args.session,
-                        scope_all=args.scope_all)
+                        scope_all=args.scope_all, hint_recent=args.hint_recent)
     if args.cmd == "promote":
         return cmd_promote(dirs, args.name, args.as_name)
     if args.cmd == "use":
