@@ -42,5 +42,21 @@ m = refimage._get_row_meta(ROWS[3], BATCH_MAP)
 check("shared cids 双会话", m.get("cids") == {"sessionA", "sessionB"}, True)
 m2 = refimage._get_row_meta(ROWS[4], BATCH_MAP)
 check("历史无归属 cids 空", m2.get("cids") == set(), True)
+# 优化1：normalize_session
+check("normalize current->c", refimage.normalize_session("current", "cidX"), "cidX")
+check("normalize empty->c", refimage.normalize_session("", "cidY"), "cidY")
+check("normalize this->all(无current)", refimage.normalize_session("this", ""), "all")
+check("normalize all 原样", refimage.normalize_session("all", "cidZ"), "all")
+check("normalize 真cid 原样", refimage.normalize_session("20260904_1", "cidZ"), "20260904_1")
+# 优化2：去重（up+in 同图镜像只留一个）
+DUPE = [
+    {"pool": "up", "name": "d42fe581_launch.png", "full": "/x/a", "size": 1, "mtime": 1, "kind": "image"},
+    {"pool": "in", "name": "d42fe581_launch.png", "full": "/x/b", "size": 2, "mtime": 2, "kind": "image"},
+    {"pool": "up", "name": "a81ba0a0_room.png", "full": "/x/c", "size": 3, "mtime": 3, "kind": "image"},
+]
+kept, notes = refimage._dedupe_by_prefix(DUPE)
+check("dedupe 保留 2", len(kept), 2)
+check("dedupe 镜像注释 1 条", len(notes), 1)
+check("dedupe 保留的是 up 首发", kept[0]["pool"], "up")
 print("UNIT_OK" if ok else "UNIT_FAIL")
 sys.exit(0 if ok else 1)

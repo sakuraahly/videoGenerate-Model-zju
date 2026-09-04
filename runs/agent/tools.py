@@ -389,7 +389,12 @@ class ListReferences(BaseTool):
 
     def call(self, params: Union[str, dict], **kwargs) -> str:
         params = self._verify_json_format_args(params) if params else {}
-        session = (params or {}).get('session', '') or CURRENT_SESSION or ''
+        raw_session = (params or {}).get('session', '') or CURRENT_SESSION or ''
+        try:
+            from h3 import refimage as _ref
+            session = _ref.normalize_session(raw_session, CURRENT_SESSION)
+        except Exception:  # noqa: BLE001
+            session = (CURRENT_SESSION or '').strip() or raw_session
         script = os.path.join(PROJECT_ROOT, 'runs', 'h3', 'refimage.py')
         if not os.path.isfile(script):
             return f'错误：refimage.py 不存在于 {script}'

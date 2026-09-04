@@ -135,5 +135,9 @@
 - ✅ **测试**：`tests/test_session_filter_unit.py` 7/7 UNIT_OK；spark 实机受控验证 **ISOLATION_OK**（会话 testS 只见其 2 项、otherS 暂无、事后恢复 log.jsonl）。
 - 📌 说明：旧上传（本特性前）无 cid → 默认不可见，需 `--scope-all`（不迁移/删除任何现有产物）；`turn_state._active_batch` 仍未被消费（下一批接 cid 或清理）；`agent-reading/01` 本无 list_references 章节，工具描述已更新。- 🔧 **修复批次（2026-09-04 用户实测反馈）**- 🔧 **修复批次 2（2026-09-04 继续排查）——真正的根因**：首次修复后实测仍"暂无"。检查 spark 的 `uploads/log.jsonl`：修复后的 dup 行**已写出**但 `"cid": ""` ——即 `_upload` 内用 `cid_state.value` 取不到会话（**Gradio State 服务端 `.value` 不可靠**，正确做法是把 `cid_state` 作为**输入**传入处理器，如 `send` 那样）。修复：`_upload(files, cid)` + 接线 `up_btn.upload(_upload, [up_btn, cid_state], ...)`。**教训**：Gradio 状态一律经输入参数传递；此前所有"会话隔离实测"（单测/合成测试）因直接喂 cid 而掩盖了此问题——只有真实 UI 上传才暴露。
 ：会话内"⏩ N 个素材已在本会话池中（重复跳过）"后 `list_references` 仍"暂无"——根因：**重复上传走了 dup 分支，未登记当前会话 cid** → 会话过滤查不到。修复：①`ingest_upload` dup 也写 log.jsonl（带 cid + `dup:True`，同一图可属于多个会话）；②`_load_batch_map` 改为 sha→{"bid","cids(集合)"}，`_filter_by_session` 匹配 cids 集合；③`list_references` 的 `session=all` 路径输出**未授权强警示**（"仅当用户已明确授权查询全部素材时使用"）。单测更新至 6/6 UNIT_OK（含"同图多会话"）。**注意：修复前已发生的重复上传无法回填 sha 记录 → 请用户在该会话**重新上传**同一批图片即可登记。
-
-
+- ✅ **端到端验证通过（2026-09-04 用户实测）**：会话 `20260904_124238_59d2` 重传 2 张图 → `list_references` 返回本会话素材（飞船发射台/房间 + in 池镜像）——**会话隔离真机工作**。
+- 🔍 发现：①首次调用"暂无"——模型把 `session` 传成字面值 `current`；②同一图 up/in 两池重复显示。
+- 🔧 **优化1**：`refimage.normalize_session(value, current)`——`current/this/latest/now/本会话` 等字面词归一化为 `CURRENT_SESSION`（无上下文回退 `all`+警示），`tools.py` 接入。
+- 🔧 **优化2**：会话视图按 sha8 前缀**去重**（up/in 镜像只列一次，其余标注"同图镜像未重复列出"）；`_dedupe_by_prefix` 纯函数。
+- ✅ 单测扩展至 **14/14 UNIT_OK**（含 normalize 5 例 + dedupe 3 例）。
+- 📌 附注：模型对 `session` 参数的措辞习惯（传 `current` 等）已由工具归一化兜底；风格层面归 book-08 继续收紧。

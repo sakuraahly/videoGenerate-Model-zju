@@ -200,6 +200,38 @@ def _filter_by_session(rows: list, batch_map: dict, session: str) -> list:
     return [r for r in rows if session in _get_row_meta(r, batch_map).get('cids')]
 
 
+_LITERAL_SESSION = {'current', 'this', 'latest', 'now', '本会话'}
+
+
+def normalize_session(value, current: str = '') -> str:
+    """归一化 session 取值（book-05 优化1）：
+
+    - 空/字面词(current/this/latest/now/本会话) → 用 current（CURRENT_SESSION）；
+    - current 为空时返回 'all'（无会话上下文）；
+    - 'all' 原样；其余按字面 cid 返回。
+    """
+    v = str(value or '').strip()
+    if not v or v.lower() in _LITERAL_SESSION:
+        return (current or '').strip() or 'all'
+    return v
+
+
+def _dedupe_by_prefix(rows: list) -> tuple:
+    """同 sha8 前缀（同文件多池镜像）只保留首个，返回 (去重后的行, 镜像提示列表)。"""
+    seen = set()
+    kept = []
+    notes = []
+    for r in rows:
+        parts = r.get('name', '').split('_', 1)
+        prefix = parts[0] if len(parts) >= 2 and len(parts[0]) == 8 else r.get('name', '')
+        if prefix in seen:
+            notes.append(f"{r.get('pool')}:{r.get('name')} 为同图镜像，未重复列出")
+            continue
+        seen.add(prefix)
+        kept.append(r)
+    return kept, notes
+
+
 def cmd_list(dirs: dict, show_other: bool = False, pool: str = "",
              name: str = "", limit: int = 25, batch: str = "",
              recent: int = 0, session: str = "", scope_all: bool = False) -> int:
@@ -212,8 +244,11 @@ def cmd_list(dirs: dict, show_other: bool = False, pool: str = "",
         if not sel:
             print(f"本会话 {session} 暂无可用素材（上传后自动归档到本会话；如需全部素材请用 --scope-all）")
             return 0
+        sel, notes = _dedupe_by_prefix(sel)  # 优化2：up/in 镜像只列一次
         rows = sel
         print(f"会话过滤: {session}（{len(rows)} 项，按时间倒序；其他历史产物需 --scope-all）")
+        for n in notes[:8]:
+            print(f"  [注] {n}")
     elif scope_all:
         print(f"全部素材（{len(rows)} 项；含其他会话/历史产物，慎用）")
     elif batch or not batch:
