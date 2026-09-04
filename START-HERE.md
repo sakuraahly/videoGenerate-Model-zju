@@ -7,7 +7,8 @@
 >
 > 最近更新：**2026-09-04**（创建；含 ctx-8192 token 预算化修复批次成果与工作文件夹速查；
 > 第三批：对话历史丢失修复、禁用自动 nap、系统提示词自主性重写、上传体验优化；
-> 第四批：tools.py TimeoutExpired bytes/str 拼接 bug 修复、压力测试验证）
+> 第四批：tools.py TimeoutExpired bytes/str 拼接 bug 修复、压力测试验证；
+> 计划书：新增 `docs/planbook/`（系统性修复计划，含基座/前端/输出/自动完成/资源隔离/工作流/引擎/风格/验证，见 §2 第 10 条））
 > 事实权威：`docs/session-summary.md`（历史批次与现状）；最新交接：`docs/handoff-2026-09-04.md`；
 > 详细参考：`docs/reference-2026-09-04.md`。仓库双端：Windows 主库 ↔ GitHub ↔ spark 运行时。
 
@@ -34,6 +35,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 | 7 | `skills/h3-prompt-engineering.md` | 提示词工程规则（结构/中文渲染/音频句等） | 写任何生成提示词前 |
 | 8 | `docs/agent-workflow.md`、`docs/agent-reading/00–04` | 7860 Agent 工作链手册与执行协议（提交/续传/取件、素材链、输出纪律） | 调度/使用 Agent 完成任务 |
 | 9 | `docs/quickstart.md` / `docs/user-guide.md` / `docs/deploy-modes.md` / `docs/llm-memory-optimization.md` / `docs/qwen38-deployment.md` / `docs/h3-workflow-architecture.md` / `docs/h3-troubleshooting.md` / `docs/long-term-maintenance.md` 等 | 新手入门 / 用户手册 / 部署形态 / 内存账本 / Qwen 部署 / 工作流架构 / 故障排查 / 长期维护 | 按需定向阅读 |
+| 10 | **`docs/planbook/book-00-overview.md`**（+ book-01…book-10） | **系统性修复计划书**：痛点→阶段映射、基座/可信部署、前端/输出/自动完成/资源隔离/工作流/引擎/风格、验收门禁与黄金路径 | 修复负责人（多轮校验先读 book-00） |
 
 > `docs/agent-reading/` 是 agent `read_doc` 工具的动态清单（新增文档自动出现在工具描述中），
 > 任务执行细节以其中 `04-agent-workflow.md` 为速查。
@@ -121,6 +123,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 
 | 日期 | 变更 |
 |---|---|
+| 2026-09-04 计划书 | 新增 `docs/planbook/` 系统性修复计划：痛点→阶段矩阵、基座/可信部署、前端/输出/自动完成/资源隔离/工作流/引擎/风格/验证（book-00…book-10） |
 | 2026-09-04 第五批 | 体验/性能/隔离 6 阶段优化：上传三态+状态栏HTML、无效图片拦截(mediacheck)、熔断器(turn_state)、批量提交(h3_batch)、素材隔离(batch_id)、文档预热(doc_state) |
 | 2026-09-04 第四批 | tools.py TimeoutExpired bytes/str 拼接修复（两处）、同步 spark 并重启验证、CLI 多轮对话测试通过 |
 | 2026-09-04 第三批 | 对话历史丢失修复（hist_state 未更新）、禁用自动 nap、系统提示词自主性重写、上传体验优化、UI 文案简化 |
