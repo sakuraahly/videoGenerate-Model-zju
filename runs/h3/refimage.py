@@ -167,8 +167,9 @@ def _load_batch_map() -> dict:
                 d = json.loads(line)
                 sha = d.get('sha', '')
                 bid = d.get('batch_id', '')
-                if sha and bid:
-                    mapping[sha] = bid
+                cid = str(d.get('cid', '') or '')
+                if sha:
+                    mapping[sha] = {"bid": bid or '', "cid": cid}
             except Exception:
                 continue
     except OSError:
@@ -178,24 +179,39 @@ def _load_batch_map() -> dict:
     return dict(mapping)
 
 
-def _get_row_batch(row: dict, batch_map: dict) -> str:
-    """从 row 的 full path 中提取 batch_id（通过 log.jsonl 的 sha 映射）。"""
+def _get_row_meta(row: dict, batch_map: dict) -> dict:
+    """从 row 的 name 前缀 sha 提取 {'bid','cid'}（book-05：会话归属）。"""
     name = row.get('name', '')
     parts = name.split('_', 1)
     if len(parts) >= 2 and len(parts[0]) == 8:
-        for sha, bid in batch_map.items():
+        for sha, meta in batch_map.items():
             if sha.startswith(parts[0]):
-                return bid
-    return ''
+                return {"bid": meta.get("bid", ""), "cid": meta.get("cid", "")}
+    return {"bid": "", "cid": ""}
+
+
+def _filter_by_session(rows: list, batch_map: dict, session: str) -> list:
+    """只保留本会话（cid）的素材行（book-05 资源隔离核心）。"""
+    return [r for r in rows if _get_row_meta(r, batch_map).get('cid') == session]
 
 
 def cmd_list(dirs: dict, show_other: bool = False, pool: str = "",
              name: str = "", limit: int = 25, batch: str = "",
-             recent: int = 0) -> int:
+             recent: int = 0, session: str = "", scope_all: bool = False) -> int:
     rows = _filter_rows(_rows(dirs), pool=pool, name=name, show_other=show_other)
     batch_map = _load_batch_map()
 
-    if batch or not batch:
+    if session:
+        # book-05：默认只看本会话素材（上传时记录 cid）；其他历史产物需 --scope-all
+        sel = _filter_by_session(rows, batch_map, session)
+        if not sel:
+            print(f"本会话 {session} 暂无可用素材（上传后自动归档到本会话；如需全部素材请用 --scope-all）")
+            return 0
+        rows = sel
+        print(f"会话过滤: {session}（{len(rows)} 项，按时间倒序；其他历史产物需 --scope-all）")
+    elif scope_all:
+        print(f"全部素材（{len(rows)} 项；含其他会话/历史产物，慎用）")
+    elif batch or not batch:
         all_batches = {}
         for r in rows:
             bid = _get_row_batch(r, batch_map)
@@ -564,6 +580,8 @@ def main(argv=None) -> int:
     p_list.add_argument("--name", default="", help="按文件名包含过滤")
     p_list.add_argument("--limit", type=int, default=25, help="每池最多显示行数")
     p_list.add_argument("--batch", default="", help="按批次过滤: <id>|latest|all")
+    p_list.add_argument("--session", default="", help="只显示某会话（cid）上传的素材（book-05 默认隔离；其他历史产物需 --scope-all）")
+    p_list.add_argument("--scope-all", action="store_true", help="显示全部素材（含其他会话/历史产物）")
     p_list.add_argument("--recent", type=int, default=0, help="最近 N 分钟内的素材")
     p_prom = sub.add_parser("promote")
     p_prom.add_argument("--name", required=True)
@@ -607,7 +625,8 @@ def main(argv=None) -> int:
     if args.cmd == "list":
         return cmd_list(dirs, show_other=args.all, pool=args.pool,
                         name=args.name, limit=args.limit, batch=args.batch,
-                        recent=args.recent)
+                        recent=args.recent, session=args.session,
+                        scope_all=args.scope_all)
     if args.cmd == "promote":
         return cmd_promote(dirs, args.name, args.as_name)
     if args.cmd == "use":

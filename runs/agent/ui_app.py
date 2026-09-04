@@ -335,7 +335,7 @@ def _to_path(raw) -> Path:
     return Path(str(raw)).expanduser() if raw else Path('')
 
 
-def ingest_upload(paths) -> tuple:
+def ingest_upload(paths, cid='') -> tuple:
     """把界面/上传文件收进素材池（与 upload_watch 同语义）：
 
     - 任意类型 → 归档 uploads/YYYYMMDD/<sha8>_<原名>（sha 去重）+ log.jsonl 流水；
@@ -382,7 +382,7 @@ def ingest_upload(paths) -> tuple:
                 with open(UPLOADS_LOG, 'a', encoding='utf-8') as f:
                     f.write(json.dumps({'ts': _now(), 'sha': sha, 'src': str(p),
                                         'archived': str(dst), 'kind': kind,
-                                        'batch_id': batch_id},
+                                        'batch_id': batch_id, 'cid': cid},
                                        ensure_ascii=False) + '\n')
                 seen.add(sha)
                 added += 1
@@ -542,6 +542,12 @@ def run_app(port: int = 7860, share: bool = False) -> None:
 
             if not cid:
                 cid = new_chat_id()
+
+            try:
+                from runs.agent import tools as _tools
+                _tools.CURRENT_SESSION = cid  # book-05：素材工具默认隔离到本会话
+            except Exception:  # noqa: BLE001
+                pass
 
             msgs = list(chat_hist or [])
             stop_event = get_stop_event(cid)
@@ -783,7 +789,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                                  '#c0392b', '#fdf2f2', '#e5b8b8'), [])
                     return
                 try:
-                    msg, previews, _invalid, batch_id = ingest_upload(files)
+                    msg, previews, _invalid, batch_id = ingest_upload(files, cid_state.value)
                     if '✅' in msg:
                         global _pending_batch_id
                         _pending_batch_id = batch_id

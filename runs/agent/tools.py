@@ -39,6 +39,9 @@ _ALLOWED_WORKFLOW_DIRS = [
 _MAX_OUTPUT = 5000
 _SCRIPT_TIMEOUT = 120
 
+# book-05：当前会话 id（由 ui_app 每轮设置；list_references 默认隔离到本会话）
+CURRENT_SESSION = ''
+
 
 def _resolve(path: str) -> str:
     return os.path.realpath(os.path.expanduser(path))
@@ -366,20 +369,19 @@ _ALLOWED_DOC_DIRS = [
 @register_tool('list_references')
 class ListReferences(BaseTool):
     description = (
-        '列出可作参考的素材：ComfyUI 已保存的图片（历次生成产物）、input 图库、'
-        '以及 Open WebUI 上传收件箱里的文件。返回素材 id 列表。'
-        '默认只显示最近上传批次（latest）的素材；batch=all 查全部。'
-        '选择参考图时：先调本工具看有哪些可用素材，再用 run_script 运行 '
-        'runs/h3/refimage.py promote --name <id|文件名>（放进 ComfyUI input）或 '
-        'use --name <id|文件名> --stage r2v（把该图设为某阶段模板的参考图）。'
+        '列出可作参考的素材。**默认仅当前会话（cid）上传的素材**（book-05 资源隔离）；'
+        '其他会话/历史产物（ComfyUI 历史生成、旧项目）默认不可见。'
+        '选择参考图：先调本工具，再用 run_script 运行 runs/h3/refimage.py '
+        'promote --name <id>（放进 ComfyUI input）或 use --name <id> --stage r2v。'
         '参考图视频生成用 call_comfyui(stage="r2v" / "i2v" / "flf2v")。'
+        '如需复用其他历史产物：必须用户明确授权，且 session 传 "all"（会列出全部，请谨慎）。'
     )
     parameters = {
         'type': 'object',
         'properties': {
-            'batch': {
+            'session': {
                 'type': 'string',
-                'description': "批次过滤: 'latest'(默认，最近上传)|'all'(全部)|具体batch_id",
+                'description': "会话 id（cid）。默认=当前会话（工具侧 CURRENT_SESSION，由界面每轮设置）；传 'all' 才显示全部（含其他会话/历史产物，需用户授权）。",
             },
         },
         'required': [],
@@ -387,11 +389,15 @@ class ListReferences(BaseTool):
 
     def call(self, params: Union[str, dict], **kwargs) -> str:
         params = self._verify_json_format_args(params) if params else {}
-        batch = (params or {}).get('batch', 'latest') or 'latest'
+        session = (params or {}).get('session', '') or CURRENT_SESSION or ''
         script = os.path.join(PROJECT_ROOT, 'runs', 'h3', 'refimage.py')
         if not os.path.isfile(script):
             return f'错误：refimage.py 不存在于 {script}'
-        cmd = [sys.executable, script, 'list', '--batch', batch]
+        if session and session != 'all':
+            cmd = [sys.executable, script, 'list', '--session', session]
+        else:
+            # 无会话上下文（CLI/手工）或显式 all → 全部（带上说明）
+            cmd = [sys.executable, script, 'list', '--scope-all']
         try:
             result = subprocess.run(
                 cmd,

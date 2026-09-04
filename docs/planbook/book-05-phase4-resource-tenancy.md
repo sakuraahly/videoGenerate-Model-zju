@@ -123,3 +123,15 @@
 - 隔离策略：默认『仅本会话』，还是『本会话 + 可复用历史（需明确引用）』；建议『默认仅本会话 + scope=all 显式』。
 - 是否给『跨会话复用』提供白名单（如指定某一个旧产物可复用）。
 - 外部上传（Open WebUI）归属：是『无会话』还是『归最近使用会话』——建议『无会话，需显式引用』。
+
+---
+
+## 10. 实施记录（2026-09-04 第一批）
+
+- ✅ **会话归属落盘**：ui_app `ingest_upload(paths, cid)` 在 `uploads/log.jsonl` 每行写 `cid`；`_upload` 传 `cid_state.value`；`send()` 每轮设置 `tools.CURRENT_SESSION = cid`。
+- ✅ **refimage 会话过滤**：`_load_batch_map` 记录 sha→(bid,cid)；新增 `_get_row_meta`/`_filter_by_session`（纯函数）；`list --session <cid>` 默认只显示本会话素材（out/历史产物不出现）；`--scope-all` 显式全量（带警示）。
+- ✅ **工具层**：`list_references` 新增 `session` 参数（默认=CURRENT_SESSION；all=全部），描述明确"默认仅当前会话、复用历史需授权"；无会话上下文（CLI）回退 `--scope-all`。
+- ✅ **模型侧边界**：SYSTEM_MESSAGE 新增「素材边界（book-05）」。
+- ✅ **测试**：`tests/test_session_filter_unit.py` 7/7 UNIT_OK；spark 实机受控验证 **ISOLATION_OK**（会话 testS 只见其 2 项、otherS 暂无、事后恢复 log.jsonl）。
+- 📌 说明：旧上传（本特性前）无 cid → 默认不可见，需 `--scope-all`（不迁移/删除任何现有产物）；`turn_state._active_batch` 仍未被消费（下一批接 cid 或清理）；`agent-reading/01` 本无 list_references 章节，工具描述已更新。
+

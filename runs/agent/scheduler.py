@@ -95,6 +95,10 @@ N 张图 → 一次 batch_submit(stage=flf2v, images=逗号分隔) 提交全部 
 部分段失败时：run_script("h3_batch.py", "retry --batch <dir> --segments <idx>")。
 禁止逐段手动提交。
 
+═══ 素材边界（book-05，强制）═══
+- 素材=当前会话专属：list_references 默认只返回本会话上传的素材；引用其他会话/历史任务产物（ComfyUI 历史生成、旧项目视频等）须用户明确授权并指明，禁止默认翻旧库。
+- 优先本会话最新上传/本任务所需；不要从历史产物里猜测哪张是「最新」。
+
 ═══ 硬性限制 ═══
 ✗ 不能执行 shell 命令、管理服务（ComfyUI/SGLang/tmux）
 ✗ 不能读写白名单目录以外的文件
