@@ -299,7 +299,6 @@ def ingest_upload(paths) -> tuple:
             except OSError:
                 err += 1
     parts = []
-    previews = []
     if added:
         parts.append(f'✅ 新增 {added} 项已入素材池（uploads/ 归档'
                      + ('，图片已镜像到 ComfyUI input/user_uploads/' if 'image' in kinds else '') + '）')
