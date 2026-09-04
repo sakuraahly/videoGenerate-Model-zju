@@ -60,7 +60,9 @@
 ### 步骤 1：确认服务端/框架的 finish_reason 可达性
 - 查 qwen_agent/SGLang 返回是否带 `finish_reason`（`stop`/`length`）或 `usage.completion_tokens` 等。记录结论。
 
-### 步骤 0（2026-09-04 实机，阻塞）：**自动续接不得追加 role:system** — book-03 §0 已修（改 role:user）；本册步骤 2 的"继续"系统消息一并照此，禁止 system 追加；`_err_hint` 对 one-system-message 400 给出正确建议。
+### 步骤 0（2026-09-04 实机，阻塞）：**自动续接不得追加 role:system**
+
+> **观察（2026-09-04 实机，仅记录不急着修）**：发送"你好"后出现 **两次** `[系统自动续接] 请继续完成当前任务。`——`needs_continuation` 只判定"有文本+无终止+无 prompt_id"，对**寒暄/已完整回答**也判续接，导致空转两轮。方向（已合入本册实施）：判别 **截断(未完)** vs **自然停(答完)** 后再决定是否续接；寒暄不再续接。 — book-03 §0 已修（改 role:user）；本册步骤 2 的"继续"系统消息一并照此，禁止 system 追加；`_err_hint` 对 one-system-message 400 给出正确建议。
 
 ### 步骤 2：给「截断」打标记并自动续
 - 若 `finish_reason==length`：追加一个"继续"系统消息（如已存在 `[系统自动续接]`，可复用），再发一次 completion；循环上限（如 3~5）防死循环；超限则向用户说明"内容较长，已分成多段：需要我继续还是直接给最终结论？"。
@@ -99,3 +101,13 @@
 ## 9. 待用户输入 / 待定项
 - 是否允许上调 `REPLY_MAX_TOKENS`（须改服务端 ctx，涉及内存协同，风险较高）；默认走"分治+自动续"更稳。
 - 自动续跑的上限（如最多续 5 次）与"用户可取消"的交互方式。
+
+
+---
+
+## 10. 实施记录（2026-09-04 第一批）
+
+- ✅ **调研**：qwen_agent 0.0.34 不暴露 finish_reason/usage（Message.extra 为空；run() 消息级）→ 采用**启发式判别**（截断嫌疑 + 任务意图）。
+- ✅ **实现**：`ui_app.should_continue(user_text, final_text, prompt_ids)` 纯函数：已提交/熔断/无输出→不续；截断嫌疑（>1200 字且无终止标点）→续；任务意图（生成类关键词且未提交）→续一次；**寒暄/已完整回答→不续**（治好「你好续接两次」）。CLI（scheduler.run_cli）同判别自动续接（≤3）。
+- ✅ **测试**：`tests/test_should_continue_unit.py` 8 例全过（UNIT_OK，无需 qwen_agent）；spark 实测见下（CLI 你好只回复一次）。
+- ⏳ 增强（低优先）：finish_reason/usage 直采（需绕 qwen_agent 直连 SGLang SSE）；REPLY_MAX_TOKENS 评估结论：维持 2048（ctx=8192 预算下与输入预算平衡），具体依据见 code-fact-registry §4。

@@ -196,15 +196,24 @@ def run_cli():
         if dropped:
             print('\n[调度器] 较早的轮次已按 token 预算自动压缩，继续对话。')
 
+        from runs.agent.ui_app import should_continue
         response = []
-        for chunk in bot.run(messages=messages):
-            response = chunk
-
-        if response:
+        # book-04 CLI：截断/任务未完成 → 自动续接（与界面同判别，寒暄不续接）
+        for _attempt in range(3):
+            response = []
+            for chunk in bot.run(messages=messages):
+                response = chunk
+            if not response:
+                break
             last = response[-1]
             content = last.get('content', '')
             print(f'\n调度器: {content}')
             messages = messages + response
+            has_pid = ('TASK_SUBMITTED:' in content) or ('prompt_id:' in content)
+            if not should_continue(user_input, content, has_pid):
+                break
+            messages.append({'role': 'user', 'content': '[系统自动续接] 请继续完成当前任务。'})
+            print('\n[调度器] 检测到未完成，自动续接…')
 
 
 def main():

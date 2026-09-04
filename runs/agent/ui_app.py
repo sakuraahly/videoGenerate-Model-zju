@@ -453,6 +453,34 @@ def _choices() -> list:
     return [(label, cid) for cid, label in list_chats()]
 
 
+# book-04：自动续接判别（截断嫌疑 vs 自然停 vs 任务意图；寒暄不续接）
+_TASK_KEYWORDS = ('视频', '生成', '图片', '转场', '参考', '图生', '文生', '素材',
+                  '上传', '制作', '创建', '拼接', '角色', '场景', '动画', '短片')
+_TERMINAL = ('。', '！', '？', '!', '?', '.', '"', '”', '）', ')', '」', '>')
+
+
+def should_continue(user_text, final_text, prompt_ids) -> bool:
+    """判别是否自动续接（book-04）。
+
+    已有 prompt_id / 无输出 / 熔断标记 → 不续（交由监控/用户）；
+    截断嫌疑（超长且无终止符号结尾）→ 续；
+    用户意图含生成类关键词（模型尚未提交）→ 续一次推进；
+    其余（寒暄/已完整回答）→ 不续（修「你好续接两次」）。
+    """
+    if prompt_ids:
+        return False
+    if not final_text:
+        return False
+    if any(marker in final_text for marker in ('⛔', '不可恢复', '熔断')):
+        return False
+    tail = final_text.rstrip()
+    if len(final_text) > 1200 and not tail.endswith(_TERMINAL):
+        return True  # 疑似被 max_tokens 截断
+    if any(k in (user_text or '') for k in _TASK_KEYWORDS):
+        return True
+    return False
+
+
 def _err_hint(t: str) -> str:
     """错误分类 + 解决建议（book-02）。"""
     t = t or ''
@@ -598,11 +626,8 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                         tasks = [{'prompt_id': pid, 'type': 'single'} for pid in prompt_ids]
                         all_pending_tasks.extend(tasks)
 
-                    needs_continuation = (
-                        final_text and 
-                        not any(marker in final_text for marker in ABORT_MARKERS) and
-                        not prompt_ids
-                    )
+                    needs_continuation = should_continue(
+                        user_text, final_text, prompt_ids)
 
                     if not needs_continuation or attempt >= MAX_AUTO_CONTINUE:
                         break
