@@ -1,6 +1,6 @@
 # 阶段 10 — Agent 工具自动化/模块化/通用化 + 灵动多工作流适配（为便捷更换工作流做准备）
 
-> 状态：计划(未实施) | 目标：让「某个工作流怎么用、用什么模板/槽位/提示词注入点/参数上限、是否支持参考视频/逐段转场」全部由**单一声明式注册表**驱动；新增/替换/禁用工作流=改配置+校验，**不改工具代码、不改系统提示词**；agent 工具层做到「灵动的多工作流适配」 |
+> 状态：实施中（步骤1 完成） | 目标：让「某个工作流怎么用、用什么模板/槽位/提示词注入点/参数上限、是否支持参考视频/逐段转场」全部由**单一声明式注册表**驱动；新增/替换/禁用工作流=改配置+校验，**不改工具代码、不改系统提示词**；agent 工具层做到「灵动的多工作流适配」 |
 > 主负责人：后端/Agent | 依赖：book-06(提示词注入)、book-07(引擎契约/批量)、book-01(基座校验) | 对后端影响：高 | 优先级：🟠 中
 
 ---
@@ -97,6 +97,19 @@
 - **风险：模板结构差异导致槽位/注入点误判**——`template_health` 显式探针（节点存在/槽位可达/注入点可定位），失败给出可读错误而非静默错注入。
 - **风险：模型滥用新工作流/参数**——enabled 门禁 + dry-run 校验 + 参数上限来自注册表；修改工具描述不放开权限。
 - **回滚**：注册表为增量扩展；消费方改动均可单点回退（保留旧函数路径）；`dev.py workflows` 独立。
+
+---
+
+## 10. 实施记录（截至 2026-09-04）
+
+### 步骤1 完成：注册表 schema + 适配器
+- `config/capabilities.json`：4 个本地工作流补全 `stage/template/format/slots(role+count)/prompt_inject(node_type+widget_index)/params(resolutions·seconds·fps·steps·seed)/features(reference_videos·per_segment·audio·negative_support)/enabled`（事实来自模板结构扫描：t2v/i2v/flf2v 提示词节点 `4c314f31-…` widget0；r2v `PrimitiveStringMultiline` widget0；r2v 8×LoadImage、flf2v first+last、r2v audio=true）。
+- 新增 `runs/h3/workflow_registry.py`：`load_registry/local_entries/resolve(兼容 stage·id·slot，禁用给原因)/enabled_stages/template_path/params_for/slot_spec/image_slot_count/template_health(模板存在·JSON·注入节点·槽位数)/validate_all/digest_entries(agent 动态认知文本)`。
+- 单测 `runs/h3/tests/test_workflow_registry.py` 10 用例（真实模板健康 4/4、禁用/未知/云引擎拒绝、槽位不足探测等）；全量 113 用例全绿。
+- 注：步骤1 未接入消费方（tools/refimage/prompts）——agent 无需重启，仍走旧路径（金丝雀：行为不变）。
+
+### 下一步（步骤2）
+- h3_submit `--stage` 校验走注册表 → refimage 槽位/模板 → prompts 注入点 → tools.py 枚举+描述 → stage.py/pipeline 合并；每步保持旧行为（全部已注册工作流 dry-run 通过）。
 
 ---
 
