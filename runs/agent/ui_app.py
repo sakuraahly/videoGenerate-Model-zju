@@ -34,10 +34,13 @@ PROJECT_ROOT = os.environ.get(
     os.path.expanduser('~/videoGenerate-Model-zju'),
 )
 CHATS_DIR = Path(PROJECT_ROOT) / 'logs' / 'agent_chats'
+THUMBS_DIR = CHATS_DIR / 'thumbs'      # 上传预览缩略图（项目内，随 logs/ gitignore）
 UPLOADS_DIR = Path(PROJECT_ROOT) / 'uploads'
 UPLOADS_LOG = UPLOADS_DIR / 'log.jsonl'
 IMG_EXT = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
 VID_EXT = {'.mp4', '.webm', '.mov', '.mkv', '.gif'}
+
+_active_turn = threading.Lock()  # 发送幂等锁：忙碌时再次点击直接忽略，不产生重复任务
 
 # 上下文预算（字符；模型 ctx=8192，扣除系统/工具定义后按 ~3k token 预算）
 MAX_CTX_CHARS = 6000
@@ -63,24 +66,35 @@ def new_chat_id() -> str:
 
 
 def list_chats() -> list:
-    """返回 [(cid, 标题), ...]，按修改时间倒序。标题=首条用户消息摘要。"""
+    """返回 [(cid, 标题), ...]，按修改时间倒序。标题=首条用户消息摘要。
+
+    注意：st_mtime 是 float，格式化必须经 datetime.fromtimestamp。
+    """
     if not CHATS_DIR.is_dir():
         return []
     items = []
-    for p in sorted(CHATS_DIR.glob('*.jsonl'), key=lambda x: x.stat().st_mtime,
-                    reverse=True):
+    try:
+        entries = sorted(CHATS_DIR.glob('*.jsonl'),
+                         key=lambda x: x.stat().st_mtime, reverse=True)
+    except OSError:
+        return []
+    for p in entries:
         title = ''
         try:
             for line in p.read_text(encoding='utf-8').splitlines():
                 d = json.loads(line)
                 if d.get('role') == 'user' and d.get('content'):
-                    title = d['content'].strip().replace('\n', ' ')[:36]
+                    title = str(d['content']).strip().replace('\n', ' ')[:36]
                     break
         except Exception:  # noqa: BLE001
             title = '(损坏)'
         if not title:
             title = '(空会话)'
-        items.append((p.stem, f'{p.stat().st_mtime:%m-%d %H:%M} {title}'))
+        try:
+            ts = datetime.fromtimestamp(p.stat().st_mtime).strftime('%m-%d %H:%M')
+        except Exception:  # noqa: BLE001
+            ts = '--'
+        items.append((p.stem, f'{ts} {title}'))
     return items
 
 
@@ -220,9 +234,19 @@ def _comfy_input_dir() -> Path:
     return Path(comfy.replace('~', str(Path.home()))) / 'input'
 
 
+_LOG_MTIME = -1.0
+_SEEN_SHA = set()
+
+
 def _known_shas() -> set:
-    if not UPLOADS_LOG.exists():
+    """读取 log.jsonl 的 sha 集合（带 mtime 缓存，避免每次上传全量重读）。"""
+    global _LOG_MTIME, _SEEN_SHA
+    try:
+        mt = UPLOADS_LOG.stat().st_mtime
+    except OSError:
         return set()
+    if mt == _LOG_MTIME:
+        return set(_SEEN_SHA)
     seen = set()
     try:
         for line in UPLOADS_LOG.read_text(encoding='utf-8').splitlines():
@@ -231,8 +255,27 @@ def _known_shas() -> set:
             except Exception:  # noqa: BLE001
                 continue
     except OSError:
-        pass
-    return seen
+        return set()
+    _LOG_MTIME = mt
+    _SEEN_SHA = seen
+    return set(seen)
+
+
+def _make_thumb(src: Path, sha: str):
+    """在项目内 logs/agent_chats/thumbs/ 生成 256px 缩略图（预览走缩略图，
+    避免整张原图经 SSH 隧道传输导致延迟）。"""
+    try:
+        from PIL import Image
+        THUMBS_DIR.mkdir(parents=True, exist_ok=True)
+        out = THUMBS_DIR / f'{sha}.jpg'
+        if out.exists():
+            return out
+        im = Image.open(src)
+        im.thumbnail((256, 256))
+        im.convert('RGB').save(out, 'JPEG', quality=80)
+        return out
+    except Exception:  # noqa: BLE001  Pillow 不可用时退回原图
+        return None
 
 
 def _to_path(raw) -> Path:
@@ -295,9 +338,10 @@ def ingest_upload(paths) -> tuple:
             try:
                 input_mirror.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(p, input_mirror / p.name)
-                previews.append(str(input_mirror / p.name))
             except OSError:
                 err += 1
+            thumb = _make_thumb(p, sha)
+            previews.append(str(thumb) if thumb else str(input_mirror / p.name))
     parts = []
     if added:
         parts.append(f'✅ 新增 {added} 项已入素材池（uploads/ 归档'
@@ -326,80 +370,92 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 for m in msgs if m.get('role') in ('user', 'assistant')]
 
     def send(chat_hist, cid, user_text):
+        # 幂等性：忙碌期间重复点击发送 → 直接忽略并提示，保证“多次点击=单次结果”
         user_text = (user_text or '').strip()
-        if not user_text:
-            yield fmt_msgs(chat_hist or []), '请输入内容。', 'idle', gr.update(), cid
+        if not _active_turn.acquire(blocking=False):
+            yield (fmt_msgs(chat_hist or []),
+                   '⏳ 上一轮仍在处理中，本次点击已忽略（请勿重复发送）',
+                   '上一轮仍在处理中；请等它结束（状态栏变回 idle）再发下一条。',
+                   gr.update(), cid)
             return
-        if not cid:
-            cid = new_chat_id()
-        msgs = list(chat_hist or [])
-        msgs.append({'role': 'user', 'content': user_text})
-        shown = fmt_msgs(msgs)
-        ev = queue.Queue()
-        stop = threading.Event()
-
-        def _heartbeat():
-            t0 = time.time()
-            while not stop.is_set():
-                ev.put({'kind': 'hb',
-                        'text': f'⏳ 模型/任务进行中（{int(time.time() - t0)}s）… '
-                                f'视频长任务会持续数分钟，请勿重复提交；完成后对我说“取片”'})
-                stop.wait(HEARTBEAT_SEC)
-
-        threading.Thread(target=run_turn, args=(msgs[:-1], user_text, ev),
-                         daemon=True).start()
-        threading.Thread(target=_heartbeat, daemon=True).start()
-
-        status = '🔶 处理中…'
-        assistant = ''
-        phase = 'ok'
-        while True:
-            try:
-                item = ev.get(timeout=1.0)
-            except queue.Empty:
-                yield fmt_msgs(msgs), status, '', gr.update(), cid
-                continue
-            kind = item.get('kind')
-            if kind == 'hb':
-                status = item.get('text', status)
-                yield fmt_msgs(msgs), status, '', gr.update(), cid
-            elif kind == 'done':
-                assistant = item.get('text') or ''
-                break
-            elif kind == 'error':
-                phase = 'error'
-                assistant = item.get('text') or '未知错误'
-                break
-        stop.set()
-
-        if phase == 'error':
-            msg = f'[执行出错] {assistant}'
-            msgs.append({'role': 'assistant', 'content': msg})
-            note = '上一轮执行出错：可把报错内容发我，或检查 logs/run_*.log。'
-        elif assistant:
-            msgs.append({'role': 'assistant', 'content': assistant})
-            # 输出纪律：超长自动暂停，引导下一轮“继续”
-            if len(assistant) > 600:
-                tip = '\n\n—— 回复较长，为控制上下文已在此暂停；继续请发送：继续 ——'
-                msgs[-1]['content'] = msgs[-1]['content'] + tip
-            note = ('本轮完成。若提交了生成任务，取片/查进度请发：无参重跑续传；'
-                    '产出路径以 REMOTE_VIDEO_PATH / LOCAL_OUTPUT 行为准。')
-        else:
-            msgs.append({'role': 'assistant', 'content': '（模型未返回内容，可能被截断；发送“继续”重试）'})
-            note = '模型未返回内容（可能被截断），发送“继续”续写。'
-        save_chat(cid, msgs)
-        # 内存协同：回合确认提交了真实生成任务 → nap 让位视频生成（下轮自动唤醒）
-        nap_note = ''
         try:
-            from runs.agent import llm_mem as lmem
-            if lmem.maybe_nap_after(assistant):
-                nap_note = '（已临时让位内存给视频生成；下轮对话会自动唤醒本地模型）'
-        except Exception:  # noqa: BLE001
-            pass
-        if nap_note:
-            note = note + '\n\n' + nap_note
-        yield fmt_msgs(msgs), 'idle', note, gr.update(choices=_choices()), cid
+            if not user_text:
+                yield fmt_msgs(chat_hist or []), '请输入内容。', 'idle', gr.update(), cid
+                return
+            if not cid:
+                cid = new_chat_id()
+            msgs = list(chat_hist or [])
+            msgs.append({'role': 'user', 'content': user_text})
+            shown = fmt_msgs(msgs)
+            ev = queue.Queue()
+            stop = threading.Event()
 
+            def _heartbeat():
+                t0 = time.time()
+                while not stop.is_set():
+                    ev.put({'kind': 'hb',
+                            'text': f'⏳ 模型/任务进行中（{int(time.time() - t0)}s）… '
+                                    f'视频长任务会持续数分钟，请勿重复提交；完成后对我说“取片”'})
+                    stop.wait(HEARTBEAT_SEC)
+
+            threading.Thread(target=run_turn, args=(msgs[:-1], user_text, ev),
+                             daemon=True).start()
+            threading.Thread(target=_heartbeat, daemon=True).start()
+
+            status = '🔶 处理中…'
+            assistant = ''
+            phase = 'ok'
+            noop = gr.update()
+            while True:
+                try:
+                    item = ev.get(timeout=1.0)
+                except queue.Empty:
+                    yield fmt_msgs(msgs), status, '', noop, cid
+                    continue
+                kind = item.get('kind')
+                if kind == 'hb':
+                    status = item.get('text', status)
+                    yield fmt_msgs(msgs), status, '', noop, cid
+                elif kind == 'done':
+                    assistant = item.get('text') or ''
+                    break
+                elif kind == 'error':
+                    phase = 'error'
+                    assistant = item.get('text') or '未知错误'
+                    break
+            stop.set()
+
+            if phase == 'error':
+                msg = f'[执行出错] {assistant}'
+                msgs.append({'role': 'assistant', 'content': msg})
+                note = '上一轮执行出错：可把报错内容发我，或检查 logs/run_*.log。'
+            elif assistant:
+                msgs.append({'role': 'assistant', 'content': assistant})
+                if len(assistant) > 600:
+                    tip = '\n\n—— 回复较长，为控制上下文已在此暂停；继续请发送：继续 ——'
+                    msgs[-1]['content'] = msgs[-1]['content'] + tip
+                note = ('本轮完成。若提交了生成任务，取片/查进度请发：无参重跑续传；'
+                        '产出路径以 REMOTE_VIDEO_PATH / LOCAL_OUTPUT 行为准。')
+            else:
+                msgs.append({'role': 'assistant',
+                             'content': '（模型未返回内容，可能被截断；发送“继续”重试）'})
+                note = '模型未返回内容（可能被截断），发送“继续”续写。'
+            save_chat(cid, msgs)
+            # 内存协同：回合确认提交了真实生成任务 → nap 让位（下轮自动唤醒）
+            nap_note = ''
+            try:
+                from runs.agent import llm_mem as lmem
+                if lmem.maybe_nap_after(assistant):
+                    nap_note = '（已临时让位内存给视频生成；下轮对话会自动唤醒本地模型）'
+            except Exception:  # noqa: BLE001
+                pass
+            if nap_note:
+                note = note + '\n\n' + nap_note
+            # 只在终局刷新一次历史下拉，避免每轮心跳重读会话文件
+            yield (fmt_msgs(msgs), 'idle', note,
+                   gr.update(choices=_choices()), cid)
+        finally:
+            _active_turn.release()
     with gr.Blocks(title='Qwen-Agent 受限调度器', theme=gr.themes.Soft()) as demo:
         # 注意：gr.State 必须在 Blocks 上下文内创建（上下文外创建会 KeyError: 0）
         hist_state = gr.State([])   # 完整消息（存档口径：user/assistant 交替）
@@ -456,27 +512,32 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             return gr.update(choices=_choices())
 
         def _upload(files):
+            # 两段式：先立即回执“已接收”，入库完成后再给最终结果（避免等待中无反馈）
+            n = len(files) if files else 0
+            ack = ('<div style="padding:6px 10px;background:#fff8e1;'
+                   'border:1px solid #e7d492;border-radius:6px;color:#8a6d1a;'
+                   f'font-weight:600">⏳ 已接收 {n} 个文件，正在入库（去重/归档/镜像）…'
+                   '</div>')
+            yield ack, []
+            if not files:
+                yield ('<div style="padding:6px 10px;background:#fdf2f2;'
+                       'border:1px solid #e5b8b8;border-radius:6px;color:#c0392b;'
+                       'font-weight:600">⚠️ 未收到文件（请重新选择图片/视频）。</div>'), []
+                return
             try:
-                if not files:
-                    return ('<span style="color:#b8860b">⚠️ 未收到文件（可能是浏览器未选中，'
-                            '请重新选择图片/视频后重试）。</span>', [])
                 msg, previews = ingest_upload(files)
-                ok = '✅' in msg and '❌' not in msg.split('；')[0] if '；' in msg else '✅' in msg
-                color = '#0a7d32' if (ok and previews) or (ok and '新增' in msg) else \
-                    ('#c0392b' if '❌' in msg else '#0a7d32')
+                color = '#0a7d32' if '❌' not in msg else '#c0392b'
                 bg = '#f4fbf6' if color == '#0a7d32' else '#fdf2f2'
                 border = '#9dd6ae' if color == '#0a7d32' else '#e5b8b8'
                 html = (f'<div style="padding:6px 10px;background:{bg};'
                         f'border:1px solid {border};border-radius:6px;'
                         f'color:{color};font-weight:600">'
                         f'{msg.replace(chr(10), "<br>")}</div>')
-                return html, previews
-            except Exception as e:  # noqa: BLE001  错误必须可见，不留空横幅
-                return (f'<div style="padding:6px 10px;background:#fdf2f2;'
-                        f'border:1px solid #e5b8b8;border-radius:6px;color:#c0392b;'
-                        f'font-weight:600">❌ 上传处理异常：{type(e).__name__}: {e}'
-                        f'<br>请把此行反馈给维护者。</div>', [])
-
+                yield html, previews
+            except Exception as e:  # noqa: BLE001
+                yield (f'<div style="padding:6px 10px;background:#fdf2f2;'
+                       f'border:1px solid #e5b8b8;border-radius:6px;color:#c0392b;'
+                       f'font-weight:600">❌ 上传处理异常：{type(e).__name__}: {e}</div>'), []
         load_btn.click(_load, hist_dd, out)
         new_btn.click(_new, None, out)
         del_btn.click(_del, hist_dd, hist_dd)
@@ -490,6 +551,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
     print(f'项目根目录: {PROJECT_ROOT}')
     print(f'历史会话目录: {CHATS_DIR}')
     # 预览白名单：Gradio 默认只服务临时目录文件，需放行素材镜像/归档目录
-    allowed = [str(_comfy_input_dir() / 'user_uploads'), str(UPLOADS_DIR)]
+    allowed = [str(THUMBS_DIR), str(_comfy_input_dir() / 'user_uploads'),
+               str(UPLOADS_DIR)]
     demo.launch(server_name='0.0.0.0', server_port=port, share=share,
                 show_error=True, quiet=True, allowed_paths=allowed)
