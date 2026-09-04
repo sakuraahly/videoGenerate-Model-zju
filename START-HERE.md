@@ -121,6 +121,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 
 | 日期 | 变更 |
 |---|---|
+| 2026-09-04 第五批 | 体验/性能/隔离 6 阶段优化：上传三态+状态栏HTML、无效图片拦截(mediacheck)、熔断器(turn_state)、批量提交(h3_batch)、素材隔离(batch_id)、文档预热(doc_state) |
 | 2026-09-04 第四批 | tools.py TimeoutExpired bytes/str 拼接修复（两处）、同步 spark 并重启验证、CLI 多轮对话测试通过 |
 | 2026-09-04 第三批 | 对话历史丢失修复（hist_state 未更新）、禁用自动 nap、系统提示词自主性重写、上传体验优化、UI 文案简化 |
 | 2026-09-04 | 创建。纳入：ctx-8192 溢出修复批次（ctx_budget.py token 预算化）、工作文件夹双端速查（session-summary §14）、Z: 盘禁用规范、阅读索引与同步规则。 |
