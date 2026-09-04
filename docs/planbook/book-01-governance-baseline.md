@@ -24,7 +24,8 @@
 - **Windows 主库** `D:/MY_CODING_PROGRAM/videoGenerate-Model-zju`：git 最新 `0761374`（第六/七批之后，含 h3_batch 修复）。
 - **spark 运行时** `/home/Developer/videoGenerate-Model-zju`：git 最新 `2ee5a0b`（sync from Windows a5cfbcc），显著落后；工作区另有大量**未提交**改动（新增 `session_state.py`/`task_watch.py`/`turn_state.py`/`mediacheck.py` 等，修改 `ui_app.py`/`scheduler.py`/`tools.py`/`refimage.py` 等）。
 - **GitHub** `sakuraahly/videoGenerate-Model-zju`：仅由 Windows 主库 push，与 spark 无直接关系。
-- 结论：spark 上"能跑"的 = 旧 git 提交 + 手改/未提交副本 的混合物，**无法复现**。
+- 结论（写作时）：spark 上"能跑"的 = 旧 git 提交 + 手改/未提交副本 的混合物，**无法复现**。
+- **2026-09-04 晚更新**：该漂移已由 `runs/dev.py` 的 sync/commit 追平——spark HEAD `d0da789` = Windows `1d42902`（仅提交身份不同）；spark 磁盘 `ui_app.py` 已是含新文案的版本（`08:18` 落盘）。**但真正没解决的是运行进程**：7860 端口持有者 `python runs/agent/scheduler.py`（PID 746835，`06:18` 启动，早于代码 2 小时）——即「**代码对、进程旧**」。本册的版本指纹/重启验证因而是当务之急（重启实测方法见 `docs/dev-workflow.md §6.1`，已按实测修正：tmux 会话名=`agent`、必须验证端口持有者启动时间与新文案/指纹）。
 
 ### 2.2 同步机制本身可能造成"半同步"
 - `runs/sync_to_spark.py` 是 **tar 整包外传**（排除 .git、机器配置 deploy/llm/pipeline、产物 logs/outputs、审计 workflows/h3_*），解包到 spark `~/<项目名>`。

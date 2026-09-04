@@ -16,7 +16,7 @@
 
 ### 2.1 h3_batch 导入错误 ModuleNotFoundError（已定位）
 - `h3_batch.py:90` 用 `from runs.h3 import mediacheck`。脚本以 `python runs/h3_batch.py`（或从 `runs/` 下）运行时，`sys.path[0]` = `runs/`，于是 `import runs` 去找 `runs/runs/__init__.py`（不存在）→ `No module named runs`。
-- 正确做法（与同目录 `h3_submit.py:39-41` 一致）：改用 `from h3 import mediacheck`；或在模块顶部一次性把 `PROJECT_ROOT` 加入 `sys.path`。
+- **与 book-00 P-15 的关系**：Windows 已有 commit `0761374` 用「try/except + 把 project root 注入 sys.path」修过主链路（能跑）；但其修法与本仓约定（`h3_submit.py:39-41` 的 `from h3 import ...`）不一致，且 `refimage.py:522`、`upload_watch.py:104` **仍未修**。本册采纳：统一改为 `from h3 import mediacheck`（一行、与既有约定一致），并一并修那两处。
 - **同样的隐疾**：`refimage.py:522`、`upload_watch.py:104` 也用 `from runs.h3 import mediacheck`，在非项目根运行会同样失败。
 - `h3_batch.py:19 import fcntl` 是 **Unix-only**：在本 Windows 机上该脚本在更早处就报 `No module named fcntl`（实测），在 spark 上 `fcntl` 可解析但随后 `runs` 导入仍是第一个失败。
 

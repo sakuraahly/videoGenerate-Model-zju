@@ -121,12 +121,24 @@ def _detect_project_root() -> str:
     return _PROJECT_ROOT
 
 
+def _print_version(root: str):
+    """启动版本指纹：防"跑的不是这个代码"类假绿（book-01 / book-09 进程级判据）。"""
+    import subprocess as _sp
+    try:
+        v = _sp.run(['git', '-C', root, 'rev-parse', '--short', 'HEAD'],
+                    capture_output=True, text=True, timeout=5).stdout.strip()
+    except Exception:  # noqa: BLE001
+        v = ''
+    print(f'[agent] AGENT_VERSION={v or "unknown"} root={root}', flush=True)
+
+
 def run_gui(port: int = 7860, share: bool = False):
     # 自研轻量界面：历史会话/新对话/进行中指示/上下文预算（见 ui_app.py）
     from runs.agent import ui_app
 
     root = _detect_project_root()
     os.environ.setdefault('VIDEOGEN_PROJECT_ROOT', root)
+    _print_version(root)
     ui_app.run_app(port=port, share=share)
 
 

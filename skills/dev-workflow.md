@@ -38,7 +38,7 @@
 - 定点同步：只 `scp` 本次改动文件到 spark（避免覆盖运行时代码）。
 - 核对：`git -C <repo> rev-parse HEAD` 对照 `ssh spark "git -C ... rev-parse HEAD"`；看 spark `git status --short`。
 - 差异化配置（deploy/llm/pipeline/transfer/autosync/.sync-state/last_job）两端本就不同，**不整仓覆盖**。
-- 需要重启 agent（先获授权）：按 `docs/qwen38-deployment.md` / `shell/stop_qwen.sh` / `manage_services.sh start` 重启，验证 7860 + 日志 + 版本指纹。
+- 需要重启 agent（先获授权）：7860 在 **tmux 会话 `agent`**（会话名不是 `qwen-agent`）；重启：`tmux kill-session -t agent; tmux new-session -d -s agent 'cd /home/Developer/videoGenerate-Model-zju && python runs/agent/scheduler.py 2>&1 | tee ~/agent.log'`。验证：端口持有者 PID 启动时间 ≥ 重启时刻 + `/config` 含新文案 + 日志 `AGENT_VERSION`；**curl HTML/ps PID 不等于新代码**（详见 `docs/dev-workflow.md §6.1`）。
 
 ## 7. git 提交
 - Windows（唯一推 GitHub）：`add` → `commit` → `push origin master`（PowerShell 下 git 进度写 stderr 会 exit 1，看到 `X..Y master -> master` 即成功）。

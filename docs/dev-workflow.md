@@ -109,10 +109,10 @@
 **判定**：两端改动文件一致、版本指纹可对应、差异化配置未被误覆盖。
 
 ### 6.1 重启 agent（需授权时）
-- 用户授权后：重启 spark 上的 `qwen-agent` 会话（Gradio 7860），按 `docs/qwen38-deployment.md` / `shell/stop_qwen.sh` 所述方式（或 `bash shell/manage_services.sh start`）。
-- 或按 `shell/manage_services.sh restart`（会统筹 ComfyUI/SGLang，需人工场合）。
-- 仅停 Qwen（不碰 ComfyUI）：`bash shell/stop_qwen.sh`。
-- 重启后验证：`ssh spark "ss -ltn | grep 7860"` + 看 `~/qwen-agent.log` 尾部 + 界面版本指纹。
+- **实测形态（2026-09-04）**：7860 由 **tmux 会话 `agent`** 承载（会话内命令：`bash -c python runs/agent/scheduler.py 2>&1 | tee ~/agent.log`，即 `start_qwen_agent.py` 调用的 `runs.agent.scheduler.main`）。**注意：会话名是 `agent`，不是 `qwen-agent`**（旧文档写错，曾导致重启落空）。
+- **正确的重启**（经授权后）：`ssh spark "tmux kill-session -t agent 2>/dev/null; tmux new-session -d -s agent 'cd /home/Developer/videoGenerate-Model-zju && python runs/agent/scheduler.py 2>&1 | tee ~/agent.log'"`；或 `bash shell/manage_services.sh start`（统筹 ComfyUI/SGLang）；仅停 Qwen：`bash shell/stop_qwen.sh`。
+- **验证（关键，防假绿）**：① `ssh spark "ss -ltnp | grep 7860"` → **端口持有者 PID 的启动时间**必须 ≥ 本次重启时刻；② `curl -s http://127.0.0.1:7860/config | grep -o "加载所选历史"`（或关键新文案）确认真实渲染新文案；③ 日志 `~/agent.log` 尾部出现 `AGENT_VERSION=<commit>` 与启动完成标记。
+- ⚠️ **反例**：`curl` 返回 HTML、`ps` 看到 PID **只证明有进程在监听，不证明是新代码**——2026-09-04 曾有报告据此称“重启成功”，实际新进程抢不到端口即退、旧进程仍在服务（book-09 铁律实例）。
 
 ---
 

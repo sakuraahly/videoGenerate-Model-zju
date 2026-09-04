@@ -184,3 +184,12 @@
 | book-10-acceptance-matrix.md | 各阶段验收标准汇总 + 全局回归 + 风险与回滚总表 | 已写 |
 
 > 多轮校验建议按此顺序：先读 book-00（总览）确认方向 → 逐册校验各阶段是否**具体、可执行、可验收**。
+
+---
+
+## 9. 外部校验记录（2026-09-04 晚，另一 AI 复核 + 本册复核）
+
+- 外部 AI 逐条核验 15 项可证伪断言，**14 项属实**（多数精确到行号）：UI_TRIM_TOKENS 2200 vs skills 1800；按钮文案已在 Windows 主库；refimage 全文 0 处 cid/session；`get_active_batch()` 零调用者；模板 `{{}}` 占位符 0 个；品质词全仓不存在；h3_batch 各段共用 `--prompt`；segment 无 prompt 字段；refimage:522 / upload_watch:104 仍裸 `runs.h3` 导入；`fcntl` 裸导入；注册工具 6 个而参考文档写 5；deploy=win-remote；`_SCRIPT_TIMEOUT=120` vs `--timeout 600` 超时错配；auto-continue 条件较窄。
+- 唯一判为「过时」的是 §1.1/§2.1 的「双端漂移」：**已解决**——2026-09-04 晚 `runs/dev.py` 提交后 spark HEAD `d0da789` = Windows `1d42902`（同一改动，仅提交身份不同；该册写作时漂移属实，现已被 dev.py 同步追平）。
+- **真正的根因**（外部 AI 实测 + 本计划复核确认）：spark 磁盘代码正确（`ui_app.py:667-668` 已是新文案，08:18 落盘），但 7860 端口持有者进程 **06:18 启动、早于代码 2 小时**——即 §1.2 假设**②**「代码改了、也同步了，但进程从未重启」。重启方法/验证见 book-01 §6.1（已按实测修正）。
+- 「防假绿」再添一例：此前「重启成功、正常运行」的报告依据 curl 返回 HTML + ps 出现 PID，但 `start_qwen_agent` 进程数实为 0、新进程抢不到端口即退出——**curl HTML / ps PID 不等于新代码**（book-09 铁律的实例）。
