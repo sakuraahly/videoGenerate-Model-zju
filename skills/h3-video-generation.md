@@ -103,6 +103,10 @@ manually (human mode — see `docs/workflow-and-prompt.md` §2).
 - Open WebUI：tmux `webui`，端口 3000（`http://spark:3000`）。
 - 开机自启：`~/.config/autostart/spark-ai-services.desktop` 调用 `shell/start_all_services.sh`。
 - 管理脚本：`shell/manage_services.sh {start|stop|restart|status|logs}`。
+- **仅停 Qwen（不碰 ComfyUI）**：`shell/stop_qwen.sh`（Spark 版）/
+  `bats\service\StopQwen.bat`（Windows 版，SSH 委托 spark 执行）。
+  只停 SGLang / Qwen-Agent / Open WebUI，ComfyUI 完全不受影响。
+  用法：`bash shell/stop_qwen.sh [--status]` 或双击 `StopQwen.bat`。
 
 ### 1.3d 文生图（H3 模型版）
 

@@ -157,6 +157,12 @@ def run_cli():
             print('再见!')
             break
 
+        # 内存协同：回合前保证模型可用（nap 后自动 wake）
+        from runs.agent import llm_mem as lmem
+        if not lmem.ensure_llm_up(timeout_s=900):
+            print('\n[调度器] 本地模型唤醒失败，请人工查 ~/sglang.log')
+            continue
+
         messages.append({'role': 'user', 'content': user_input})
 
         response = []
@@ -168,6 +174,9 @@ def run_cli():
             content = last.get('content', '')
             print(f'\n调度器: {content}')
             messages = messages + response
+            # 回合结束且确认提交了真实生成任务 → nap 让位（下轮自动 wake）
+            if lmem.maybe_nap_after(content):
+                print('[调度器] 已让位内存给视频生成；下次输入会自动唤醒模型。')
 
 
 def main():

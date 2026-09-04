@@ -482,3 +482,24 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   deploy.json/llm.json/pipeline/transfer/autosync/upload_watch/.sync-state、logs/
   outputs/workflows/h3_*、根目录 *.mp4 —— 两端机器文件各自维护，spark-local 形态
   不会被同步覆盖（此前实测被覆盖后 refimage 误判发起 ssh 自我委托）。
+- **stop_qwen 脚本：仅停 Qwen 不碰 ComfyUI（2026-09-03 晚间）**：
+  - 背景：需要频繁启停 Qwen 系列服务（SGLang / Qwen-Agent / Open WebUI）做开发调试，
+    但 ComfyUI 必须保持运行。此前 `start_all_services.sh` 的 pkill 模式
+    `ComfyUI/main.py` 匹配不到孤儿进程（cmdline 只有 `main.py`），且
+    `tmux kill-session` 会杀死 tmux server 导致 ComfyUI 变孤儿。
+  - **Spark 版** `shell/stop_qwen.sh`：
+    - 只操作 `sglang` / `qwen-agent` / `webui` 三个 tmux 会话
+    - pkill 只匹配 `sglang.launch_server`（精确，不波及 ComfyUI）
+    - `--status` 查看全部 4 个服务端口状态
+    - 零 ComfyUI 操作：不 kill、不检查端口、不重启
+  - **Windows 本地版** `bats\service\StopQwen.bat`：
+    - 双击或命令行运行，SSH 到 spark 执行 `stop_qwen.sh`
+    - 支持 `--status` 参数
+  - **`start_all_services.sh` 修复**（同步进行）：
+    - ComfyUI 启动参数补回 `--disable-auto-launch --reserve-vram 12 --enable-manager`
+      （用户明确要求保留 `--enable-manager`）
+    - pkill 模式从 `ComfyUI/main.py` 改为 `main.py.*--port 8188`（能匹配孤儿进程）
+  - 旧脚本 `shell/comfyui_only.sh` 已废弃（含 ComfyUI 启停操作，不符合"不碰 ComfyUI"原则）。
+  - **SGLang ninja 问题**：`ninja` 已安装在 sglang-venv 内（1.13.2），此前启动失败是
+    因为未正确激活 venv；`start_all_services.sh` 用 `source activate` 方式已解决。
+  - 协调启动实测：SGLang 加载 121s，全服务 2 分 15 秒就绪（共存模式 mem=0.55）。

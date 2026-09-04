@@ -158,6 +158,17 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     llm = dict(LLM_CFG)
     llm['generate_cfg'] = {**(llm.get('generate_cfg') or {}),
                            'max_tokens': REPLY_MAX_TOKENS}
+    # 内存协同：模型不在跑时先自动唤醒（期间界面心跳继续显示进度）
+    try:
+        from runs.agent import llm_mem as lmem
+        lmem.ensure_llm_up(
+            timeout_s=900,
+            progress=lambda s: events.put(
+                {'kind': 'hb',
+                 'text': f'⏳ 正在唤醒本地模型…（{s}s；仅首次或让位后需要）'}))
+    except Exception as e:  # noqa: BLE001
+        events.put({'kind': 'error', 'text': f'模型唤醒失败: {e}'})
+        return
     try:
         bot = Assistant(llm=llm, system_message=SYSTEM_MESSAGE,
                         function_list=TOOL_NAMES)
@@ -268,6 +279,16 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             msgs.append({'role': 'assistant', 'content': '（模型未返回内容，可能被截断；发送“继续”重试）'})
             note = '模型未返回内容（可能被截断），发送“继续”续写。'
         save_chat(cid, msgs)
+        # 内存协同：回合确认提交了真实生成任务 → nap 让位视频生成（下轮自动唤醒）
+        nap_note = ''
+        try:
+            from runs.agent import llm_mem as lmem
+            if lmem.maybe_nap_after(assistant):
+                nap_note = '（已临时让位内存给视频生成；下轮对话会自动唤醒本地模型）'
+        except Exception:  # noqa: BLE001
+            pass
+        if nap_note:
+            note = note + '\n\n' + nap_note
         yield fmt_msgs(msgs), 'idle', note, gr.update(choices=_choices()), cid
 
     with gr.Blocks(title='Qwen-Agent 受限调度器', theme=gr.themes.Soft()) as demo:

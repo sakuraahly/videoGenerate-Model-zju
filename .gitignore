@@ -11,6 +11,7 @@ runs/**/*.log
 config/pipeline.json
 config/autosync.json
 config/upload_watch.json
+config/llm_mem.json
 
 # 每次运行的审计目录（运行期生成，不入库）
 workflows/h3_*/
