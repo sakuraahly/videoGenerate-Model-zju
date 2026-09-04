@@ -18,7 +18,7 @@ COMFYUI_DIR="$HOME/ai/ComfyUI"
 SGLANG_MODEL="$HOME/Qwen3.8-27B/models/NVFP4"
 SGLANG_VENV="$HOME/Qwen3.8-27B/sglang-venv"
 SGLANG_PORT=8000
-SGLANG_MEM="${SGLANG_MEM:-0.40}"
+SGLANG_MEM="${SGLANG_MEM:-0.50}"
 START_COMFYUI=true
 
 for arg in "$@"; do
@@ -63,7 +63,7 @@ tmux new-session -d -s sglang \
        --served-model-name Qwen3.8-27B \
        --host 127.0.0.1 --port $SGLANG_PORT \
        --tp-size 1 --mem-fraction-static $SGLANG_MEM \
-       --context-length 16384 --chunked-prefill-size 8192 \
+       --context-length 8192 --chunked-prefill-size 8192 \
        --disable-prefill-cuda-graph --trust-remote-code \
        --speculative-algorithm NEXTN --speculative-num-steps 3 \
        --speculative-eagle-topk 1 --speculative-num-draft-tokens 4 \

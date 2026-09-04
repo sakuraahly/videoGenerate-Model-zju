@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SGLang 共存模式启动 — 降低 GPU 内存占用，与 ComfyUI 共享 GB10 统一内存
 #
-# 默认模式 (coexist):  mem=0.40, ComfyUI(常驻约49GB)+SGLang 同驻有余量；见 docs/llm-memory-optimization.md
+# 默认模式 (coexist):  mem=0.50, ctx=8192（实测预载≈49GB，0.40 不足）；见 docs/llm-memory-optimization.md
 # 独占模式 (standalone): mem=0.95, SGLang 独享大部分 GPU 内存
 #
 # Usage:
@@ -18,7 +18,7 @@ BF16_MODEL="$HOME/Qwen3.8-27B/models/Qwen--Qwen3.8-27B/snapshots/master"
 HOST="${SGLANG_HOST:-127.0.0.1}"
 PORT="${SGLANG_PORT:-8000}"
 TP="${SGLANG_TP:-1}"
-CTX_LEN="${SGLANG_CTX_LEN:-16384}"
+CTX_LEN="${SGLANG_CTX_LEN:-8192}"
 CHUNK_SIZE="${SGLANG_CHUNK_SIZE:-8192}"
 
 MODE="coexist"
@@ -32,7 +32,7 @@ done
 if [ "$MODE" = "standalone" ]; then
     MEM="${SGLANG_MEM:-0.95}"
 else
-    MEM="${SGLANG_MEM:-0.40}"
+    MEM="${SGLANG_MEM:-0.50}"
 fi
 
 export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"

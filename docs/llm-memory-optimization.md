@@ -21,23 +21,27 @@
 
 ## 2. 内存账本（实测口径 2026-09）
 
-统一内存总量 ~121GB（free 显示 121G）。**ComfyUI 常驻约 49GB RSS**（H3 权重 + reserve-vram 12 + 框架开销），生成峰值再加少量 latent。
+统一内存总量 ~121GB（free 显示 121G）。**ComfyUI 常驻约 49GB RSS**（H3 权重 + reserve-vram 12 + 框架开销），生成峰值再加少量 latent；空闲时可 `POST /free {unload_models:true, free_memory:true}` 卸载其已加载权重（实测 49GB→18GB，服务不动）。
+
+**实测修正（重要经验）**：SGLang 的模型预加载（NVFP4 权重 + 混合注意力状态等）约 **49GB**——mem-fraction 0.40（≈48GB 预算）必然失败（`max_mamba_cache_size` 为负）；且启动依赖 flashinfer JIT（需 `ninja` 在 PATH，已在启动脚本前置 `sglang-venv/bin`）。因此 coexist 默认取 **mem 0.50 / ctx 8192**（实测 120s 就绪、可用）。
 
 | 组合 | SGLang 份额 | 估算占用 | 是否可行 |
 |---|---|---|---|
-| 旧默认（已停用） | mem 0.55 + ctx 32768 | 21GB 权重 + ~55GB 池 ≈ 76GB | 与 ComfyUI 49GB 叠加 ≈125GB ❌ 超载 |
-| **新默认（本轮）** | mem **0.40** + ctx **16384** | 21GB + ~40GB 池 ≈ 61GB | 49+61 ≈ 110GB ✅ 有余量 |
-| nap（生成期） | 停止 SGLang | ~0（仅内核页表等） | ComfyUI 独占 ✅ 最快 |
+| 旧默认（已废弃） | mem 0.55 + ctx 32768 | 预载 49 + 大 KV 池 ≈ 76GB+ | 与 ComfyUI 49GB 叠加超载 ❌ |
+| mem 0.40（试过） | ctx 16384 | 预算 48GB < 预载 49GB | ❌ KV 池分配直接失败 |
+| **新默认（已验证）** | mem **0.50** + ctx **8192** | 预载 49 + 小 KV 池 ≈ 50-55GB | ✅ 120s 就绪；与 ComfyUI 空闲(/free 后 18GB)共存有余量 |
+| nap（生成期） | 停止 SGLang | ~0 | ✅ ComfyUI 独占/最快 |
 | standalone | mem 0.95 | ≈115GB | 仅 ComfyUI 完全停止时用 |
 
 ## 3. 本轮新增：运行时让位（nap/wake）+ 降额默认
 
 代码：`runs/agent/llm_mem.py`（spark 侧执行）；界面/CLI 自动接线（ui_app.py /
 scheduler.py）；配置 `config/llm_mem.json`（机器配置，示例 `.example`）：
-`{"enabled": true, "mem_fraction": 0.40, "context_length": 16384}`
+`{"enabled": true, "mem_fraction": 0.50, "context_length": 8192}`
 
 - **降额默认**：`shell/start_sglang_coexist.sh`、`spark_sglang_start.sh`、
-  `start_all_services.sh` 的 coexist 默认改为 **mem 0.40 / ctx 16384**。
+  `start_all_services.sh` 的 coexist 默认改为 **mem 0.50 / ctx 8192**，并在启动
+  前把 `sglang-venv/bin` 前置到 PATH（flashinfer JIT 需要 ninja）。
 - **自动让位**：agent 回合文本出现 `TASK_SUBMITTED:`（真实生成任务已提交、非 dry_run）
   → 回合安全结束后自动 `nap()`（优雅停 SGLang，释放 ~40-60GB 给 ComfyUI）；
 - **自动唤醒**：下一轮对话开始 `ensure_llm_up()` 检测 8000 未就绪 → `wake()`

@@ -33,7 +33,7 @@ PROJECT_ROOT = Path(os.environ.get(
     os.path.expanduser('~/videoGenerate-Model-zju'),
 ))
 CFG_FILE = PROJECT_ROOT / 'config' / 'llm_mem.json'
-DEFAULT_CFG = {'enabled': True, 'mem_fraction': 0.40, 'context_length': 16384}
+DEFAULT_CFG = {'enabled': True, 'mem_fraction': 0.50, 'context_length': 8192}
 HEALTH_URL = 'http://127.0.0.1:8000/v1/models'
 NAPKILL_FINISHED = 'llm_mem_nap_done'  # 供测试/日志识别
 

@@ -1,6 +1,6 @@
 {
   "_comment": "Qwen(SGLang) 与 ComfyUI 内存协同配置（机器级，两端各自维护，不入库）。llm_mem.py / agent 界面读取。",
   "enabled": true,
-  "mem_fraction": 0.40,
-  "context_length": 16384
+  "mem_fraction": 0.50,
+  "context_length": 8192
 }

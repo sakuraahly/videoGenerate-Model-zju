@@ -85,7 +85,7 @@ DESKTOP
     echo "[OK] 已启用开机自启"
     echo "  文件: $AUTOSTART_FILE"
     echo "  脚本: $SCRIPT_DIR/start_all_services.sh"
-    echo "  SGLang 模式: coexist (mem=0.40)"
+    echo "  SGLang 模式: coexist (mem=0.50, ctx=8k)"
 }
 
 do_disable() {
