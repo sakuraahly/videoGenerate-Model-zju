@@ -80,6 +80,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 - **素材链**：上传（7860 直传 / upload_watch）→ `uploads/` 归档 + ComfyUI input 镜像 → `runs/h3/refimage.py` 三池 list/promote/use。
 - **AI 桥**：`runs/h3/idea2prompts.py` 一句创意 → Qwen 生成各槽位提示词 JSON（模型有职责护栏：只当提示词生成器）。
 - **Agent（调度器）**：7860 界面 `runs/agent/ui_app.py`（历史会话/直传/继续/中止/状态条/上下文预算）→ 调度器（`SYSTEM_MESSAGE` 内嵌核心知识）→ 5 个白名单工具（`run_script`/`modify_workflow`/`call_comfyui`/`read_doc`/`list_references`）→ 提交即返回（`TASK_SUBMITTED`），续传/取片走“无参重跑”。
+- **开发工具盒（dev.py，2026-09-04 新增）**：`runs/dev.py` —— 把变更与交付工作流固化为 `check`（双端状态/漂移/一致性/文档索引）/ `sync`（定点同步改动文件到 spark）/ `commit`（Windows commit+push GitHub+spark commit）/ `docs`（START-HERE §2 索引校验）/ `test`（consistency+单测+干跑）五个子命令；一次调用拿到精简结论，节省 agent token（详见 `docs/dev-workflow.md`）。
 - **上下文预算**（2026-09-04 修复，`runs/agent/ctx_budget.py`）：SGLang ctx=8192 硬顶 + 每轮固定开销 ≈3.1k token（系统+工具模板，实测）⇒ 对话精炼 ≤600 字/轮、历史 token 口径裁剪、超限自动压缩重试；改服务端 ctx 必须同步该文件常量。
 - **内存协同**：`runs/agent/llm_mem.py` nap/wake——检测到 `TASK_SUBMITTED:` 自动停 SGLang 给 ComfyUI 让位，下一轮对话自动唤醒（1-3 分钟）。
 - **审计/可靠性**：logs/run_*.log 全事件留痕 + workflows/h3_<ts>/job.json 任务联结；断点续传不重复生成；单实例锁；提交/等待分离。
@@ -125,6 +126,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 
 | 日期 | 变更 |
 |---|---|
+| 2026-09-04 工具盒 | 新增 runs/dev.py（check/sync/commit/docs/test 五子命令），把变更与交付工作流固化为脚本，节省 agent token |
 | 2026-09-04 流程固化 | 新增 **变更与交付工作流**（`docs/dev-workflow.md` + `skills/dev-workflow.md`）并纳入 `START-HERE.md §2`；新增 `docs/prompt-taxonomy.md`（10 正 + 9 负）；planbook 更新确认输入 |
 | 2026-09-04 计划书 | 新增 `docs/planbook/` 系统性修复计划：痛点→阶段矩阵、基座/可信部署、前端/输出/自动完成/资源隔离/工作流/引擎/风格/验证（book-00…book-10） |
 | 2026-09-04 第五批 | 体验/性能/隔离 6 阶段优化：上传三态+状态栏HTML、无效图片拦截(mediacheck)、熔断器(turn_state)、批量提交(h3_batch)、素材隔离(batch_id)、文档预热(doc_state) |
