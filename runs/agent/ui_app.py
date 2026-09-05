@@ -64,7 +64,7 @@ BUSY_HTML = lambda t: f'<span style="color:#b45309">● {t}</span>'
 ERROR_HTML = '<span style="color:red">● 出错</span>'
 ABORT_HTML = '<span style="color:#b45309">● 已中止</span>'
 UP_IDLE = '<span style="color:#888">尚未为本会话上传素材</span>'
-UP_LOADING = lambda n: _pill(f'⏳ 正在上传中… {n} 个文件', '#8a6d1a', '#fff8e1', '#e7d492')
+UP_LOADING = lambda n: _pill(f'⏳ 正在上传 {n} 个文件（归档+镜像中，大文件需数秒）…', '#8a6d1a', '#fff8e1', '#e7d492')
 
 
 
@@ -894,8 +894,8 @@ def ingest_upload(paths, cid='') -> tuple:
                 shutil.copy2(p, input_mirror / mir_name)
             except OSError:
                 err += 1
-            thumb = _make_thumb(p, sha)
-            previews.append(str(thumb) if thumb else str(input_mirror / mir_name))
+            # book-13 S14：ingest 不再生成缩略图（耗时步骤移到 _upload 分段状态内），返回 (源文件, sha)
+            previews.append((str(p), sha))
     parts = []
     if added:
         parts.append(f'✅ {added} 个新素材已加入本会话素材池')
@@ -1407,7 +1407,14 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                             f'border:1px solid {border};border-radius:4px;'
                             f'color:{color};font-weight:600;font-size:13px”>'
                             f'{msg}</div>')
-                    _gal_by_cid[cid] = (_gal_by_cid.get(cid) or []) + list(previews)
+                    # book-13 S14：预览强耦合拆分——先归档/镜像，再逐张生成缩略图并逐步报状态
+                    _thumbs = []
+                    for i, (src, sha) in enumerate(previews, 1):
+                        yield (_pill(f'⏳ 正在生成预览 {i}/{len(previews)}（{Path(src).name[:24]}）…',
+                                     '#8a6d1a', '#fff8e1', '#e7d492'), gr.update())
+                        th = _make_thumb(Path(src), sha) if Path(src).exists() else None
+                        _thumbs.append(str(th) if th else str(src))
+                    _gal_by_cid[cid] = (_gal_by_cid.get(cid) or []) + list(_thumbs)
                     yield html, _gal_by_cid[cid]
                 except Exception as e:  # noqa: BLE001
                     yield (_pill(f'❌ 上传处理异常：{type(e).__name__}: {e}',
@@ -1427,6 +1434,15 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         del_btn.click(_del, hist_dd, hist_dd)
         ref_btn.click(lambda: gr.update(choices=_choices()), None, hist_dd)
         stop_btn.click(_stop, None, [status_html, note_md])
+        # book-13 S14：文件管理器选择成功即显示“正在上传…”（早于预览，解耦等待感知）
+        def _up_select(files):
+            n = len(files) if files else 0
+            if n:
+                return _pill(f'📂 已选择 {n} 个文件，正在上传…（传输需数秒；预览稍后生成）',
+                             '#8a6d1a', '#fff8e1', '#e7d492')
+            return UP_IDLE
+        if getattr(up_btn, 'select', None):
+            up_btn.select(_up_select, up_btn, up_status)
         up_btn.upload(_upload, [up_btn, cid_state], [up_status, gallery])
         def _continue(hist, cid):
             yield from send(hist, cid, '继续')
