@@ -67,6 +67,10 @@
 | 8 | 工具参数类型错（seconds/seed 字符串、布尔字符串化）→ 校验拒收，模型随后**虚构提交成功+假 prompt_id** | **已修**：`_coerce_fields`（int+bool）须在参数校验**前**（顺序曾写反连败）；`_run_tool` 按 schema 通用 int/bool/number 强转 | 完成（真实链 2 次 ok=true+真实 prompt_id） | - |
 | 9 | audit `ok` 假绿（工具异常也标 ok=true） | **已修**：异常路径显式 ok=false；正常路径保留关键字判定 | 完成 | - |
 | 10 | 模型幻觉“TASK_SUBMITTED/已提交成功”（无 job 目录/last_job/id 格式不符为证） | **已修**：SYSTEM_MESSAGE 诚实铁律（只有工具输出出现 `TASK_SUBMITTED: <id>` 才可声称）；真实链复验：模型如实报告失败并二选一征询，未再编造 | 完成 | - |
+| 11 | TTS 钩子挑错文件（glob-mtime 命中 video_22 而非本次 video_23）+ 截断源再入（video_22 2.06s 被当源）→ **我对“video_23 含中文旁白”误报** | 待修 | book-14 T2b v2 #1/#2（本任务文件+时长守卫）；**验收口径强化：音轨必须为合成语音指纹，不得仅凭“有 AAC 音轨”宣称语音通过** | **P0** |
+| 12 | 模型自动续接**重复提交同任务**（10:40 三连/10:59 双发，同会话同参无去重；仅 last_job 单点断点守卫） | 待修 | book-14 T2b v2 #4 会话级指纹去重+audit dedup；SYSTEM_MESSAGE 禁止同会话重复提交 | **P0** |
+| 13 | agent 成品**无字幕**（T2b v1 仅音轨替换；SRT 接入仅人工 dev.py 链） | 待修 | book-14 T2b v2 #3 台词→SRT→烧录 | P1 |
+| 14 | **测试纪律**（我多驱动/force_new 重放造成 10:40 三连、W2 双发与 ≈16 GPU 分钟占用队列；非压力测试） | 待修 | book-16 §6.6 测试纪律（一意图一驱动/队列只读等待/不擅自 force_new；进 dev-workflow §12 反例） | **P0** |
 
 - 补丁（同日）：① qwen 工具参数支持**裸 KV**（`stage=t2v, seconds=5, dry_run=true`——模型实际输出此格式而非 JSON；`_parse_tool_args` 兼容 JSON/KV/围栏，run log 实锤 dry-run 预览未提交）；② 上传预览**按会话隔离**（`_gal_by_cid`，堵“新会话混显上一会话预览”）；③ **空转提前停**（连续两轮输出前缀重复→停+提示）；④ 工具审计 jsonl 为排查提供“调用是否真实发生”证据。
 - **✅ 已实施并全链路验证**：① 自管工具循环（_one_run 重写：≤6 轮、增量解码、超限即断、每轮审计）；② 直连 SGLang 用 **tools= 格式**（关键：只有 tools= 触发 qwen3.8 的 <tool_call><function=..> 标签；functions= 不触发）；③ 新增 runs/agent/toolcall_parse.py；④ 工具结果 user 视角回填（规避 tools 模式 function/tool role 400）；⑤ SYSTEM_MESSAGE 增“工具执行铁律”；⑥ 真实 run_turn 验证：A 问候 done / B 素材链 done（list_references→回填→中文收尾 3883 字）/ C 5 工具连锁 done；无复读、无 146 次循环；单测 152 全绿。
@@ -107,6 +111,17 @@
   - 中途发现并修复：① seconds 字符串→校验拒收（`_coerce_fields` 强转须在 `_verify_json_format_args` **之前**——首次顺序写反两连败）；② wait_until_done/force_new/dry_run 布尔字符串化（`_run_tool` 按 schema 通用 int/bool/number 强转）；③ 模型虚构“提交成功”（诚实规则：SYSTEM_MESSAGE 禁止虚构 TASK_SUBMITTED/prompt_id——修复后模型如实报告失败并请求用户选择，不再编造）；④ audit `ok` 对工具异常曾假绿（出错路径显式 ok=false）。
   - **断点守卫**遇上一次未完成任务 → 提交被拦截并如实告知（模型给出续传/强制新开二选一）——符合预期行为，非缺陷。
   - **产物**：video_16.mp4（1280×736/24fps/124 帧/5.167s/AAC）；注：t2v 音频为模型生成环境/氛围音，**说话类语音仍待 T2b P0 TTS**（book-14）。
+
+### 6.5 语音/成品验收口径强化（2026-09-05 用户实测后）
+1. **音轨判据**：宣称“已含中文语音”必须有合成语音足迹：该视频音轨=本次 TTS 引擎产物（时长匹配语音文本、声道/码率符合合成输出、替换发生在本轮日志 `tts_done` 记录的文件上）；**仅“有 AAC 音轨”不算**（t2v 自带氛围音也是 AAC）。
+2. **成品证据链一致性**：向用户承诺前，回执中的文件路径必须是**该任务**的产物（钩子或取片环节严禁全域 glob-最新）；参数证据必须出自对**该文件**的 ffprobe。
+3. **任务数**：任何“已提交”宣称需与 audit/队列一致；同会话同任务重复提交视为缺陷（见台账#12）。
+
+### 6.6 测试纪律（我方的狗粮测试，2026-09-05 用户实测后）
+1. **一个意图 = 一个驱动任务**：验证某项只发一次 send；需要多轮（提交/取片/对比）用**同一会话**续接，不得新开驱动重复同任务。
+2. **队列只读+等待**：发送前 `dev.py queue` 只读确认；非空闲则等待自然结束，绝不 `force_new` 重放来“插队”。
+3. **同任务不并行**：同参数任务已有任务在跑→复用其 prompt_id（无参 resume 查询），不新提交。
+4. **承诺前验证文件本身**：ffprobe/抽帧/音轨指纹直接落在承诺路径；不猜测、不引用旧结论。
 
 ### 6.4 思维链关闭结论（定案）
 - 语法位置：`chat_template_kwargs={"enable_thinking": False}`（顶层 `"enable_thinking": false` 被忽略/纯 400 风险——此前实测）。
