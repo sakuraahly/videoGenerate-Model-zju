@@ -33,7 +33,8 @@ PROJECT_ROOT = Path(os.environ.get(
     os.path.expanduser('~/videoGenerate-Model-zju'),
 ))
 CFG_FILE = PROJECT_ROOT / 'config' / 'llm_mem.json'
-DEFAULT_CFG = {'enabled': True, 'mem_fraction': 0.50, 'context_length': 8192}
+DEFAULT_CFG = {'enabled': True, 'mem_fraction': 0.50, 'context_length': 8192,
+              'max_running_requests': 0}  # 0=不限制（ComfyUI 未满载时）；共享显存局促时设 2~4
 HEALTH_URL = 'http://127.0.0.1:8000/v1/models'
 NAPKILL_FINISHED = 'llm_mem_nap_done'  # 供测试/日志识别
 
@@ -110,6 +111,9 @@ def wake(timeout_s: int = 900, progress=None) -> int:
                    + os.pathsep + env.get('PATH', ''))
     env['SGLANG_MEM'] = str(cfg['mem_fraction'])
     env['SGLANG_CTX_LEN'] = str(cfg['context_length'])
+    # book-13：共享显存下限制并发请求数（mamba/linear KV 预算），缺失不传
+    if cfg.get('max_running_requests'):
+        env['SGLANG_MAX_RUN'] = str(cfg['max_running_requests'])
     subprocess.Popen(
         ['tmux', 'new-session', '-d', '-s', 'sglang',
          f'cd {PROJECT_ROOT} && bash shell/start_sglang_coexist.sh '

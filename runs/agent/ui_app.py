@@ -200,7 +200,13 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     _pending_batch_id = None
 
     trimmed, dropped = trim_context(history + [{'role': 'user', 'content': user_text}])
-    payload = list(trimmed)
+    payload = dedupe_messages(list(trimmed))  # 连续重复消息剔除（污染防御）
+    try:
+        from h3 import logutil
+        logutil.ensure_run_log(PROJECT_ROOT, 'agent-llm')
+        logutil.log_event('agent-llm', _llm_input_preview(payload, 'send'))
+    except Exception:  # noqa: BLE001
+        pass
     if dropped:
         note = ('\n\n[上下文提示] 较早的对话轮次已按 token 预算自动压缩'
                 '（最新轮次与任务状态仍在）。如需回顾可让我重述。')
@@ -275,6 +281,30 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                             'text': f'[上下文过载] {type(e2).__name__}: {e2}'})
                 return
         events.put({'kind': 'error', 'text': f'{type(e).__name__}: {e}'})
+
+
+def dedupe_messages(msgs: list) -> list:
+    """去掉连续同 role+content 的重复消息（污染防御；保留跨类型顺序）。"""
+    out = []
+    for m in msgs:
+        sig = (m.get('role'), str(m.get('content') or ''))
+        if out and sig == (out[-1].get('role'), str(out[-1].get('content') or '')):
+            continue
+        out.append(m)
+    return out
+
+
+def _llm_input_preview(payload: list, tag: str) -> str:
+    """发给模型的输入摘要（book-13 故障定位：消息数/各角色长度/首尾预览）。"""
+    try:
+        parts = []
+        for m in payload:
+            c = str(m.get('content') or '')
+            parts.append(f"{m.get('role')}:{len(c)}")
+        head = str(payload[0].get('content') or '')[:80] if payload else ''
+        return f"{tag} msgs={len(payload)} roles=[{','.join(parts)}] head={head!r}"
+    except Exception:  # noqa: BLE001
+        return f"{tag} preview-failed"
 
 
 def _dup_text(text: str, last_text: str) -> bool:
@@ -685,7 +715,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                             if text:
                                 if _dup_text(text, str(msgs[-1].get('content', '')) if msgs and msgs[-1].get('role') == 'assistant' else ''):
                                     _dup_streak += 1
-                                    if _dup_streak > 8:
+                                    if _dup_streak > 2:  # 收紧：第 3 个重复块即停（用户真实测试：上一版 8 次太晚）
                                         phase = 'error'
                                         final_text = '输出异常（检测到持续重复），已自动停止展示；请重试或换一种说法。'
                                         yield shown, ERROR_HTML, '⚠️ 模型输出重复，已自动停止', noop, cid, msgs, (clear_box if first else noop)

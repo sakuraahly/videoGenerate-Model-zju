@@ -23,6 +23,9 @@
 
 统一内存总量 ~121GB（free 显示 121G）。**ComfyUI 常驻约 49GB RSS**（H3 权重 + reserve-vram 12 + 框架开销），生成峰值再加少量 latent；空闲时可 `POST /free {unload_models:true, free_memory:true}` 卸载其已加载权重（实测 49GB→18GB，服务不动）。
 
+
+**2026-09-05 事故恢复手册（实测）**：ComfyUI 视频模型满载后 wake SGLang 失败（`Not enough GPU memory for hybrid state cache`，mamba_cache_per_req≈146MB × 默认并发）。恢复链：① 确认 ComfyUI 队列空闲（他人任务勿动）→ ② `POST /free`（body: `unload_models/lowvram/cuda=true`；仅 `/free` 根路径有效，`/v1/free` 405，`/free` 仅 unload_models 会 500）**运行时释放**（非重启服务）→ ③ `llm_mem.json` 降额 `mem_fraction 0.25 + max_running_requests 4`（`start_sglang_coexist.sh` 新增 `SGLANG_MAX_RUN` 透传）→ wake 120s 就绪 ✅。代价：下次视频生成 ComfyUI 需重载模型（约 1-2 分钟，C2 已提示）。
+
 **实测修正（重要经验）**：SGLang 的模型预加载（NVFP4 权重 + 混合注意力状态等）约 **49GB**——mem-fraction 0.40（≈48GB 预算）必然失败（`max_mamba_cache_size` 为负）；且启动依赖 flashinfer JIT（需 `ninja` 在 PATH，已在启动脚本前置 `sglang-venv/bin`）。因此 coexist 默认取 **mem 0.50 / ctx 8192**（实测 120s 就绪、可用）。
 
 | 组合 | SGLang 份额 | 估算占用 | 是否可行 |
