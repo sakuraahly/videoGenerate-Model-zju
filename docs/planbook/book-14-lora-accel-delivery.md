@@ -53,10 +53,8 @@
       （防止再做"默认 480p/5s"模板翻车）。
 
 ### P1（明确收益）
-- [ ] T4 历史会话自动清除（90 天）：配置 config/session_retention.json（或复用机器配置）；脚本按 cid 的 meta/聊天档
-      mtime 清 logs/agent_chats/<cid>* 与关联上传（仅清理**无任务引用**的 cid）；文档+单测。
-- [ ] T5 UI“刷新内容”语义化：把按钮/菜单改为指明用途（如“刷新素材池/刷新历史/刷新状态”），
-      按钮文案+提示与实际刷新目标一一对应（核对 Gradio 事件绑定，不许“刷新全屏”含糊行为）。
+- [x] **T4 完成**（由 L1 交付：session_cleanup.py + config/session_retention.json + 6 单测；详见 L1 记录）。
+- [x] **T5 完成**（由 L2 交付：ui_app 刷新→「刷新历史列表」+相邻提示；/config 已实测命中）。
 - [x] **T6 完成（2026-09-05）**：capabilities.json 新增顶层 `style_lora` 段（dir/prompt_rule/与加速 LoRA 分离说明；引擎侧暂不接线，登记+规范先行——视觉特征固定建议：提示词声明+固定 seed；与加速 LoRA 叠加前须兼容性校验）。
 - [ ] **T9 qwen 取消自己任务（用户提出 2026-09-05；现状：agent 无取消工具、引擎无取消路径）**：
       - 可行性已实测：ComfyUI 5.23.1 取消端点 = **POST /queue** + body `{"delete": [qid]}`（空载荷 200；旧 `/queue/delete`/DELETE 方法均 405；`POST /prompt` 400 为正常）。
