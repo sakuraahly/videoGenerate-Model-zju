@@ -155,6 +155,34 @@ def _srt_time(sec: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
+def prepare_speech(text: str, voice: str = DEFAULT_VOICE, out_dir: Path = None) -> dict:
+    """二轮审阅：解耦出 (speech, srt, dur)——供合并单次编码链（增强+字幕同 -vf）先行准备。"""
+    out_dir = Path(out_dir) if out_dir else Path(tempfile.mkdtemp(prefix="tts_prep_"))
+    speech = out_dir / "speech.mp3"
+    spd = synthesize(text, speech, voice=voice)
+    srt = out_dir / "speech.srt"
+    srt.write_text(f"1\n00:00:00,000 --> {_srt_time(spd)}\n{text}\n", encoding="utf-8")
+    return {"speech": speech, "srt": srt, "speech_dur": spd}
+
+
+def replace_audio_only(input_video: Path, audio: Path, out: Path, dur: float = 0.0) -> Path:
+    """二轮审阅：仅替换音轨（视频 copy，不重编码）——合并链最后一环。"""
+    input_video = Path(input_video)
+    out = Path(out)
+    tmp = out.with_name(out.stem + "_aud" + out.suffix)
+    cmd = ["ffmpeg", "-y", "-i", str(input_video), "-i", str(audio),
+           "-map", "0:v", "-map", "1:a", "-c:v", "copy",
+           "-filter:a", "apad,loudnorm=I=-14:TP=-1.0:LRA=11", "-c:a", "aac", "-b:a", "192k"]
+    if dur and dur > 0:
+        cmd += ["-t", f"{dur:.3f}"]
+    cmd += [str(tmp)]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+    if r.returncode != 0 or not tmp.is_file():
+        raise ValueError("音轨替换(仅copy)失败: " + (r.stderr or "")[-300:])
+    tmp.replace(out)
+    return out
+
+
 def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
                                voice: str = DEFAULT_VOICE, srt_path: Path = None) -> dict:
     """book-14 T2b v2#3：合成中文语音 → 整句 SRT(0→语音时长) → 烧录字幕 → 替换音轨(apad 保时长)。

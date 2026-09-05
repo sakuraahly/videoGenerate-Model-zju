@@ -44,8 +44,11 @@ def probe(path: str) -> dict:
 
 
 def process(input_path: Path, out: Path, scale: float = 2.0, denoise: float = 1.0,
-            sharpen: float = 0.4, color: str = "", interp: bool = False) -> dict:
-    """执行后处理并断言输出参数。返回 probe(out)。失败抛 ValueError（确定性）。"""
+            sharpen: float = 0.4, color: str = "", interp: bool = False,
+            srt: Path = None, fontsize: int = 0, style_name: str = "Noto Sans CJK SC") -> dict:
+    """执行后处理并断言输出参数。返回 probe(out)。失败抛 ValueError（确定性）。
+    book-13 S2（二轮审阅）：srt 参数把字幕烧录并入**同一 -vf**（单次编码=增强+字幕，
+    消除 process+render_subtitle 双次 CRF18 的代际损失）。"""
     if not input_path.is_file():
         raise ValueError(f"输入不存在: {input_path}")
     vf = []
@@ -59,8 +62,11 @@ def process(input_path: Path, out: Path, scale: float = 2.0, denoise: float = 1.
         vf.append(color)
     if interp:
         vf.append("minterpolate=fps=48:mi_mode=mci:mc_mode=aobmc")
+    if srt is not None:
+        _fs = _subtitle_style(Path(srt), Path(input_path), fontsize, style_name)
+        vf.append(_fs[0])
     if not vf:
-        raise ValueError("没有可执行的处理项（scale/denoise/sharpen/color/interp 至少一项）")
+        raise ValueError("没有可执行的处理项（scale/denoise/sharpen/color/interp/srt 至少一项）")
     out.parent.mkdir(parents=True, exist_ok=True)
     cmd = ["ffmpeg", "-y", "-i", str(input_path), "-vf", ",".join(vf),
            "-c:v", "libx264", "-preset", "fast", "-crf", "18",
@@ -100,22 +106,28 @@ def validate_srt(srt: Path) -> int:
     return len(blocks)
 
 
-def render_subtitle(input_path: Path, out: Path, srt: Path, fontsize: int = 20,
-                    style_name: str = "Noto Sans CJK SC") -> dict:
-    """用 libass 烧录 SRT 到视频（中文字体；失败抛 ValueError）。"""
+def _subtitle_style(srt: Path, src: Path, fontsize: int = 0,
+                     style_name: str = "Noto Sans CJK SC") -> tuple:
+    """字幕 vf 片段与字号计算：fontsize<=0 → 随分辨率等比（0.07×H；二轮审阅：默认绝对 20px 已废）。"""
     check_cjk_font()
-    validate_srt(srt)
-    # book-18 §3：字幕规范参数化（黑体/白字黑描边/安全区 MarginV；字号随分辨率等比）
+    validate_srt(Path(srt))
     if fontsize <= 0:
-        info0 = probe(str(input_path))
+        info0 = probe(str(src))
         fontsize = max(16, int(round(info0.get('height', 352)) * 0.07))
-    margin_v = max(16, int(round(float(probe(str(input_path)).get('height', 352)) * 0.08)))
+    margin_v = max(16, int(round(float(probe(str(src)).get('height', 352)) * 0.08)))
     force_style = f"FontName={style_name},FontSize={fontsize}," \
                   f"PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000," \
                   f"BorderStyle=1,Outline=2,Shadow=0,MarginV={margin_v}"
-    # SRT 路径转义（冒号/反斜杠）
-    sub_path = str(srt.resolve()).replace("\\", "/").replace("`", "")
-    vf = f"subtitles='{sub_path}':force_style='{force_style}'"
+    sub_path = str(Path(srt).resolve()).replace("\\", "/").replace("`", "")
+    return (f"subtitles='{sub_path}':force_style='{force_style}'", fontsize)
+
+
+def render_subtitle(input_path: Path, out: Path, srt: Path, fontsize: int = 0,
+                    style_name: str = "Noto Sans CJK SC") -> dict:
+    """用 libass 烧录 SRT 到视频（中文字体；失败抛 ValueError）。
+    ️二轮审阅：默认 fontsize=0 → 随分辨率等比（旧默认绝对 20px 会随 2x 增强静默变小）。"""
+    _vf, _ = _subtitle_style(srt, input_path, fontsize, style_name)
+    vf = _vf
     cmd = ["ffmpeg", "-y", "-i", str(input_path), "-vf", vf,
            "-c:v", "libx264", "-preset", "fast", "-crf", "18",
            "-pix_fmt", "yuv420p", "-c:a", "copy", str(out)]
@@ -129,8 +141,36 @@ def render_subtitle(input_path: Path, out: Path, srt: Path, fontsize: int = 20,
     return info
 
 
+def mix_tracks(input_video: Path, out: Path, main: Path, bed: Path = None,
+                main_db: float = 0.0, bed_db: float = -12.0) -> dict:
+    """二轮审阅新增：双轨混音——main（如 TTS 旁白，loudnorm 后）为主轨，bed（参考音频）降 bed_db 做底轨。
+    通过 amix 归一音量叠加；仅用 single 时走 mix_audio。失败抛 ValueError。"""
+    if not main.is_file():
+        raise ValueError(f"主音轨不存在: {main}")
+    inputs = ["-i", str(input_video), "-i", str(main)]
+    if bed is not None:
+        inputs += ["-i", str(bed)]
+    filters = (
+        f"[1:a]volume={main_db}[m0];"
+        + (f"[2:a]volume={bed_db}[m1];[m0][m1]amix=inputs=2:duration=longest:dropout_transition=0,"
+           f"loudnorm=I=-14:TP=-1.0:LRA=11[outa]" if bed is not None
+           else f"[m0]apad,atrim=0:{_dur_or(probe(str(input_video)))},loudnorm=I=-14:TP=-1.0:LRA=11? [outa]".replace("? ", ""))
+    )
+    cmd = ["ffmpeg", "-y"] + inputs + ["-map", "0:v", "-map", "[outa]", "-c:v", "copy",
+           "-filter_complex", filters, "-c:a", "aac", "-b:a", "192k", "-t", _dur_or(probe(str(input_video))), str(out)]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+    if r.returncode != 0 or not Path(out).is_file():
+        raise ValueError("双轨混音失败: " + (r.stderr or "")[-300:])
+    return probe(str(out))
+
+
+def _dur_or(info: dict) -> str:
+    return str(info.get("duration", 0.0))
+
+
 def mix_audio(input_path: Path, out: Path, audio: Path) -> dict:
-    """以指定音频替换/混入音轨（-shortest；失败抛 ValueError）。"""
+    """单轨替换（非混流！二轮审阅更正 docstring）：以指定音频**替换**音轨（-shortest；失败抛 ValueError）。
+    双轨混音用 mix_tracks()。"""
     if not audio.is_file():
         raise ValueError(f"音频不存在: {audio}")
     cmd = ["ffmpeg", "-y", "-i", str(input_path), "-i", str(audio),
@@ -145,18 +185,15 @@ def mix_audio(input_path: Path, out: Path, audio: Path) -> dict:
 
 def run_full(input_path: Path, out: Path, srt: Path = None, audio: Path = None,
              scale: float = 2.0, denoise: float = 1.0, sharpen: float = 0.4) -> Path:
-    """T2b 完整链：增强 → 字幕 → 音频。任一步失败即抛（不产出半成品）。"""
-    mid = out.with_name(out.stem + "_video" + out.suffix)
-    process(input_path, mid, scale=scale, denoise=denoise, sharpen=sharpen)
-    if srt:
-        with_sub = out.with_name(out.stem + "_sub" + out.suffix)
-        render_subtitle(mid, with_sub, srt)
-        mid = with_sub
+    """T2b 完整链（二轮审阅修订）：**单次编码**（增强+字幕并入同一 -vf）→ 音轨替换（copy）。
+    消除旧三连 process+render_subtitle(two CRF18) 的代际损失。任一步失败即抛（不产出半成品）。"""
+    mid = out.with_name(out.stem + "_enh" + out.suffix)
+    process(input_path, mid, scale=scale, denoise=denoise, sharpen=sharpen, srt=srt)
     if audio:
         mix_audio(mid, out, audio)
-        mid.unlink(missing_ok=True) if mid.name != out.name else None
+        mid.unlink(missing_ok=True)
     else:
-        mid.rename(out) if mid.exists() else None
+        mid.replace(out) if mid.exists() else None
     return out
 
 

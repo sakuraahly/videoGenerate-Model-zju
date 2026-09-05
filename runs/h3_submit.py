@@ -864,6 +864,7 @@ def main(argv: Optional[list] = None) -> int:
         if _site(project_dir) == "spark-local":
             _local_out = _finalize_local_outputs(project_dir, all_remote, gp=gp)
             # book-14 T2b：中文语音替换（--tts-text 或任务记录 tts_text；失败不阻断主产物）
+            _tts_txt = ""
             try:
                 _tts_txt = (getattr(args, "tts_text", "") or "").strip()
                 if not _tts_txt and task_folder:
@@ -880,21 +881,32 @@ def main(argv: Optional[list] = None) -> int:
                         if _req_secs and _src_dur < _req_secs * 0.8:
                             _log_event(f"tts_guard source_truncated file={_tts_src.name} dur={_src_dur:.2f}s")
                             raise ValueError(f"源视频被截断({_src_dur:.2f}s)")
-                        _res = _tts.attach_speech_and_subtitle(_tts_src, _tts_txt)
-                        # v2#5：验收客观化回执
-                        print(f"TTS_OUT: outputs/{_res['path'].name} speech_s={_res['speech_dur']:.2f} "
-                              f"srt={'yes' if _res.get('srt') else 'no'}", flush=True)
-                        _log_event(f"tts_done file={_res['path'].name} voice={_tts.DEFAULT_VOICE} "
-                                   f"speech={_res['speech_dur']:.2f}s srt={bool(_res.get('srt'))}")
+                        # 二轮审阅：postprocess fast + 台词并存 → 合并单次编码（增强+字幕同 -vf）+ 音轨 copy 替换
+                        _need_pp = getattr(args, 'postprocess', '') == 'fast'
+                        if _need_pp:
+                            from h3 import postprocess as _pp
+                            _prep = _tts.prepare_speech(_tts_txt, out_dir=(Path(project_dir) / "workflows" / (task_folder.name if task_folder else "tts_prep")))
+                            _dst = _tts_src.with_name(_tts_src.stem + "_pp.mp4")
+                            _pp.process(_tts_src, _dst, srt=_prep["srt"])  # 单次编码：增强+字幕
+                            _tts.replace_audio_only(_dst, _prep["speech"], _dst, dur=_src_dur)
+                            print(f"TTS_OUT: outputs/{_dst.name} speech_s={_prep['speech_dur']:.2f} srt=yes", flush=True)
+                            print(f"POSTPROCESS_OUT: outputs/{_dst.name}", flush=True)
+                            _log_event(f"tts_done file={_dst.name} voice={_tts.DEFAULT_VOICE} "
+                                       f"speech={_prep['speech_dur']:.2f}s srt=yes merged_encode=1")
+                        else:
+                            _res = _tts.attach_speech_and_subtitle(_tts_src, _tts_txt)
+                            print(f"TTS_OUT: outputs/{_res['path'].name} speech_s={_res['speech_dur']:.2f} "
+                                  f"srt={'yes' if _res.get('srt') else 'no'}", flush=True)
+                            _log_event(f"tts_done file={_res['path'].name} voice={_tts.DEFAULT_VOICE} "
+                                       f"speech={_res['speech_dur']:.2f}s srt={bool(_res.get('srt'))}")
                     else:
                         _log_event("tts_skip (no local output)")
             except Exception as _te:  # noqa: BLE001
                 _log_event(f"tts_error err={type(_te).__name__}: {_te}")
                 print(f"[提示] TTS 语音替换失败（不影响主产物）: {_te}", file=sys.stderr, flush=True)
             # book-14 T2：完成后质量增强（--postprocess fast=2x+降噪+锐化；失败不阻断主产物）
-            if getattr(args, 'postprocess', '') == 'fast':
+            if getattr(args, 'postprocess', '') == 'fast' and not _tts_txt:
                 try:
-                    import glob as _glob
                     _outs = sorted(Path(project_dir, "outputs").glob("video_*.mp4"),
                                    key=lambda p: p.stat().st_mtime, reverse=True)
                     if _outs:
