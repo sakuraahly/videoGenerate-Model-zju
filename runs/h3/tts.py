@@ -57,7 +57,8 @@ def synthesize(text: str, out: Path, voice: str = DEFAULT_VOICE, rate: str = "-8
         raise ValueError("TTS 文本为空")
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    cmd = _edge_tts_cmd() + ["--voice", voice, "--rate", rate, "--text", text, "--write-media", str(out)]
+    # book-18：--rate=-8% 用等号语法（argparse 会把以 - 开头的值当成旗标）
+    cmd = _edge_tts_cmd() + ["--voice", voice, "--rate=" + rate, "--text", text, "--write-media", str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
     if r.returncode != 0 or not out.is_file() or out.stat().st_size < 200:
         raise ValueError("TTS 合成失败: " + (r.stderr or "")[-300:])
