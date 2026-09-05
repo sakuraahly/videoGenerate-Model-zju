@@ -50,18 +50,36 @@ def find_owned(prompt_id: str) -> str:
 
 
 def cancel_owned_task(prompt_id: str, reason: str = "") -> dict:
-    """book-14 T9：仅取消【归属校验通过】的任务：POST /queue {"delete":[qid]}。
-    qid==prompt_id（本项目强制 prompt id）；失败/非本人一律拒绝并说明。"""
+    """book-14 T9：仅取消【归属校验通过】的任务。
+    运行中 → POST /queue {"interrupt":true}（仅当运行中的就是本任务时安全）；
+    排队中 → POST /queue {"delete":[qid]}；不在队列 → 明确说明。"""
     who = find_owned(prompt_id)
     if not who:
         return {"ok": False, "msg": "取消被拒：prompt_id 不在本机登记/本项目中（共享服务器红线）。"}
-    body = json.dumps({"delete": [str(prompt_id)]}).encode()
-    req = urllib.request.Request(COMFY + "/queue", data=body,
+    try:
+        q = _get(COMFY + "/queue")
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "msg": f"无法读取队列: {type(e).__name__}: {e}"}
+    running = [str(it[1]) for it in q.get("queue_running") or []]
+    pending = [str(it[1]) for it in q.get("queue_pending") or []]
+    pid = str(prompt_id)
+    target = None
+    if pid in running:
+        payload = {"interrupt": True}
+        target = "运行中→中断"
+    elif pid in pending:
+        payload = {"delete": [pid]}
+        target = "排队中→移除"
+    else:
+        return {"ok": False,
+                "msg": f"任务不在队列（可能已完成或尚未入队，{who}）；请用 run_script 查询状态。"}
+    req = urllib.request.Request(COMFY + "/queue", data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
-            resp = json.loads(r.read().decode())
-        return {"ok": True, "msg": f"已取消（{who}）。{reason}", "resp": resp}
+            body = (r.read() or b"").decode("utf-8", "replace").strip()
+        resp = json.loads(body) if body else {"done": target}
+        return {"ok": True, "msg": f"已取消（{who}；{target}）。{reason}", "resp": resp}
     except urllib.error.HTTPError as e:
         return {"ok": False, "msg": f"取消失败 HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:200]}"}
     except Exception as e:  # noqa: BLE001
