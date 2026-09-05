@@ -67,24 +67,24 @@
 **现状（已取证）**：本地模板仅 7 份（t2v/i2v/r2v/flf2v × api/video），**无 Ref2VA 模板**；capabilities.json slots 含 `videos/audios: []` 占位；`MiniMaxH3ReferenceToVideo` 为多图节点（r2v 现模板）；T1 真机曾用 `ref2v_4step` LoRA（说明 spark 侧存在 Ref2VA 模板或节点 `MiniMaxH3ReferenceToVideo` 支持视频/音频槽位——**实施第一步必须探测**：`curl /object_info` 枚举节点（MiniMaxH3ReferenceToVideo 的 inputs 是否含 video/audio）＋ spark 同事模板目录/`~/ai/ComfyUI/user/default/workflows` 是否为 ref2v；`T1 用 ref2v lora` 意味着节点存在）。
 **分三步实现（每步可独立验收）**：
 - **7a 探测登记**：节点/模板存在性 → 结果写入 capabilities.json 新 stage `video_ref2v`（slots=videos up to 3 / audios up to 3 / images up to 9）与 code-fact-registry；若本地无模板→**从 spark 模板库复制镜像**（不改同事原件，仅本地镜像，遵守红线）；
-- **7b 引擎接线**：`runs/h3/stage.py` 增 `bind_refs_to_template(stage, images, videos, audios)`——复用现有 `bind_images_to_template` 的图像路径，扩展 LoadVideo/LoadAudio 节点注入（节点 key 探测期确定）；`h3_submit --videos/--audios`（逗号分隔本地素材 id）；`capabilities` 注册 params；
+- **7b 引擎接线（审核修订：`bind_images_to_template` 实际在 `runs/h3/refimage.py:175`，非 stage.py；`bind_refs_to_template` 为新建函数，与它同文件并列）**：增 `bind_refs_to_template(stage, images, videos, audios)`（复用其图像路径 + 扩展 LoadVideo/LoadAudio 注入，节点 key 探测期确定；**并发安全：在任务目录副本上操作，参照 h3_batch 的 batch_lock 模式**）；`h3_submit --videos/--audios`；`capabilities` 注册 params；
 - **7c 工具/提示词**：`tools.py call_comfyui` 增 `videos/audios`（枚举 id）；SYSTEM_MESSAGE 加 `<Video N>/<Audio N>` 提示词规范（N 与槽位序号一一对应）与使用边界（视频=动作参考/音频=氛围参考；不一致会导致编辑层重音轨，见下）；
-**取舍（关键，请审核）**：Ref2VA 生成的音轨与「T2b 中文旁白替换」存在冲突——若用户同时要求「参考音频 + 中文旁白」，**文档化决策**：以 T2b 旁白为最终音轨（提示词规则要求模型如实说明），参考音频仅用于氛围；`tts_text` 存在时 hook 仍执行替换。
+**取舍（审核采纳混音方案）**：参考音频 + T2b 旁白并存时**不做二选一**——推荐 `TTS 旁白为主轨（loudnorm -14）+ 参考音频降 12dB 做底轨混音`（ffmpeg amix+volume；`postprocess.mix_audio` 已有外部音轨混流，需扩展为双轨音量配比）；仅当用户明确「以参考音频为准」时才旁白降级。
 **验证**：dry-run 断言 LoadVideo/LoadAudio 图注入；真实链一次（提交 r2v+1 视频参考）产物 ffprobe 正常；**若 7a 探测失败（无节点/无模板）→ S7 标记为『不可行（环境缺能力）』并如实归档**，不做任何臆造接线。工作量：大（7a 小 / 7b 中 / 7c 小）。
-## 8. S8 批量状态轮询 O(1)
+## 8. S8 批量状态轮询优化（消除子进程开销；**非真 O(1)**——ComfyUI 无批量接口，实为 O(N) 但无逐段子进程/30s 开销）
 
 **现状**：`h3_batch status` 每段新起 `h3_submit --resume`（每段 30s）；`comfy.history(prompt_id)` 已存在（单任务 O(1)）。
 **实现**：`runs/h3_batch.py`：`status` 分支改为：读 manifest `segments[].prompt_id` 列表 → 复用 `comfy.Client`（同进程连接，不新起子进程）逐段 `client.history(pid)` + 一次 `/queue` 判断 pending/running → 汇总打印（与现有输出格式兼容，`--wait` 语义保留（轮询间隔 10s））。
-**验证**：对已完成的 batch manifest 跑 `status --wait`（瞬时返回）断言各段状态正确；与旧输出 diff 人工核对一次。**风险**：`client.history` 对未入队/被取消 pid 的返回语义需实施期核对（空 dict vs 404）→ 加 `try/except` 归一字典。工作量：中。
+**验证**：对已完成的 batch manifest 跑 `status --wait`（瞬时返回）断言各段状态正确；与旧输出 diff 人工核对一次。**归一口径（审核修订）**：已取消/从未入队=`/history/{pid}` 空 dict `{}`；提交前错误=404/连接错——`{}`→failed（含 cancelled 标记），404/连接错→pending（下次再查）。**S8 前置（审核抓出的真 bug）**：`runs/agent/task_watch.py::poll_batch` 缺 `from pathlib import Path`（NameError→恒 failed）——已在审核当轮修复（见 §15）；S3/S8 须确认修复在场。工作量：中。
 
 ## 9. S9 会话历史导出/搜索
 
-**实现**：`dev.py sessions` 新子命令：`list`（已有 list_chats 口径）、`export <cid> [--out docs/exports/<cid>.md]`（读 `logs/agent_chats/<cid>.jsonl` → markdown：用户/助手分段 + 时间戳（已 UTC+8））、`search <kw> [--cid]`（jsonl 全文匹配，输出会话/行号/片段）；纯文件读，无风险。
+**现状（审核修订）**：`dev.py` **无 sessions 子命令**（零命中；`list_chats` 在 ui_app，非 dev.py）——**全新建**。**实现**：`dev.py sessions`（新建）：`list`（复用会话目录口径）、`export <cid> [--out ...]`、`search <kw> [--cid]`；纯文件读。
 **验证**：对真实会话 export → 目检 md 内容完整；search '水墨' 命中既有会话。工作量：小。
 
 ## 10. S10 质量看板（quality-report）
 
-**实现**：① `runs/h3/quality.py`：`append(path)`（读 PROBE 行/ffprobe → 追加 `logs/quality.jsonl`：ts/prompt_id/file/w/h/fps/frames/dur/bytes/audio）、`compare(a,b)`（ffmpeg ssim → {y,all,lra?} 存 jsonl）、`report()`（汇总表：最近 N 项 + 低步/交付档分组）；② `dev.py quality-report {append,compare a b,list}`；③ 在 `h3_submit` PROBE 输出后自动 append（一行调用，失败不影响主产物）。
+**现状（审核修订）**：`runs/h3/quality.py` **不存在**（零命中）——**全新建**。**实现**：① `runs/h3/quality.py`（新建）：`append(path)`（读 PROBE 行/ffprobe → 追加 `logs/quality.jsonl`）、`compare(a,b)`（ffmpeg ssim）、`report()`；② `dev.py quality-report`（新建）；③ `h3_submit` PROBE 后自动 append。
 **验证**：对比命令在 video_19/24（已知 SSIM 0.864）复算一致性；report 输出含该记录。工作量：小。
 
 ## 11. S12 跨会话「显式共享区」选项
@@ -149,3 +149,76 @@
 **新建议优先级（请用户拍板；替换 §13 旧序）**：`P1: S2-v2 超分(本地就位零下载, 即时收益) → P2: 中文 ASR 客观验收(把语音判据自动化) → P3: Wav2Lip 口型(解决「人物说话」终极痛点, 大工程) → P4: 参考图 Inpaint 修复(文字正确度) → P5: SadTalker/F5-TTS/CodeFormer 音色与人脸增强 → P6: RIFE 插帧+伪 1080p 交付管线`。
 
 **自查批评（我此前三处过度保守）**：① 声称「可能没有」却没先 ls 本地 models 目录；② 未测试魔搭可达性即断言「模型下载受限」；③ 将「可行性未知」直接写成「不可行」。均已改正；审核者若发现类似未验证即下结论处，请直接标注。
+---
+
+## 15. 审核应答与最终修订（2026-09-05，外部 AI 审阅后）
+
+**结论**：审核全部接受。事实性错误已改入正文（S7 文件定位/S9·S10 全新建标注/S8 更名为“优化”）；设计意见采纳；以下为最终定稿。
+
+### 15.1 审核意见 → 处置对照表
+
+| 意见 | 处置 | 落地位置 |
+|---|---|---|
+| S7 bind_images_to_template 实际在 refimage.py:175 | 已修订正文 | §7b |
+| S9 sessions/list_chats 为全新建 | 已修订正文（标注现状） | §9 |
+| S10 quality.py 不存在为全新建 | 已修订正文 | §10 |
+| task_watch.poll_batch 缺 `from pathlib import Path`（真 bug） | **已当场修复**（runs/agent/task_watch.py 顶部 import；提交见 git log） | 代码 |
+| queue_probe 模块 docstring 与实现矛盾 | 已当场修复（改写为“只有 collect 只读 + cancel_owned_task 唯一写路径且强制归属”） | 代码 |
+| S2 先增强后字幕 = 行为反转，需警示 & 检查调用方 | 已警示；回滚=`--postprocess none` 即恢复旧顺序 | §15.4 回滚表 |
+| S2 fast 参数固定 vs process() 参数化 | 说明：fast=固定快捷；自定义走 `postprocess.py` CLI 或后期扩展 `--pp-scale/--pp-denoise/--pp-sharpen` | §2（本表） |
+| S2 Real-ESRGAN v2 不够具体 | 定稿：**默认 4x-UltraSharp.pth**（锐利、纹理/细节优，适合视频）；RealESRGAN_x4plus 备选（平滑但更稳）；实现=ComfyUI 独立请求：draft 工作流 JSON（UpscaleModelLoader+ImageUpscaleWithModel+SaveVideo? 输出为图序帧或 SaveImage 序列→ffmpeg 组帧）**待核实项：/object_info 确认 ImageUpscaleWithModel 与 SaveImage 的 inputs schema**（写入实施第一步）；触发=agent 提交时 `--esrgan`（h3_submit 新档，独立于 H3 生成队列，走 ComfyUI /prompt 一次性请求） | §2（本表） |
+| S7 音轨冲突→混音 | 采纳：旁白-14 主轨 + 参考音轨 -12dB 底轨 amix | §7（已改） |
+| S8 O(1) 名不副实 | 采纳更名 | §8（已改） |
+| S12 权限过重 | 采纳简化：**一次性 token**（用户点名“用第 X 会话素材”→生成 token 写入目标会话 meta→工具校验 token 即用即弃；无需 CheckboxGroup/持久授权列表） | §11（本表） |
+| §14 乐观偏差（Wav2Lip/伪1080p/工作量） | 修正：Wav2Lip 升级为 **L 级（大）**；流程=**先可行性冒烟**（单段 5s 视频+旁白→Wav2Lip→目检口型与画质→合格才全链）；伪 1080p+RIFE 叠加**强制视觉抽检**（双重插值伪影登记）；总工作量按 **Σ单项 ×2-4（集成/测试/回滚）** 估列 | §15.3 |
+| 缺依赖图/回滚/并发/GOU 预算/S11 说明 | 补齐：§15.2 依赖图与优先序、§15.4 回滚表、并发=任务目录副本+锁（各处已加）、GPU 预算表 §15.3、S11=“不建议近期”项故规格留空（见 book-13 总览） | §15 |
+| §0 cdn.jsdelivr=301 归为不可达不准确 | 已更正：301 为重定向且非必需路径（模型通道已定为魔搭）——见 §14 表 | 事实表 |
+
+### 15.2 依赖图与推荐实施序（含审核建议）
+
+```
+S4 idea2prompts↔batch 衔接      ┐
+S5 selfcheck-llm（授权）        ├ 第 2 批
+S6 音色/字号                    ┘
+┊
+S1 预览标注  ── 第 1 批（审核认可 S2→S3→S8 为主线）
+S2 超分 v2（本地模型就位）── 主线优先（即时收益）
+S3 取消残留（依赖 task_watch 修复✅在场）
+S8 批量优化（依赖 comfy.history✅ + poll_batch 修复✅）
+┊
+P2 ASR 客观验收（魔搭模型）── 主线第二批（语音判据自动化）
+P3 Wav2Lip（大工程：先冒烟后全链）
+P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
+```
+审核建议序=**S2 → S3 → S8**（加上已有 S1/S14）；新 P 序需用户对工作量确认后启动（见 §14）。
+
+### 15.3 工作量与 GPU 预算（诚实口径）
+
+| 任务 | 工作量 | 真机 GPU 预算（每次=提交+等待+取片） | 备注 |
+|---|---|---|---|
+| S1/S9/S10/S14 | 小 | 0（无 GPU） | 纯 UI/文件 |
+| S2-v2 | 中 | 生成链已有（默认 4 步）；超分走 ComfyUI 单次请求≈数十秒×N 次验证 | 超分模型本地就位 |
+| S3/S8 | 小-中 | 0 | 依赖修复已在场 |
+| S5 | 小 | SGLang 冷启 1-3 分钟×1（授权+队列空闲窗口） | |
+| S6 | 小 | ~1 次验证 | |
+| P2 ASR | 中 | ASR 推理 CPU/GPU 短时 | 模型下载=魔搭 |
+| P3 Wav2Lip | **大（Σ小×4-6）** | 冒烟 5s 视频×1；全链验证×3-5 段 | 先冒烟；质量/耗时实测后决定是否全链 |
+| P4-P6 | 中-大 | 各 1-3 次验证 | P6 强制视觉抽检 |
+
+### 15.4 回滚策略（至少对 S2/S7）
+
+| 任务 | 回滚路径 |
+|---|---|
+| S2 | `--postprocess none` 全局回退旧顺序；v2 超分失败自动降级 lanczos；变更集中在一处钩子（`h3_submit 完成链`）可整段撤销 |
+| S7 | 新模板/新函数全部**新增**不触碰现有模板；`--videos/--audios` 未传时行为=现状；废除=删注册与功能开关 |
+| S3/S8 | 工具改动作可 `--no-clean` 开关；status 改造保留旧子进程模式为 `--legacy` |
+| S12 token | 仅 meta 字段新增；不产生即无行为变化 |
+
+### 15.5 仍待核实的清单（实施第一步逐项确认，确认后再动工）
+
+1. ComfyUI `/object_info`：ImageUpscaleWithModel / SaveImage / Min v（v2 超分工作流 schema）；
+2. 魔搭模型真实 ID：RIFE、SD1.5/SDXL-Inpaint、Wav2Lip(含 S3FD)、FunASR/Paraformer、F5-TTS（下一条=下载时长与大小登记）；
+3. Ref2VA 节点/模板（spark `/object_info` + 同事模板目录——未确认前 S7 只做 7a 探测）；
+4. 混音扩展 `mix_audio` 双轨音量配比参数（amix 权重语义）。
+
+**审核闭环**：以上即对审阅意见的完整应答；如审核方复轮，仅需针对 §15.1 未接受项说明理由。

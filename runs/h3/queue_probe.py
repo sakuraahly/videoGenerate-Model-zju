@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """queue_probe — ComfyUI 队列【只读】探测与归属判定（book-12 A5/L5）。
 
-共享服务器纪律：只读！本脚本绝不包含任何 /queue/delete、取消、清队等写操作；
-删除/取消必须先按归属校验（见 book-14 红线），未实现=禁止。
+共享服务器纪律：collect 为只读探测；`cancel_owned_task`（book-14 T9）为唯一写路径，
+且强制归属校验（last_job/workflows job.json 命中才执行；他人/未知任务一律拒绝）。
 
 输出 JSON：
   {"running": [{"qid","prompt_id","nodes","tag"}], "pending": [...],

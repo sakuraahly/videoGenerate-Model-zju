@@ -4,6 +4,7 @@ import os
 import queue
 import sys
 import threading
+from pathlib import Path  # 审核修复：poll_batch 曾缺此 import（NameError→恒 failed）
 import requests
 from typing import Optional
 
