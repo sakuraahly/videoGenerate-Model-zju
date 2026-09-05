@@ -28,6 +28,31 @@ import sys
 from pathlib import Path
 
 
+def probe_av(path: str) -> dict:
+    """五审新增（S10 用）：视频 + 音频流信息（probe() 只取 -select_streams v:0，音频结构性缺失）。"""
+    r = subprocess.run(
+        ["ffprobe", "-v", "error",
+         "-show_entries", "stream=codec_type,codec_name,channels,width,height,r_frame_rate,nb_frames,duration",
+         "-show_entries", "format=duration,size",
+         "-of", "json", str(path)],
+        capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        raise ValueError("ffprobe(av) 失败: " + (r.stderr or r.stdout or "")[-200:])
+    import json as _j
+    d = _j.loads(r.stdout or "{}")
+    _streams = d.get("streams") or []
+    _v = next((s for s in _streams if s.get("codec_type") == "video"), {})
+    _a = next((s for s in _streams if s.get("codec_type") == "audio"), {})
+    v, a = _v, _a
+    fmt = d.get("format") or {}
+    return {"width": v.get("width"), "height": v.get("height"),
+            "fps": v.get("r_frame_rate"), "frames": v.get("nb_frames"),
+            "video_duration": v.get("duration", fmt.get("duration")),
+            "audio_codec": a.get("codec_name"), "audio_channels": a.get("channels"),
+            "audio_duration": a.get("duration"),
+            "duration": fmt.get("duration"), "size": fmt.get("size")}
+
+
 def probe(path: str) -> dict:
     r = subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
