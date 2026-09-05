@@ -23,6 +23,23 @@ def probe_duration(path: Path) -> float:
         return 0.0
 
 
+def _edge_tts_cmd() -> list:
+    """定位 edge-tts 可执行（当前解释器/PATH/qwen-agent-venv 三路探测）。"""
+    import shutil
+    import sys
+    p = shutil.which("edge-tts")
+    if p:
+        return [p]
+    exe = Path(sys.executable)
+    cands = [str(exe.parent / "edge-tts"),
+             str(exe.parent.parent / "bin" / "edge-tts"),
+             "/home/Developer/qwen-agent-venv/bin/edge-tts"]
+    for c in cands:
+        if Path(c).is_file():
+            return [c]
+    raise ValueError("edge-tts 不可用（未安装或不在 PATH；请 pip install edge-tts 到运行解释器）")
+
+
 def synthesize(text: str, out: Path, voice: str = DEFAULT_VOICE, rate: str = "+0%") -> float:
     """edge-tts 合成中文语音到 out（mp3/wav）；返回时长秒；失败抛 ValueError。"""
     text = str(text or "").strip()
@@ -30,7 +47,7 @@ def synthesize(text: str, out: Path, voice: str = DEFAULT_VOICE, rate: str = "+0
         raise ValueError("TTS 文本为空")
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    cmd = ["edge-tts", "--voice", voice, "--rate", rate, "--text", text, "--write-media", str(out)]
+    cmd = _edge_tts_cmd() + ["--voice", voice, "--rate", rate, "--text", text, "--write-media", str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
     if r.returncode != 0 or not out.is_file() or out.stat().st_size < 200:
         raise ValueError("TTS 合成失败: " + (r.stderr or "")[-300:])
