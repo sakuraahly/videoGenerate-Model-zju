@@ -1,6 +1,8 @@
 # 阶段 13 — 服务编排：自启自愈 + 内存智能共存（book-15）
 
-> 状态：计划(待实施) · 日期：2026-09-05 · 来源：用户实测（htop 显示 mem 富余却进程失败；SGLang 死活起不来）与 2026-09-05 SGLang 恢复事件复盘
+> 状态：**✅ 实施完成（2026-09-05）** · 日期：2026-09-05 · 来源：用户实测（htop 显示 mem 富余却进程失败；SGLang 死活起不来）与 2026-09-05 SGLang 恢复事件复盘
+> 实施记录：L6 `runs/agent/supervisor.py`（once/watch，tmux `supervisor` 守护，4 单测）+ §3.2 `llm_mem` 内存编排（`comfy_queue_idle`/`planner_prep`(/free 队列空闲才执行)/`free_comfy`/wake 自适应降额表 0.25→0.20→0.15·max4→3→2，内存内不写机器配置，3 单测）+ L7 `runs/agent/svc_main.py` + `dev.py services status|restart-llm|restart-agent|selfcheck`。
+> 验收：`dev.py services status` 六项全绿（comfyui systemd enabled/端口；sglang/agent/supervisor session+端口；llm 档位 0.25/4/8192/spec-off）；**自愈演练通过**：selfcheck kill agent → supervisor 90s 内拉起（AGENT_VERSION=c71b17e 复活）——sglang 自愈复盘走同链（llm_mem.wake 自适应），未做销毁性演练（SGLang 内存成本/影响面，登记为可选；restart-llm 需授权且队列空闲才执行）。
 > 目标：三服务（SGLang LLM / ComfyUI 视频 / Agent 调度）各自「开机自启 + 崩溃自愈」，并**按工作负载智能切换共存模式**——不再出现"ComfyUI 或 Qwen 重启死活不行"。
 > 红线：不**人工**重启/停止 ComfyUI 服务（崩溃恢复由 systemd 承担，见 §1）；不覆盖机器配置（config/llm_mem.json 等本机文件）；观测一律走项目程序（dev.py）。
 

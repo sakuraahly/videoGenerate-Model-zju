@@ -850,6 +850,13 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.12 book-15 完成（2026-09-05，按册序）
+- **L6 supervisor ✅**：tmux `supervisor` 会话守护（30s 探测 agent/sglang；死亡自动拉起，连续失败 3 次报警停循环）；4 单测。
+- **内存编排 ✅**：`llm_mem` 新增 planner（队列空闲才 `/free` 让位 + wake 自适应降额表 0.25→0.20→0.15 / max_run 4→3→2，内存内覆盖不写机器配置）；3 单测；启动链=ensure_llm_up→planner_prep→wake。
+- **dev.py services ✅**：status/restart-llm（队列空闲才执行）/restart-agent/selfcheck（演练提示中断）。
+- **验收**：status 全绿；**selfcheck 自愈演练通过**（kill agent→supervisor 拉起，AGENT_VERSION=c71b17e）；sglang 销毁性演练未做（成本/影响面），replay 链=同一 wake 自适应路径，登记可选。
+- 下一册 = **book-16（本册台账/§6 归档闭环）→ book-18（已批准）**。
+
 ### 20.11 计划·待批准（book-18，2026-09-05 用户指令）
 - **质量提示词固化**：Q+（masterpiece/best quality/…+sharp legible text 触发段）与 Q-（blurred scene/motion blur/…+文字防乱码补词）单源进 prompts/；consistency_check 新增「质量词断言」（每次运行必须注入，缺失即 FAIL）；SYSTEM_MESSAGE 提示词规则「质量词不得删除」。
 - **语音/文字清晰度加强**：按用户指导意见**审慎取舍**——采纳：台词脚本规范（短句/常用字/标点+--rate -8%）·逐句合成+客观审听+单句重试·必加字幕（已落地）·**loudnorm -14/轻降噪**·字幕规范参数化·参考图驱动内嵌文字·1080p=交付档现实化（768p+超分+高码率，如实标注不可原生 1080p）；**远期不承诺**：口型驱动（Wav2Lip 等）/局部重绘 Inpaint/标题图表装配。
