@@ -233,10 +233,19 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                         function_list=TOOL_NAMES)
         final = ''
         for chunk in bot.run(messages=msgs):
-            # chunk: List[Message]; 取最后一个 assistant 文本（可能含工具过程消息）
+            # chunk: List[Message]; 消息级 yield —— book-13 C1：逐批即时送显
             for m in chunk:
-                if m.get('role') == 'assistant':
-                    final = _content_text(m.get('content'))
+                role = m.get('role')
+                if role == 'assistant':
+                    t = _content_text(m.get('content'))
+                    if t:
+                        final = t
+                        events.put({'kind': 'chunk', 'text': t})
+                elif role in ('function', 'tool'):
+                    name = m.get('name') or m.get('function', {}).get('name') if isinstance(m.get('function'), dict) else m.get('name')
+                    name = str(name or '')[:36]
+                    if name and '{' not in name:
+                        events.put({'kind': 'tool', 'text': name})
         return final
 
     try:
@@ -645,6 +654,22 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                             status_text = item.get('text', '')
                             yield shown, status_text, '', noop, cid, msgs, (clear_box if first else noop)
                             first = False
+                        elif kind == 'chunk':
+                            # book-13 C1：消息级分批渲染——立即追加，不等待整轮
+                            text = item.get('text', '')
+                            if text:
+                                if msgs and msgs[-1].get('role') == 'assistant':
+                                    msgs[-1]['content'] = str(msgs[-1].get('content', '')) + text
+                                else:
+                                    msgs.append({'role': 'assistant', 'content': text})
+                                shown = fmt_msgs(msgs)
+                                yield shown, BUSY_HTML('生成中（内容已输出）...'), '', noop, cid, msgs, (clear_box if first else noop)
+                                first = False
+                            continue
+                        elif kind == 'tool':
+                            yield shown, BUSY_HTML('工具调用中...'), f'🔧 工具：{item.get("text", "")}', noop, cid, msgs, (clear_box if first else noop)
+                            first = False
+                            continue
                         elif kind == 'done':
                             final_text = item.get('text') or ''
                             phase = 'ok'
@@ -723,7 +748,10 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 msg = f'[执行出错] {final_text}\n建议：{_hint}'
                 msgs.append({'role': 'assistant', 'content': msg})
                 note = f'本轮执行出错：{_hint}'
-            elif final_text:
+            elif final_text and not (msgs and msgs[-1].get('role') == 'assistant'
+                                       and str(msgs[-1].get('content', '')).rstrip()
+                                       .endswith(final_text.rstrip()[-60:])):
+                # book-13 C1：流式已追加时不再重复
                 final_status = IDLE_HTML
                 msgs.append({'role': 'assistant', 'content': final_text})
                 try:

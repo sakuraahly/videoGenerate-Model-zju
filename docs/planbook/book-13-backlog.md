@@ -12,7 +12,7 @@
 |---|---|---|---|
 | 01 基座 | 版本指纹/可信门禁/事实登记 | ✅ 完成 | version.py/runtime_check/e2e_smoke(SMOKE_OK)/code-fact-registry；登基演练+三端一致 |
 | 02 前端 | 文案/去术语/继续按钮/错误分类/上下文 | ✅ 完成(增强待) | /config 实况；new_send_function 删除；新会话清空+_current_cid 修复 |
-| 03 输出行为 | 中文铁律/400 修复/流式调研 | 🟡 核心完成/增强待 | 语言铁律+SYSTEM_MESSAGE；流式=消息级、逐 token 不可行(调研)；**消息级分批渲染未做** |
+| 03 输出行为 | 中文铁律/400 修复/流式调研 | ✅ 完成（2026-09-05） | 语言铁律+SYSTEM_MESSAGE；流式=消息级逐批（非逐 token）；**消息级分批渲染已完成（C1）** |
 | 04 自动完成 | 截断/任务意图才续、寒暄不续 | ✅ 核心 | should_continue 纯函数 8/8 + CLI 同判 + E2E（你好只回一次） |
 | 05 资源隔离 | 会话级素材隔离 | ✅ 完成(含补丁) | cid 落盘(含 dup)/--session/归一化/空会话线索+授权引导；GRADIO cid 接线修复 |
 | 06 工作流提示词 | 属性词化+逐段注入+参考图绑定 | ✅ 核心 | 模板/槽位清理；--prompts-file+按段注入；bind_images+默认资产守卫；**idea2prompts --segments 未做** |
@@ -31,7 +31,7 @@
 ### 🟥 P0（下一批优先：解锁用户价值/回归风险）
 1. ~~端到端黄金路径闭环~~ **✅ 已完成（2026-09-04）**：`tests/golden_path.py` 引擎级闭环——提交(87dccd14) → `/queue` 断言 LoadImage=已绑定参考图（非旧资产）→ 取片 `outputs/video_11.mp4`(521KB) → GOLDEN_OK；**剩余人工项：画面一致性确认**（详见 book-09 §6b）。
 2. **book-08 风格册开工**：SYSTEM_MESSAGE/agent-reading 收紧「只问必要问题」清单+反例（分辨率/时长/seed/镜头/是否OK 一律不问；内容不明才问、一次只问一个）；补 `docs/style-guide.md`（好/坏回复对照）；用**真实对话任务**（用户提供的关键片段）做回归：是否多问/是否完成/是否中文。
-3. **消息级分批渲染（book-03 增强，治"等待期无输出"）**：qwen_agent 为**消息级** yield（已调研）→ 重构 `run_turn`/`send`：把 agent 中间文本/工具结果**逐批 yield** 到对话（而非最终一次性）；用户提交后即可看到"正在…/已提交/进度"，无需等整轮。
+3. ~~消息级分批渲染~~ **✅ 已完成（2026-09-05，C1）**：run_turn 消息级 chunk 即时送显（assistant 文本+工具名状态条）；send 只追加不替换（同条合并、done 去重）；spark 实测事件流 phase → chunk×70 → done；SMOKE_OK。：qwen_agent 为**消息级** yield（已调研）→ 重构 `run_turn`/`send`：把 agent 中间文本/工具结果**逐批 yield** 到对话（而非最终一次性）；用户提交后即可看到"正在…/已提交/进度"，无需等整轮。
 5. **模板默认数值≠请求参数（用户实测 2026-09-05，已修复待回归）**：请求 720p/24fps/15s，产出**864×480/24fps/5.17s**（模板 ResolutionSelector=0.4MP、时长表达式=5s 的默认值，UI→API 转换后未被覆写）。根因修复：`stage.apply_generation_params`（按 token_map 覆写 MiniMaxH3* width/height/length、BasicScheduler steps、CreateVideo fps）+ 单测 3 例（117 全绿）。**剩余回归**：真实提交→ffprobe 断言产出参数；并加「产出参数回执」到取片流程（见 P0.6）。
 6. **产出参数校验/诊断工具（"agent 没有合适的工具"落地）**：① 取片/完成回执带 ffprobe 实测（width/height/fps/duration/nb_frames）与请求参数对照；② 提交前「模板默认 vs 请求」校验开关（默认值≠请求时告警，防再翻车）；③ 供 agent 查询的 `verify_video` 类工具（book-09 延伸；book-12 步骤4 联动）。
 7. **⚠️ 队列共享：删除/取消必须归属校验（2026-09-05 实测教训）**：ComfyUI 是**多用户共享服务器**，`/queue` 可见所有人的任务——队列中的任务**未必是当前用户/我的**。规则（红线）：① `h3_submit --submit-only` 已把 prompt_id 写入 `last_job.json`/任务目录 job.json，**只允许操作/查询本会话登记过的 prompt_id**；② `/queue/delete`、取消、清理等接口目前 405/500 且不可用——**不要在工具/脚本中裸调队列删除**；③ 记录为工具需求：`dev.py queue status`（只读，含归属判定：本会话/未知/他人）与 `queue cancel <id>`（先校验归属+确认，未登记即拒绝）；④ 处置经验：等待期间看到队列任务可能属于他人，勿惊讶、勿删除。
