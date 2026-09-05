@@ -118,7 +118,8 @@ def _finalize_local_outputs(project_dir, remote_paths, gp=None) -> None:
     try:
         outputs_dir.mkdir(parents=True, exist_ok=True)
     except OSError:
-        return
+        return []
+    local_files: list = []
     base = _next_output_name(outputs_dir)
     for i, rp in enumerate(remote_paths):
         src = Path(str(rp).replace("~", str(Path.home())))
