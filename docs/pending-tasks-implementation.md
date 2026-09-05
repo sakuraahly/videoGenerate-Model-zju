@@ -44,18 +44,24 @@
 ## 3. S3 T9 收尾（取消后任务表残留）
 
 **现状**：`cancel_task` 取消成功即清 last_job 断点；但 `send()` 里 `all_pending_tasks/add_tasks(cid)` 登记仍在，`task_watch` 会继续轮询已取消 pid。
-**实现**：`runs/agent/task_watch.py` 新增 `mark_cancelled(cid, pid)`；`tools.py CancelTask.call` 取消成功后调用之（去重同方法）；task_watch 轮询到 cancelled 标记→立即发 done 事件（『已取消』）并停止；同时 `send()` 在收到 cancel 结果后 `clear_tasks(cid)` 清该会话任务表。
+**实现（四审定稿：职责分层，防 add_tasks 覆盖撤销）**：`mark_cancelled(cid, pid)`=权威（负责发『已取消』done 事件并停止该 pid 轮询）；CancelTask 成功后仅调 `mark_cancelled`；**不**在 cancel 时调 `clear_tasks`（send() 每轮开头已清、line~1232 add_tasks 会重新登记——中途 clear_tasks 会被覆盖）；下一轮消息自然清空即止。
 **验证**：单测（mock task_watch 状态）；真实链=取消运行中任务后在会话继续「查询」→ 收到『已取消』而非轮询等待。工作量：小。
 ## 4. S4 idea2prompts `--segments` 真实验证 + 与 batch 衔接
 
 **现状（已取证）**：`h3_batch submit --prompts-file <json>` **已存在**，格式=按段索引的 JSON 字典 `{"0":"pos...","1":...}`（`runs/h3_batch.py:133-151`）；`idea2prompts --segments N` 已实现（book-13 #5）但**输出为 `video_flf2v.segment_<i>.positive.txt` 文件**（与 batch 期望不匹配），且从未用真实 LLM 跑过。
-**实现**：① 改 `idea2prompts._write_segments`：追加写入 `--segments-json <path>`（默认 `prompts/workflows/video_flf2v.segments.json`，即 `{"0":..,"1":..}` 结构，与 `--prompts-file` 对齐；旧 txt 文件保留兼容）；② 真实 LLM 验证：临时启用 `config/llm.json`（`enabled=true; base_url=http://127.0.0.1:8000/v1; model=Qwen3.8-27B`，`chat_once` 走 urllib 直连 spug sglang——与 ui_app 同栈）跑 1 次 3 段 → 校验 parse/写文件；验证后关闭（默认不启用，避免二义性）。
+**实现（四审事实更正）**：① 改 `idea2prompts._write_segments`：追加 `--segments-json`（与 h3_batch `--prompts-file` 的 `{"0":..}` 结构对齐）；② 真实 LLM 验证：**`config/llm.json` 当前 enabled 已为 true**（非“临时启用”）；**base_url 归 `deploy.py --set` 管理**（四审实测:文件为 `:8011`（Windows 隧道形态；spark-local 下 deploy.py 切为 `:8000`）——**不得手改 base_url**）；验证=**在 spark 本机执行**（或先 `deploy.py --set spark-local`、事后还原形态）；跑 1 次 3 段校验 parse/写文件。**附**：`config/llm.json` `_comment` 误导（vLLM/tmux vllm）已当场修正为 SGLang/tmux sglang。
 **验证**：dry-run `python runs/h3/idea2prompts.py --idea ... --workflow video_r2v?`（flf2v 段）→ 打印 JSON；用 `h3_batch submit --stage flf2v --image a,b,c ... --prompts-file <json> --dry-run` 断言 manifest 携带每段提示词。工作量：小。
 
 ## 5. S5 SGLang 销毁性自愈演练（selfcheck --llm）
 
 **现状**：supervisor/`selfcheck`（agent 演练）已通过；`llm_mem.wake` 自适应链存在；**sglang 销毁性演练未做**（成本顾虑）。
-**实现**：`svc_main.py` 增 `selfcheck-llm`：① 前置校验 ComfyUI 队列空闲（`queue_probe.collect`）+ 本会话无生成任务（提示语：演练会中断当前对话）；② `pkill -f sglang.launch_server` + `tmux kill-session -t sglang`；③ 轮询 90s：`/v1/models` 200 或 supervisor 已拉起（supervisor 会调用 `llm_mem.wake`）；④ 输出 `{ok, detail}`；`dev.py services` 增参数透传；**本命令须显式 `--yes` 二次确认**（红线：非授权不执行）。
+**实现（四审全面修订）**：`svc_main.py` 增 `selfcheck-llm`（**一次性改动三处**：line 3 用法 docstring / line 117 choices / 分派——四审提示勿漏）：
+- ① 前置 `llm_mem.comfy_queue_idle()`（**与 cmd_restart_llm 同源守卫**，勿再造 queue_probe.collect 第二套）；
+- ② 销毁动作**复用 `llm_mem.nap()`**（已有 is_up 前置+kill 后确认+告警；勿重复实现 pkill/tmux——会话改名/进程更名时两处同步是隐患）；
+- ③ 恢复判据**窗口 ≥300s**（四审测算：supervisor 检测 ≤30s + wake 冷启 60-180s = 90~210s；90s 位于下界会误判），`--timeout` 可调（默认 300）；
+- ④ 与既有 `restart-llm` 关系=互补（restart-llm=只恢复；selfcheck-llm=先销毁再验证自愈），明示勿重复造前置；
+- ⑤ **`--yes` 二次确认**：`selfcheck`（agent 演练，同样销毁服务但当前无护栏）与 `selfcheck-llm` **一并对齐**加 `--yes`（安全门槛一致化）；
+- ⑥ **登记既有冲突（四审新发现）**：`llm_mem.nap()` 意图“停机让位”，但 supervisor ≤30s 拉回（NAPKILL_FINISHED 无人消费；check_once 只看 session+port）→ **nap() 实际无法维持停机**；对 §5 是利好（自愈确实发生）但对 book-15 内存编排可能失效——**另立问题登记**（处置：supervisor 识别 NAPKILL_FINISHED 跳过唤醒 vs 保留“nap 必被拉起”）。
 **验证**：授权后执行一次（队列空闲窗口），断言 `wake 完成 档位=0`；记录耗时与降额日志。**风险**：SGLang 冷启动 1-3 分钟；若失败自动回退监督（supervisor 最多 3 次拉起后报警）。工作量：小。
 
 ## 6. S6 男/女声可选 + 字幕字号可调
@@ -80,7 +86,7 @@
 
 ## 9. S9 会话历史导出/搜索
 
-**现状（审核修订）**：`dev.py` **无 sessions 子命令**（零命中；`list_chats` 在 ui_app，非 dev.py）——**全新建**。**实现**：`dev.py sessions`（新建）：`list`（复用会话目录口径）、`export <cid> [--out ...]`、`search <kw> [--cid]`；纯文件读。
+**现状（审核修订）**：`dev.py` **无 sessions 子命令**（零命中；`list_chats` 在 ui_app，非 dev.py）——**全新建**。**实现（四审补两点）**：`list` 须 **glob '*.jsonl'**（`logs/agent_chats/` 下有 `thumbs/` 子目录，遍历目录条目会把 thumbs 当会话）；路径常量**复用 `session_cleanup.CHATS_DIR`**（唯一权威，防第三份硬编码）。**实现**：`dev.py sessions`（新建）：`list`、`export <cid>`、`search <kw>`；纯文件读。ut ...]`、`search <kw> [--cid]`；纯文件读。
 **验证**：对真实会话 export → 目检 md 内容完整；search '水墨' 命中既有会话。工作量：小。
 
 ## 10. S10 质量看板（quality-report）

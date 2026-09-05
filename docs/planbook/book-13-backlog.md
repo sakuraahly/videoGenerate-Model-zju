@@ -53,6 +53,7 @@
 12. **~~turn_state._active_batch 清理~~ ✅ 完成（2026-09-05）**：无消费者死隔离已删除；`begin_turn` 保底空实现（提交路径用 `_pending_batch_id`）。
 13. **~~seed 策略~~ ✅ 完成（2026-09-05）**：params DEFAULTS seed=12345 → **"auto"**（每次随机）；显式 `--seed` 可指定复现。
 14. 上传预览"可判定性"：gallery 缩略图标注所属会话/是否仍可用（配合 book-05/11）。
+16. **nap() 与 supervisor 语义冲突（四审登记 2026-09-05，独立问题）**：`llm_mem.nap()` 意图“停机让位”，但 supervisor 视 session+port 假死即拉起（NAPKILL_FINISHED 标记无人消费）→ nap 实际无法维持停机，book-15 内存编排在 supervisor 运行时可能失效。**处置选项（待定）**：A) supervisor 识别 NAPKILL_FINISHED（nap 请求标记）后跳过唤醒；B) 保留“nap 必被拉起”（放弃停机让位，仅靠 planner /free+自适应）。影响面：book-15 内存共存策略。
 15. **远期候选·不承诺（book-18 §7 登记 2026-09-05）**：① 口型驱动（Wav2Lip/SadTalker——需额外模型/依赖/管线）；② 局部重绘 Inpaint（修乱码区，需新模板工程化）；③ 标题/图表装配（后期链模板）；④ 1080p 原生生成（模型上限 768p，当前不可达）；⑤ 齿音处理（音频链可选）。
 ## 6. 甜点任务候选总览（2026-09-05 整理；含思路/取舍/建议序，用户拍板后按序做）
 
