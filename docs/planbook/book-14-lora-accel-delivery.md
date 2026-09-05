@@ -60,7 +60,9 @@
       - **完成标准（严）**：真实 UI 出片 → 音轨为**可辨析中文语音**（非噪声）、与字幕逐句对齐；ffprobe 含 AAC 音轨且时长≈视频。
       - **取消条件**：spark 若无可行的本地 TTS → 降级“静音轨+字幕”并如实文档化（**不得宣称语音通过**）。
       - **⚠️ 2026-09-05 用户指令**：当前仍为氛围音（未达语音判据）→ 本子项为**批准后第一优先**；与 book-17 §4 联动（无台词视频“保留环境音 vs 静音轨”听测决策 + 低参验证档联动 W1/W3 痛点测试）。
-      - **T2b v2 修复批（2026-09-05 用户实测“视频 23 没有中文人声+无字幕+重复提交”后登记，待实施）**：
+      - **✅ T2b v2 修复批完成（2026-09-05）**：① 钩子只用本次 finalize 返回值（`_local_out[0]`，防 glob-mtime 挑错文件）；② 时长守卫（<80% gp.seconds 拒绝并日志）；③ **台词字幕一步到位**（`attach_speech_and_subtitle`：语音→整句 SRT→烧录→apad 音轨替换）；④ 会话级去重（归一化指纹 30 分钟复用，audit/网格均无重复；实测跨会话仍有引擎断点守卫兜底）；⑤ 客观回执（`PROBE:` + `TTS_OUT: … speech_s=… srt=yes`）。
+        真实链证据：`--tts-text 再见了，故乡。` → **video_27.mp4**（608×352/5.167s/124f + AAC 5.167s + 字幕帧目检“再见了，故乡。”清晰）+ **video_28.mp4**（agent 自取片：语音 2.83s + srt）。
+        **原待办规划（v2 前）如下**：
         1. **钩子改“本任务文件”**：`_finalize_local_outputs` 返回本次本地路径传入完成钩子；**禁止**全目录 glob-mtime 选文件（曾命中 video_22 而非本次 video_23）；
         2. **时长守卫**：目标文件时长 < 原时长 60% → 拒绝替换并重新取源（防 -shortest 截断源再入，video_22 曾因此保持 2.06s）；
         3. **台词字幕一步到位**：`tts_text` → 同时生成 SRT（整句/逐句）→ `render_subtitle` 烧录进成片（成品=画面+中文语音+对白字幕）；
@@ -74,7 +76,8 @@
 - [x] **T4 完成**（由 L1 交付：session_cleanup.py + config/session_retention.json + 6 单测；详见 L1 记录）。
 - [x] **T5 完成**（由 L2 交付：ui_app 刷新→「刷新历史列表」+相邻提示；/config 已实测命中）。
 - [x] **T6 完成（2026-09-05）**：capabilities.json 新增顶层 `style_lora` 段（dir/prompt_rule/与加速 LoRA 分离说明；引擎侧暂不接线，登记+规范先行——视觉特征固定建议：提示词声明+固定 seed；与加速 LoRA 叠加前须兼容性校验）。
-- [ ] **T9 qwen 取消自己任务（用户提出 2026-09-05；现状：agent 无取消工具、引擎无取消路径）**：
+- [x] **T9 qwen 取消自己任务 ✅ 完成（2026-09-05）**：`queue_probe.find_owned/cancel_owned_task`（归属校验：last_job/workflows job.json 命中才执行）+ `dev.py queue cancel --prompt-id` + agent 工具 `cancel_task(prompt_id)` + SYSTEM 条目 + 单测 2 例。**端点实测（ComfyUI 0.34.3）**：运行中取消 = `POST /interrupt`（`/queue {"interrupt":true}` 被接受但惰性）；排队中 = `POST /queue {"delete":[id]}`；成功后清理本机断点；不在队列/非本人一律明确拒绝。真机验证：非本人拒绝 ✓ / 不在队列说明 ✓ / 运行中 interrupt 后队列清空 ✓。
+- [ ] **T9 后续（可选）**：取消任务的会话状态联动（当前仅断点清理；task-watch 数据残留不影响提交）。**原规划**：
       - 可行性已实测：ComfyUI 5.23.1 取消端点 = **POST /queue** + body `{"delete": [qid]}`（空载荷 200；旧 `/queue/delete`/DELETE 方法均 405；`POST /prompt` 400 为正常）。
       - 实现分两层：① `dev.py queue cancel <qid> --prompt-id <pid>` —— **归属校验**（pid 必须命中本机登记 last_job.json 或任务目录 job.json，否则拒绝并提示）；② agent 新工具 `cancel_task(prompt_id)`（内部转 RunScript/或直接调 dev.py queue cancel；仅允许取消**自己会话登记的**任务），工具描述含取消后果（后台任务停止、断点清理）；
       - 红线：**只允许取消本机登记的任务**；他人/未知任务一律拒绝；取消后提示可重新提交。

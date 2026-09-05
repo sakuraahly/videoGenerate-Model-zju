@@ -850,6 +850,12 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.10 book-14 完成（2026-09-05，按册序）
+- **T2b v2 修复批 #1-#5 ✅**：钩子本任务文件；时长守卫；**台词→SRT→烧录→语音替换一步到位**；会话级去重（归一化指纹）；客观回执（PROBE+TTS_OUT）。真实链：**video_27**（608×352/5.167s/124f/AAC5.167s+字幕“再见了，故乡。”帧目检清晰）+ **video_28**（agent 自取片：语音 2.83s+srt）。
+- **T9 取消任务 ✅**：归属校验（last_job/job.json）→ 运行中 `POST /interrupt` / 排队中 `POST /queue delete` → 成功后清断点；agent 工具 `cancel_task`；非本人/不在队列如实拒绝；真机验证三点全过。端点差异（/queue interrupt 惰性）已登记。
+- 全程：dev.py sync/commit；单测 158+34 全绿；agent 重启至 spark `4a35bdd`（含 cancel_task 工具）。
+- **下一册 = book-15（服务编排：SGLang 内存管理/共存参数/系统监控）→ book-16（本册台账/§6 归档闭环）**。
+
 ### 20.9 book-13 完结（2026-09-05，按册序）
 - **完成**：P0#2（随 book-08 已完）/P0#5（720p/15s dry-run 回归通过）/P0#6（PROBE 回执）/P1#5（segments，真实 LLM 验证待 enabled）/P1#8（审计覆盖确认）/P2#9b（预览重建，真实链 2 项）/P2#11（UTC+8）/P2#12（死隔离清理）/P2#13（seed 默认 auto）。
 - **登记保留（低优先）**：§3.2 图片解析收敛、P2#14 预览可判定性标注。
