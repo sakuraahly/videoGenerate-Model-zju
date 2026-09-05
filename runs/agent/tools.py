@@ -290,7 +290,7 @@ class CallComfyUI(BaseTool):
             'lora': {
                 'type': 'string',
                 'enum': ['none', 'fl2v_4step', 'ref2v_4step', 'ref2v_8step'],
-                'description': 'book-12 B1 加速 LoRA（默认 none）。fl2v_4step 用于 t2v/i2v/flf2v；ref2v_4step/ref2v_8step 用于 r2v；自动把采样步数改为 4/8（更快出候选镜头）。fixed=None, 注: 仅注册表声明可用',
+                'description': '加速 LoRA（book-17 §3：验证档默认按阶段自动选择，一般不必传）。fl2v_4step 用于 t2v/i2v/flf2v；ref2v_4step 用于 r2v 验证档；ref2v_8step 仅 r2v 交付档；传 none 表示 20 步默认精度（交付档质量优先时用）。省略=验证档 4 步。仅注册表声明的 lora 可用',
             },
         },
         'required': ['stage'],
@@ -301,6 +301,19 @@ class CallComfyUI(BaseTool):
             params = _coerce_fields(params)
         params = self._verify_json_format_args(params)
         stage = params['stage']
+        # book-17 §3：验证档默认（用户未显式指定时）：360p/5s + 4 步加速 LoRA
+        try:
+            from runs.agent import agent_params as _ap
+            if not params.get('lora'):
+                _dl = _ap.default_lora_for_stage(stage)
+                if _dl:
+                    params['lora'] = _dl
+            if not params.get('resolution'):
+                params['resolution'] = _ap.VERIFY_TIER['resolution']
+            if params.get('seconds') is None:
+                params['seconds'] = _ap.VERIFY_TIER['seconds']
+        except Exception:  # noqa: BLE001
+            pass
 
         submit_script = os.path.join(PROJECT_ROOT, 'runs', 'h3_submit.py')
         if not os.path.isfile(submit_script):
@@ -330,6 +343,8 @@ class CallComfyUI(BaseTool):
         if params.get('images'):
             for _img in [x.strip() for x in str(params['images']).split(',') if x.strip()]:
                 cmd.extend(['--image', _img])
+        if params.get('lora') and params['lora'] != 'none':
+            cmd.extend(['--lora', params['lora']])
 
         tool_timeout = 600 if params.get('wait_until_done') else 180
 

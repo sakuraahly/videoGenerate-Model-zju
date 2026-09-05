@@ -199,7 +199,7 @@ python runs/sync_auto.py {enable|disable|status|once}      # 或 bats\workflow\a
 2. upload-watch 收进 uploads/ 并镜像到 ComfyUI input/user_uploads/。
 3. 用户到 7860：“用我刚上传的图做参考，生成 6 秒 r2v 视频，720p”。
 4. agent：`list_references`（确认素材）→ `run_script h3/refimage.py use --name <id> --stage r2v`
-   （把模板 LoadImage 指向该图）→ `call_comfyui(stage="r2v", resolution="720p", seconds=6, prompt=英文描述)`。
+   （把模板 LoadImage 指向该图）→ `call_comfyui(stage="r2v", resolution="720p", seconds=6, prompt=英文描述)`（用户显式指定听用户；未指定则验证档 360p/5s+4 步 LoRA，见 book-17 §3）。
 5. 工具秒回 `TASK_SUBMITTED: …`；agent 转告用户任务已后台运行。
 6. 数分钟后用户问“好了吗”→ agent `run_script h3_submit.py`（无参）续传轮询至完成，
    汇报 `REMOTE_VIDEO_PATH` 与 `LOCAL_OUTPUT: outputs/video_N.mp4`。
