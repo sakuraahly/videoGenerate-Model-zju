@@ -40,7 +40,7 @@
 4. ~~任务监控反馈增强~~ **✅ 完成（2026-09-05，C2）**：task_watch 状态含「已耗时 X 分 X 秒」+ 诚实区间提示（queued=排队中/running=1-20 分钟区间/failed 指引）；首次 update 明示「已后台执行，可继续查询/取片」；超 30 分钟提示（共享队列/H3 首载，非卡死）；2 单测（145 全绿）。
 
 ### 🟧 P1（明确收益）
-5. **idea2prompts --segments N**：自动产出 N 段转场提示词（写入 `video_flf2v.segment_<i>.positive.txt`），再交给 batch `--prompts-file`；与 book-06 §5 步骤 2 一致。
+5. **~~idea2prompts --segments N~~ ✅ 完成（2026-09-05）**：`--segments N`（flf2v）+ `parse_segments_json` + 分段文件写入（`video_flf2v.segment_<i>.positive/negative.txt`）；单测 4 例全绿。**注**：真实 LLM 分段生成待 llm.json(enabled) 会话验证一次。
 6. **book-11 日志体系落地**：logutil 唯一化（h3_submit/h3_batch/llm_mem/sync_auto/task_watch 收敛）；事件模型（用户/决策/工具含参数/提交含参数/进度/产物）；防垃圾（轮转/上限/时区统一）；`dev.py logs`（view/link/clean/check）。
 7. **book-12 注册表化**：`config/capabilities.json` 补 template/slots/prompt_inject/params/features/enabled；`runs/h3/workflow_registry.py`；工具描述与 SYSTEM_MESSAGE 动态化（digest）；`dev.py workflows`（list/add/disable/enable/validate/swap）→「便捷更换工作流」。
 8. **~~参考图使用审计~~ ✅ 覆盖确认（2026-09-05）**：audit jsonl 已含 params{session(cid), stage, images}+prompt_id；run log 含 submitted 事件 imgs/分辨率；与 book-11 联动——如需 slot 级明细再评估。
