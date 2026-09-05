@@ -206,7 +206,7 @@ def _http_chat_once(messages: list, tools_schemas: list, timeout: int = 120) -> 
             'tools': [{'type': 'function', 'function': s} for s in (tools_schemas or [])],
             'max_tokens': REPLY_MAX_TOKENS, 'temperature': 0.2, 'top_p': 0.8,
             'repetition_penalty': 1.05, 'frequency_penalty': 0.05, 'stream': False,
-            'enable_thinking': False}  # book-16 #5：关闭思维链输出（防英文思考刷屏）
+            'chat_template_kwargs': {'enable_thinking': False}}  # book-16 #5：正确开关位置（qwen3 官方）
     req = _ur.Request(LLM_HTTP, data=_json.dumps(body).encode(),
                       headers={'Content-Type': 'application/json'}, method='POST')
     try:
