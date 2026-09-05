@@ -47,13 +47,16 @@ class TestMixTracksOutput(unittest.TestCase):
                 return w
             a1, a2 = _audio(o1), _audio(o2)
             # 1) 主轨（400Hz，lowpass 800）未被静音——r3 原 bug（volume=0.0 裸数=静音）的直接护栏
-            main_band = self._band_db(a1, "lowpass=f=800")
-            self.assertGreater(main_band, -60.0, "主轨疑似静音（volume 单位 bug 复发？）")
-            # 2) 底轨（2400Hz，highpass 1500）相对差≈bed_db（±3dB）——loudnorm 整体归一不影响边带比值
+            main1 = self._band_db(a1, "lowpass=f=800")
+            main2 = self._band_db(a2, "lowpass=f=800")
+            self.assertGreater(main1, -60.0, "主轨疑似静音（volume 单位 bug 复发？）")
+            # 2) 边带比值（bed/main，增益可抵消；loudnorm 整体归一不再干扰）+ 内两档差≈bed_db 差
             bed1 = self._band_db(a1, "highpass=f=1500")
             bed2 = self._band_db(a2, "highpass=f=1500")
-            self.assertAlmostEqual(bed1 - bed2, 12.0, delta=3.0,
-                                   msg="底轨 dB 未生效: %.1f vs %.1f" % (bed1, bed2))
+            r0 = bed1 - main1
+            r12 = bed2 - main2
+            self.assertAlmostEqual(r0 - r12, 12.0, delta=2.0,
+                                   msg="底轨 dB 未生效: ratio %.1f vs %.1f" % (r0, r12))
 
 
 if __name__ == "__main__":
