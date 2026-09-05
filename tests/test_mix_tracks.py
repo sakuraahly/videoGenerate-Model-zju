@@ -1,4 +1,4 @@
-"""三轮审阅：mix_tracks 双轨音量测试（无 ffmpeg 自动跳过；spark 上真实断言 dB 语义）。"""
+"""四轮审阅修正：mix_tracks 输出电平护栏（覆盖产物，非裸 ffmpeg 语义）。"""
 import re
 import shutil
 import subprocess
@@ -13,40 +13,47 @@ if FFMPEG:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "runs"))
 
 
-@unittest.skipUnless(FFMPEG, "无 ffmpeg（Windows 预期跳过；spark 全量跑）")
-class TestMixTracks(unittest.TestCase):
-    def _tone(self, path, dur=2.0):
+@unittest.skipUnless(FFMPEG, "无 ffmpeg（Windows 跳过；spark 全量跑）")
+class TestMixTracksOutput(unittest.TestCase):
+    def _tone(self, path, freq, dur=2.0):
         subprocess.run([FFMPEG, "-y", "-v", "error", "-f", "lavfi",
-                        "-i", "sine=frequency=1000:duration=" + str(dur),
+                        "-i", "sine=frequency=" + str(freq) + ":duration=" + str(dur),
                         "-v", "error", "-c:a", "pcm_s16le", str(path)], check=True, capture_output=True)
 
-    def _mean_db(self, path):
-        r = subprocess.run([FFMPEG, "-i", str(path), "-af", "volumedetect", "-f", "null", "-"],
+    def _band_db(self, path, filt):
+        r = subprocess.run([FFMPEG, "-i", str(path), "-af", filt, "-f", "null", "-"],
                            capture_output=True, text=True)
         m = re.search(r"mean_volume: ([0-9.\-]+)", r.stderr or "")
         return float(m.group(1)) if m else 0.0
 
-    def test_dB_semantics_and_bed_difference(self):
+    def test_main_not_silent_and_bed_db_ratio(self):
         with tempfile.TemporaryDirectory() as dd:
             d = Path(dd)
-            main = d / "m.wav"; self._tone(main)
-            bed = d / "b.wav"; self._tone(bed)
+            main = d / "m.wav"; self._tone(main, 400)
+            bed = d / "b.wav"; self._tone(bed, 2400)
             src = d / "v.mp4"
             subprocess.run([FFMPEG, "-y", "-v", "error", "-f", "lavfi",
                             "-i", "color=c=blue:s=160x90:d=2", "-c:v", "libx264", str(src)],
                            check=True, capture_output=True)
             from h3 import postprocess as pp
-            # 单位语义：裸音量 0.0=静音、-12.0=削波；dB=-12dB=衰减（三审实测结论）
-            base_db = self._mean_db(main)
-            filt = d / "filt.wav"
-            subprocess.run([FFMPEG, "-y", "-v", "error", "-i", str(main), "-af", "volume=-12dB", "-c:a", "pcm_s16le", str(filt)], check=True, capture_output=True)
-            dB12_db = self._mean_db(filt)
-            self.assertAlmostEqual(base_db - dB12_db, 12.0, delta=1.5)
-            # mix_tracks 产物存在且可探测
-            out = d / "mix.mp4"
-            pp.mix_tracks(src, out, main, bed=bed, main_db=0.0, bed_db=-12.0)
-            self.assertTrue(out.is_file())
-            self.assertGreater(out.stat().st_size, 1000)
+            o1 = d / "mixed0.mp4"
+            o2 = d / "mixed12.mp4"
+            pp.mix_tracks(src, o1, main, bed=bed, main_db=0.0, bed_db=0.0)
+            pp.mix_tracks(src, o2, main, bed=bed, main_db=0.0, bed_db=-12.0)
+            def _audio(p):
+                w = d / (p.stem + ".wav")
+                subprocess.run([FFMPEG, "-y", "-v", "error", "-i", str(p), "-vn", "-c:a", "pcm_s16le", str(w)],
+                               check=True, capture_output=True)
+                return w
+            a1, a2 = _audio(o1), _audio(o2)
+            # 1) 主轨（400Hz，lowpass 800）未被静音——r3 原 bug（volume=0.0 裸数=静音）的直接护栏
+            main_band = self._band_db(a1, "lowpass=f=800")
+            self.assertGreater(main_band, -60.0, "主轨疑似静音（volume 单位 bug 复发？）")
+            # 2) 底轨（2400Hz，highpass 1500）相对差≈bed_db（±3dB）——loudnorm 整体归一不影响边带比值
+            bed1 = self._band_db(a1, "highpass=f=1500")
+            bed2 = self._band_db(a2, "highpass=f=1500")
+            self.assertAlmostEqual(bed1 - bed2, 12.0, delta=3.0,
+                                   msg="底轨 dB 未生效: %.1f vs %.1f" % (bed1, bed2))
 
 
 if __name__ == "__main__":
