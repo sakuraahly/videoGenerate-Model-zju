@@ -53,5 +53,16 @@
 - book-13 P0（输出异常保护已做展示层；本册补生成层）；book-15（服务编排：E1 需要改 sglang 启动参数，经 memory_planner 管理）；book-01（基线：复读率作为稳定性指标）。
 
 ## 5. 根治完成记录（2026-09-05）
-- **补丁（同日）**：① qwen 工具参数支持**裸 KV**（`stage=t2v, seconds=5, dry_run=true`——模型实际输出此格式而非 JSON；`_parse_tool_args` 兼容 JSON/KV/围栏，run log 实锤 dry-run 预览未提交）；② 上传预览**按会话隔离**（`_gal_by_cid`，堵“新会话混显上一会话预览”）；③ **空转提前停**（连续两轮输出前缀重复→停+提示）；④ 工具审计 jsonl 为排查提供“调用是否真实发生”证据。
+
+### 5.1 问题台账（2026-09-05 汇总，供后续计划排序）
+| # | 问题 | 状态/证据 | 处置 | 优先级 |
+|---|---|---|---|---|
+| 1 | 复读/146 次循环 | 已根治（自管循环+tools= 格式+解析+回填；A/B/C 验证） | 完成 | - |
+| 2 | 工具参数 JSON 400 | 已根治（裸 KV 参数解析；run log ok+审计 params 正确） | 完成 | - |
+| 3 | 上传预览跨会话混显 | 已修（预览按 cid 隔离 _gal_by_cid） | 完成（待用户 UI 确认） | - |
+| 4 | 续接空转/自动停 | 已修（空转提前停+征询不续） | 完成 | - |
+| 5 | **模型思维链全文刷屏**（英文 The user is saying/Let me…，无 think 标记）→ 占满对话、REPLY 800 截断 →（模型未返回内容） | **待验**（enable_thinking=false 已被 SGLang 接受（200）；复杂工具场景未验证） | 第一批全链验证 enable_thinking=false；若仍现→ SYSTEM_MESSAGE 加禁止输出推理过程/直接给结论；再兜底展示侧净化 | **P0** |
+| 6 | t2v 无 audio feature vs 用户要求人物说话声音 → 模型在 t2v/r2v 间反复纠结不行动 | 待办 | SYSTEM_MESSAGE 补决策规则：声音+字幕需求→ t2v 生成后由后处理混音/字幕（T2b），人物口型/多参考→ r2v（需图）；一句话定案避免纠结 | P1 |
+
+- 补丁（同日）：① qwen 工具参数支持**裸 KV**（`stage=t2v, seconds=5, dry_run=true`——模型实际输出此格式而非 JSON；`_parse_tool_args` 兼容 JSON/KV/围栏，run log 实锤 dry-run 预览未提交）；② 上传预览**按会话隔离**（`_gal_by_cid`，堵“新会话混显上一会话预览”）；③ **空转提前停**（连续两轮输出前缀重复→停+提示）；④ 工具审计 jsonl 为排查提供“调用是否真实发生”证据。
 - **✅ 已实施并全链路验证**：① 自管工具循环（_one_run 重写：≤6 轮、增量解码、超限即断、每轮审计）；② 直连 SGLang 用 **tools= 格式**（关键：只有 tools= 触发 qwen3.8 的 <tool_call><function=..> 标签；functions= 不触发）；③ 新增 runs/agent/toolcall_parse.py；④ 工具结果 user 视角回填（规避 tools 模式 function/tool role 400）；⑤ SYSTEM_MESSAGE 增“工具执行铁律”；⑥ 真实 run_turn 验证：A 问候 done / B 素材链 done（list_references→回填→中文收尾 3883 字）/ C 5 工具连锁 done；无复读、无 146 次循环；单测 152 全绿。
