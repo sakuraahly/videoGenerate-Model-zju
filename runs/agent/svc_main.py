@@ -1,4 +1,4 @@
-﻿"""book-15 L7：服务编排观测与动作（spark 侧入口；dev.py services 调用）。
+"""book-15 L7：服务编排观测与动作（spark 侧入口；dev.py services 调用）。
 
 用法：python3 runs/agent/svc_main.py status | restart-llm | restart-agent | selfcheck
 全部动作走项目程序（llm_mem/queue_probe）；ComfyUI 一律不重启。
@@ -11,6 +11,9 @@ import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))  # 直跑时也可 import runs.agent.*
+if str(PROJECT_ROOT / 'runs') not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / 'runs'))
 
 
 def _run(cmd, timeout=30):
