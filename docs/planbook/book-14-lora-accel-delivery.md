@@ -60,6 +60,10 @@
       按钮文案+提示与实际刷新目标一一对应（核对 Gradio 事件绑定，不许“刷新全屏”含糊行为）。
 - [ ] T6 风格/角色 LoRA 支持：config/capabilities.json 增加 style_lora 字段 + 注入点（与加速 LoRA 分离），
       仅作为固定视觉特征用途（明确提示词注入规范）。
+- [ ] **T9 qwen 取消自己任务（用户提出 2026-09-05；现状：agent 无取消工具、引擎无取消路径）**：
+      - 可行性已实测：ComfyUI 5.23.1 取消端点 = **POST /queue** + body `{"delete": [qid]}`（空载荷 200；旧 `/queue/delete`/DELETE 方法均 405；`POST /prompt` 400 为正常）。
+      - 实现分两层：① `dev.py queue cancel <qid> --prompt-id <pid>` —— **归属校验**（pid 必须命中本机登记 last_job.json 或任务目录 job.json，否则拒绝并提示）；② agent 新工具 `cancel_task(prompt_id)`（内部转 RunScript/或直接调 dev.py queue cancel；仅允许取消**自己会话登记的**任务），工具描述含取消后果（后台任务停止、断点清理）；
+      - 红线：**只允许取消本机登记的任务**；他人/未知任务一律拒绝；取消后提示可重新提交。
 
 ### P2（甜点，优先级很低）
 - [ ] T7 自动化自检/小故事任务：qwen3.8Max 自检质量（**重点=连贯性**；按上下文限制把长视频拆多个片段逐一检视：
@@ -77,7 +81,7 @@
 - [ ] L3 加速 LoRA 事实登记（只写 docs/code-fact-registry.md 新章 + capabilities.json 的 lora 段 + 文档图表；
       不改引擎）
 - [ ] L4 book-13↔book-14 条目迁移核对（仅文档：把 book-13 §3.1/3.2/见闻迁移到本册，串引用）
-- [ ] L5 dev.py queue status（只读：队列清单+归属判定=本会话登记/未知/他人；**禁止**实现删除，删除属 T 级待归属校验）
+- [ ] L5 dev.py queue status（只读：队列清单+归属判定=本会话登记/未知/他人；**禁止**实现删除——删除/取消由 **T9** 实现，含归属校验）。**L5 已完成**（book-12 A5：`dev.py queue`，只读+归属，spark 实测）。
 
 ---
 
@@ -87,3 +91,4 @@
   tests/e2e_smoke.py（SMOKE_OK）+ 真机 ffprobe 证据。
 - 与 book-12（注册表/灵动适配——lora 声明进 features）、book-11（日志/审计）、book-09（黄金路径/验证）联动。
 - book-13 剩余项处理完毕后执行**归档**（把未完成且仍有价值条目迁至各册或本册，然后 book-13 只留指针）。
+- **架构优化项归属（L4 迁移核对，2026-09-05）**：book-13 §3.1（素材绑定统一入口）→ 随本册 T1/T8 落地；§3.3（事实/常量单源）→ 随本册 L3（capabilities.json lora 段 + code-fact-registry §10）+ T3 + 红线（注册表/事实登记表/runtime_check 同步）落地；§3.2（图片解析收敛）→ 本册未覆盖，暂留 book-13。book-13 参考视频支持（P2#10，旧称 P1#10）→ 已迁移至本册 T8。

@@ -45,7 +45,7 @@
 9. **"素材绑定"路径统一（架构重构，见 §3.1）**。
 
 ### 🟨 P2（甜点/低优先）
-10. 参考视频支持（LoadVideo+ref_videos 接线）——维持"甜点/低优先"。
+10. 参考视频支持（LoadVideo+ref_videos 接线）——维持"甜点/低优先"。（→ 见 book-14 T8「参考视频/音频原生支持」，已迁移登记）
 11. 时区显示统一（线索/日志时间：北京 vs UTC 差 8h；随 book-11 统一）。
 12. `turn_state._active_batch` 消费或清理（现为死隔离；接 cid 或删除）。
 13. seed 策略：h3_submit 默认 seed 12345 硬编码 → 默认随机/可指定。
@@ -58,12 +58,15 @@
 ### 3.1 统一"素材→模板槽位"绑定入口
 - 现状三处路径：`refimage use --slot N`（工具）、`h3_submit --image`→`bind_images_to_template`（引擎）、未来 `call_comfyui images`（agent）。均改同一模板文件，语义易漂移。
 - 方案：**单一入口 `refimage.bind_images_to_template(stage, names)`**（已存在）供三者共同调用；`use`/`--image`/`images` 仅做参数归一 → 收敛后行为一致、可审计、可 undo。
+> 关联 book-14：绑定入口的收敛随 book-14 T1（LoRA 接线复用同一 `bind_images_to_template` 入口）与 T8（参考视频/音频接线）落地。
 
 ### 3.2 图片解析收敛（_resolve_image / gather_images）
 - `h3_batch._resolve_image` 与 `stage._resolve_input_image` 功能重复（uploads/input 池查找），且都以"项目根/uploads + ComfyUI input"为范围；抽到共享模块（如 `runs/h3/assets.py`），两端复用，防改动不一致。
+> 关联 book-14：book-14 未覆盖图片解析收敛，本项**暂留 book-13**（架构优化·低优先）。
 
 ### 3.3 事实/常量单源
 - 已有 code-fact-registry + runtime_check.FACTS；把 `DEFAULT_ASSET_MARKERS`（模板默认资产标记）纳入登记表，新增默认资产时须更新；`REPLY_MAX_TOKENS` 等常量核对继续由 runtime_check 把关。
+> 关联 book-14：事实/常量单源随 book-14 L3（加速 LoRA 登记进 `capabilities.json` + code-fact-registry §10）、T3（模板默认值 vs 注册表 params 核对）与红线（新增参数须同步注册表/事实登记表/runtime_check）落地。
 
 ### 3.4 角色化工具描述/参数动态化（随 book-12）
 - 六工具描述仍手写枚举（stage/resolution/工作流）→ 注册表派生，避免"新工作流=改代码+改描述"。

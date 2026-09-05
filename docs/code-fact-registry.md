@@ -104,3 +104,18 @@
 - 判定基准：文件 mtime 与 `meta.ts`（格式 `%Y-%m-%d %H:%M:%S`）的**较新者**（取 max）；超过 `days` 才算超期——只要有一个信号说明"最近动过"就不删（宁可漏删不可误删）。
 - 删除边界（红线）：**只删聊天档** `<cid>.jsonl` 与 `<cid>.meta.json`；`thumbs/<sha>.jpg` 按内容 sha 命名、无法关联 cid → **一律不删**；严禁触碰 `uploads/`、`workflows/`、`outputs/`、`logs/run_*.log`（运行期产物）。
 - 命令：`python runs/agent/session_cleanup.py status`（统计总数/超期/保留）｜`clean`（默认 dry-run，打印将删清单）｜`clean --yes`（真正删除）｜`clean --days N`（覆盖保留天数）。返回 `(统计字典, exit_code)`，纯手动 CLI，不接生成流程。
+
+---
+
+## 10. 加速 LoRA（book-14 L3，2026-09-05 实测登记）
+
+- 单一事实源：`config/capabilities.json` 顶层 `"lora"` 段（本表与之同源；`markdown_doc` 不渲染 lora，故 `docs/capabilities-ai.md` 不含本节）。目录：`/home/Developer/ai/ComfyUI/models/loras/MiniMax_H3/`（3 个，Lightx2v/ModelTC 社区制作，ComfyUI bf16）。
+
+| 文件 | 模式 | 步数 | 分辨率/训练 | 适用 |
+|---|---|---|---|---|
+| `minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16` | FL2VA（t2v/i2v/flf2v） | 4 | 768p（1344×768）v1.0 | 快速出片/简单场景验证；文生视频、首帧图生、首尾帧补间 |
+| `minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16` | Ref2VA（r2v） | 4 | 544p 混合宽高比 v0.1 预览 | 多模态参考：≤9 图 + 3 参考视频 + 3 参考音频；提示词用 `<Picture N>`/`<Video N>`/`<Audio N>` |
+| `minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16` | Ref2VA（r2v） | 8 | 768p v1.0 正式 | 同上但质量更高（细节/人物一致性/复杂运镜更稳），速度≈4 步版 2 倍；正式出片 |
+
+- **加速 LoRA ≠ 风格/角色 LoRA**：后者固定特定视觉特征（画风/角色一致性），与加速 LoRA 是不同用途，可叠加（需校验兼容）。
+- **边界**：本节仅登记事实（路径/模式/步数/分辨率/用途）；把 LoRA 接入模板 + 降 `BasicScheduler.steps` + `h3_submit --lora` 属 book-14 **T1**（加速）/**T6**（风格/角色），不在 L3 范围，引擎未改。
