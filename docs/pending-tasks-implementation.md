@@ -1,4 +1,4 @@
-﻿# 待做任务·具体实现规格（供外部 AI 审核）
+# 待做任务·具体实现规格（供外部 AI 审核）
 
 > 文档性质：把「甜点/待做任务」的具体实现方案（含现状复用、文件级步骤、验证方法、风险取舍）写清，供**另一位 AI 审核**；审核者只需审本文件+抽查引用代码（所有路径相对项目根 `D:/MY_CODING_PROGRAM/videoGenerate-Model-zju`，spark 同构 `~/videoGenerate-Model-zju`）。
 > 版本：2026-09-05 · 关联计划书：book-13 §6（S1-S14 总览）、book-14、book-15、book-18。
@@ -35,7 +35,7 @@
 **现状**：T2 链已存在且真机验证过（video_12：608×352→1216×704/720p、5.17s/124f，ffprobe 断言）。`h3_submit --postprocess fast` 现有完成钩子；**但 agent（call_comfyui）当前不传 `--postprocess`**。
 **实现（文件级）**：
 1. `runs/agent/tools.py`：CallComfyUI 提交参数追加 `--postprocess fast`（在 `--submit-only` 之后追加；dry_run 不带）；
-2. `runs/h3_submit.py` 完成钩子（**三审定稿=合并单次编码**，与 h3_submit.py:884-895 一致）：`finalize(原片) → [fast 且 tts 并存时] tts.prepare_speech(text)→ srt_+speech → postprocess.process(原片, _pp, srt=...)  ← 增强+字幕同 -vf 单次编码 → tts.replace_audio_only(_pp, speech)（视频 copy）→ PROBE/TTS_OUT`；仅有 tts 时走 attach_speech_and_subtitle（单次烧录编码+音轨 copy）；仅 fast 时走 run_fast。**不再存在双次 CRF18 路径**；
+2. `runs/h3_submit.py` 完成钩子（**三审定稿=合并单次编码**；位置以「# 二轮审阅：postprocess fast + 台词并存」注释行为准，防行号漂移）：`finalize(原片) → [fast 且 tts 并存时] tts.prepare_speech(text)→ srt_+speech → postprocess.process(原片, _pp, srt=...)  ← 增强+字幕同 -vf 单次编码 → tts.replace_audio_only(_pp, speech)（视频 copy）→ PROBE/TTS_OUT`；仅有 tts 时走 attach_speech_and_subtitle（单次烧录编码+音轨 copy）；仅 fast 时走 run_fast。**不再存在双次 CRF18 路径**；
 3. 增强滤镜链（现有 `process()`，纯 ffmpeg，无 GPU）：`scale=iw*2:ih*2:flags=lanczos` → `hqdn3d=1.0` → `unsharp=5:5:0.4`（各向异性 lanczos 放大；降噪=时域去低步伪影；锐化恢复边缘；参数均可 `--postprocess fast` 固定）。
 **超分方案（六审定稿——回填已确定事实，删除已撤回/未核实措辞）**：① v1 lanczos 保留兜底；② **v2 真实超分=本机已就位零下载**（§0 实测：`upscale_models/` 有 `RealESRGAN_x4plus.pth(+safetensors)` 与 `4x-UltraSharp.pth`）；**schema 已实测**（changelog 登记）：`UpscaleModelLoader` 输入键=**model_name**、`ImageUpscaleWithModel`=**upscale_model**、`LoadImage` 需 **input/ 根目录**（user_uploads 子目录不被解析）；工作流=`UpscaleModelLoader+ImageUpscaleWithModel+SaveImage`（经 `/prompt` 独立请求，不等 H3 生成队列）；**默认模型=4x-UltraSharp**（锐利/纹理优）；③ **倍率口径（六审更正）**：两模型均 **4x**——源 608×352→**2432×1408**；测试帧 1216×704→**4864×2816**（此前“1216→2432/2x”系误写）；按目标分辨率配合 lanczos 下采样即可得 720p/1080p/2K 档（如实标注=超分合成非原生）；④ 可选 RIFE 插帧（`frame_interpolation/` 为空→魔搭下载；`--interp 60fps`）；⑤ 顺序仍=增强→字幕/语音（合并单次编码）。**验证**：真实链 gen 一次（4 步 360p）：产物=1216×704、时长/帧数不变、字幕抽帧清晰、音轨 AAC 且时长=视频；`PROBE` 断言宽高。
 **风险**：**二轮审阅修正（撤回“已遵守”声明）**：旧链 process+render_subtitle 曾为两次 CRF18；现已重构为合并单次编码（process 支持 srt 并入同一 -vf；run_full 同步；钩子 fast+tts 并存走合并链）——实测：video_31 离线合并链 2.4s，产物 1216×704/5.167s，字幕比例字号（0.07×704≈49px，旧绝对 20px 已废）帧目检清晰。P1 拆分：**P1a=默认 lanczos fast（单次编码，即时收益）**；**P1b=--esrgan 交付档可选（单帧实测 ~11.8s（1216→2432）；串行 124 帧≈24min——成本一个数量级，仅精品/交付显式启用；先做批处理并行优化，目标 3-6min，未优化前禁默认）**。工作量：P1a 小-中；P1b 中。
@@ -65,7 +65,7 @@
 
 ## 6. S6 男/女声可选 + 字幕字号可调
 
-**实现（六审定稿——引擎侧已预接通）**：`runs/h3/tts.py` 已支持 `voice`（XiaoxiaoNeural 女 / YunxiNeural 男）。**引擎预接通已完成（commit 93c1533）**：`h3_submit --tts-voice`（choices=两个 Neura 音色，默认女声）+ 任务记录 `tts_voice` + 完成钩子**两条路径**均传 voice（合并链 `prepare_speech(voice=...)` 与非合并 `attach_speech_and_subtitle(voice=...)`）+ `tts_done` 日志取**实际 voice**（六审：旧日志硬编码 DEFAULT_VOICE 会让验证判据必然误判——已修）。剩 S6 剩余项：① `tools.py CallComfyUI` schema 增 `tts_voice`（enum 由上述 choices 派生）→ 透传 `--tts-voice`；② `--font-size` 透传（`process/render_subtitle` 默认=比例字号 0.07×H）；③ SYSTEM_MESSAGE 台词规则补一句（用户指定男/女声或字号→传给 tts_voice/tts_font_size）。
+**实现（七审定稿——引擎已预接通，含 else 路径）**：`tts.py` 已支持 voice（XiaoxiaoNeural 女 / YunxiNeural 男）。**引擎（commit 93c1533+1d3e3bb）**：`h3_submit --tts-voice`（**choices=[xiaoxiao, yunxi, 两全名]**，默认女声；**短名/全名映射层 `_V_ALIASES`**（h3_submit：xiaoxiao→Xiaoxiao、yunxi→Yunxi，记录/CLI 统一全名））+ 任务记录 `tts_voice` + 完成钩子**两条路径均传 voice**（合并链 prepare_speech / **非合并链 attach_speech_and_subtitle（七审补修 else）**）+ `tts_done` 日志实际 voice。**S6 剩余项**：① `tools.py` schema 增 `tts_voice`（**enum=短名 xiaoxiao|yunxi**，LLM 友好；tools 侧复用 `_V_ALIASES` 映射全名透传）；② `tts_font_size` 字段（CLI `--font-size` 对应；**schema 字段名=tts_font_size**，与 CLI 名区分——七审统一）；③ SYSTEM_MESSAGE 台词规则补一句。
 **验证**：真实链指定 yunxi → `start argv` 含 `--tts-voice zh-CN-YunxiNeural` 且 `tts_done ... voice=zh-CN-YunxiNeural`（**此判据六审后可信**）；字号=抽帧目检。工作量：小。
 
 ## 7. S7 参考视频/音频原生支持（book-14 T8）——最大工程
@@ -93,22 +93,22 @@
 
 ## 9. S9 会话历史导出/搜索
 
-**现状（审核修订）**：`dev.py` **无 sessions 子命令**（零命中；`list_chats` 在 ui_app，非 dev.py）——**全新建**。**实现（四审补两点）**：`list` 须 **glob '*.jsonl'**（`logs/agent_chats/` 下有 `thumbs/` 子目录，遍历目录条目会把 thumbs 当会话）；路径常量**复用 `session_cleanup.CHATS_DIR`**（唯一权威，防第三份硬编码）。**实现**：`dev.py sessions`（新建）：`list`、`export <cid>`、`search <kw>`；纯文件读。ut ...]`、`search <kw> [--cid]`；纯文件读。
+**现状（审核修订）**：`dev.py` **无 sessions 子命令**（零命中；`list_chats` 在 ui_app，非 dev.py）——**全新建**。**实现（七审清理回填）**：① `list` 须 `glob '*.jsonl'`（`logs/agent_chats/` 下有 `thumbs/` 子目录，遍历目录条目会把 thumbs 当会话）；② 路径常量**复用 `session_cleanup.CHATS_DIR`**（唯一权威）；③ 子命令=`dev.py sessions list` / `export <cid> [--out docs/exports/<cid>.md]` / `search <kw> [--cid]`（纯文件读）。
 **验证**：对真实会话 export（md 完整：用户/助手分段+UTC+8 时间戳）→ 目检；search '水墨' 命中既有会话。工作量：小。
 
 ## 10. S10 质量看板（quality-report）
 
-**现状（审核修订）**：`runs/h3/quality.py` **不存在**（零命中）——**全新建**。**实现（五审字段缺口修正）**：① `runs/h3/quality.py`（新建）：`append(path, prompt_id='')`——**四值来源明确**：ts=append 时自生成；prompt_id=调用点传参（h3_submit 在 PROBE 处持有）；bytes=`Path.stat().st_size`；**audio 需 `postprocess.probe_av()`（五审新增：视频+音频双流探测——原 probe() 用 `-select_streams v:0`，音频结构性缺失）**；video 字段=PROBE/probe() 既有；② `compare(a,b)`（ffmpeg ssim）、`report()`；③ `dev.py quality-report`（新建）；④ h3_submit PROBE 后自动 append（probe_av）。工作量：小-中（含 probe_av 扩展与传参路径）。
+**现状（审核修订）**：`runs/h3/quality.py` **不存在**（零命中）——**全新建**。**实现（五审字段缺口修正）**：① `runs/h3/quality.py`（新建）：`append(path, prompt_id='')`——**四值来源明确**：ts=append 时自生成；prompt_id=调用点传参（h3_submit 在 PROBE 处持有）；bytes=`probe_av()` 返回的 size（与其余字段同源，**择一**；不另用 Path.stat）**audio 需 `postprocess.probe_av()`（五审新增：视频+音频双流探测——原 probe() 用 `-select_streams v:0`，音频结构性缺失）**；video 字段=PROBE/probe() 既有；② `compare(a,b)`（ffmpeg ssim）、`report()`；③ `dev.py quality-report`（新建）；④ h3_submit PROBE 后自动 append（probe_av）。工作量：小-中（含 probe_av 扩展与传参路径）。
 **验证**：对比命令在 video_19/24（已知 SSIM 0.864）复算一致性；report 输出含该记录。工作量：小-中（与 §10 实现估值一致）。
-
-## 12. S12 跨会话「显式共享区」选项
-
-**设计（语义请审核）**：新增 `refimage list --scope-shared`（=本会话 + 用户最近 7 天内『显式授权』的会话——授权=UI 新增『允许本会话访问这些会话』多选下拉，写入 `logs/agent_chats/<cid>.meta.json` `shared_from:[]`）；`list_references` 默认仍仅本会话；用户文本含『用第 X 会话的素材』时工具校验授权否则报错（复用现有『素材边界』模板）。
-**实现**：`refimage.py`（scope-shared 分支）+ `ui_app`（授权多选，小型 `gr.CheckboxGroup`）+ `tools.py list_references` 透传。**风险**：权限语义（默认不授权、显式点名、可撤销）必须先在 planbook 定稿；实现排在 S9 之后。工作量：中。
 
 ## 11. S11（不建议近期项）——规格留空
 
 S11=§3.2 图片解析收敛（assets.py 重构）：价值/风险比低，登记观察；不提供实施规格（详见 book-13 总览）。
+
+## 12. S12 跨会话「显式共享区」选项
+
+**设计（定稿=一次性 token，七审回填——原 CheckboxGroup+shared_from[] 持久授权方案已于首轮审核否决）**：用户点名『用第 X 会话的素材』→ 系统生成一次性 token 写入目标会话 `logs/agent_chats/<cid>.meta.json`（`grant_tokens:[]`，含来源会话/一次性/过期）→ `list_references --session shared-<target>` 校验 token（存在且未用）→ **用后即焚**（token 从 meta 移除）；无 token 一律拒绝（默认不授权，与 book-05 边界一致）。
+**实现**：`refimage.py`（token 生成/校验/销毁 + `--scope-shared` 仅对持 token 目标生效）+ `tools.py list_references` 透传 `session=shared-<target>`（**UI 无需新增控件**——用户自然语言点名即触发，token 由调试点写入）。**风险**：token 生命周期（一次性+过期+来源校验）；实现排在 S9 之后。工作量：中。
 
 ## 13. S13 远期池（**当前结论**；演变见 changelog）
 
@@ -129,6 +129,10 @@ S11=§3.2 图片解析收敛（assets.py 重构）：价值/风险比低，登�
 | 3 | 参考音频 vs 旁白 | 定稿混音（§7 mix_tracks） |
 | 4 | S8 归一口径 | 定稿决策树（§8：空 dict 须队列消歧；cancelled 不可区分） |
 | 5 | S12 权限模型 | 定稿一次性 token（§12） |
-| 6 | GPU 预算/队列纪律 | 认可（changelog §15.3 预算表；按一意图一驱动） |## 修订历史（§14-§16：审核应答与更正——独立存档，实施者不必读）
+| 6 | GPU 预算/队列纪律 | 认可（changelog §15.3 预算表；按一意图一驱动） |
+
+---
+
+## 修订历史（§14-§16：审核应答与更正——独立存档，实施者不必读）
 
 审核演变与应答全文见 **`docs/pending-tasks-changelog.md`**（§14 模型可用性更正 / §15 一轮应答 / §16 二轮应答；后续轮次应答追加于该文件）。本文档只保留各任务**当前定稿**；任务节内“审核修订”字样仅供参考。
