@@ -850,6 +850,10 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.17 新bug修复：任务存档有时只有 workflow_api.json（2026-09-05 用户报告）
+- **根因**：`apply_lora` 注入字符串节点 id（如 `lora_14`）→ `workflow_to_ui` 用 `int(k)` 抛 `ValueError: invalid literal for int() ... 'lora_14'` → `save_workflow_ui` 静默返 None（仅 stderr 警告，被 tools.py 捕获、run log 无痕）→ **所有 4 步 LoRA 任务只有 api 版**（取证：61 api vs 48 ui；13 个 api-only 均为 lora 任务；与 stage 无关）。
+- **修复（commit 96d2188/2c3db4b）**：converter 统一节点 id→确定性 int 映射（数值原样、字符串顺延，含连线引用）；保存失败改 logutil 留痕；`tests/test_workflow_ui_conv.py` 2 例；**13 个历史目录已用修复后转换器回填**（61==61，0 失败）；**真机验收**：新 lora t2v 提交目录= api+ui 俱全。
+
 ### 20.16 四轮审核闭环（2026-09-05）
 - 审核发现并修复：mix_tracks volume 单位/护栏测试（现覆盖输出电平：主轨非静音+底轨比值差≈12dB，spark 通过）；config/llm.json 误导注释（vLLM→SGLang）；§4/§5/§9 规格事实更正（deploy.py --set 所有权/300s 窗口/nap 复用/glob+CHATS_DIR）。
 - 登记：nap/supervisor 冲突（book-13 #16）；§16 措辞已随真护栏更新；提交 win 3159eda/4efe8ea/f9ccf0f/css…（文档轮次 cb28f80 后续）。
