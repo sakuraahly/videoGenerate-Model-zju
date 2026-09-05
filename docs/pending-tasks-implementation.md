@@ -38,7 +38,7 @@
 3. 增强滤镜链（现有 `process()`，纯 ffmpeg，无 GPU）：`scale=iw*2:ih*2:flags=lanczos` → `hqdn3d=1.0` → `unsharp=5:5:0.4`（各向异性 lanczos 放大；降噪=时域去低步伪影；锐化恢复边缘；参数均可 `--postprocess fast` 固定）。
 **超分方案的取舍说明**：v1 用 lanczos（平滑、零依赖、秒级）；**真实超分模型（Real-ESRGAN x4plus）**：ComfyUI 输出目录历史中存在 `UpscaleModelLoader(RealESRGAN_x4plus.pth)` 节点（同事模板在用）→ **本机 ComfyUI 已可能持有该模型文件**（实施期核实 `~/ai/ComfyUI/models/upscale_models/`）——若存在：v2 可加 `--esrgan` 走 ComfyUI 独立请求（BatchProcess? 或者本地推理需 ComfyUI API 工作流：LoadImage+ImageUpscaleWithModel+SaveImage）；**若无该模型文件：放弃 v2，保留 lanczos**（外网受限无法下载）。
 **验证**：真实链 gen 一次（4 步 360p）：产物=1216×704、时长/帧数不变、字幕抽帧清晰、音轨 AAC 且时长=视频；`PROBE` 断言宽高。
-**风险**：增强会重编码（libx264 CRF18，一次成片不二次转码——已遵守）；时间+约 10-20s CPU。工作量：小-中。
+**风险**：**二轮审阅修正（撤回“已遵守”声明）**：旧链 process+render_subtitle 曾为两次 CRF18；现已重构为合并单次编码（process 支持 srt 并入同一 -vf；run_full 同步；钩子 fast+tts 并存走合并链）——实测：video_31 离线合并链 2.4s，产物 1216×704/5.167s，字幕比例字号（0.07×704≈49px，旧绝对 20px 已废）帧目检清晰。P1 拆分：**P1a=默认 lanczos fast（单次编码，即时收益）**；**P1b=--esrgan 交付档可选（单帧实测 ~11.8s（1216→2432）；串行 124 帧≈24min——成本一个数量级，仅精品/交付显式启用；先做批处理并行优化，目标 3-6min，未优化前禁默认）**。工作量：P1a 小-中；P1b 中。
 
 ## 3. S3 T9 收尾（取消后任务表残留）
 
@@ -92,17 +92,21 @@
 **设计（语义请审核）**：新增 `refimage list --scope-shared`（=本会话 + 用户最近 7 天内『显式授权』的会话——授权=UI 新增『允许本会话访问这些会话』多选下拉，写入 `logs/agent_chats/<cid>.meta.json` `shared_from:[]`）；`list_references` 默认仍仅本会话；用户文本含『用第 X 会话的素材』时工具校验授权否则报错（复用现有『素材边界』模板）。
 **实现**：`refimage.py`（scope-shared 分支）+ `ui_app`（授权多选，小型 `gr.CheckboxGroup`）+ `tools.py list_references` 透传。**风险**：权限语义（默认不授权、显式点名、可撤销）必须先在 planbook 定稿；实现排在 S9 之后。工作量：中。
 
-## 12. S13 远期池的实现预研（不承诺，仅给审核者方案口径）
+## 11. S11（不建议近期项）——规格留空
+
+S11=§3.2 图片解析收敛（assets.py 重构）：价值/风险比低，登记观察；不提供实施规格（详见 book-13 总览）。
+
+## 12. S13 远期池的实现预研（**注意：个别“不可行”判定已被 §14/§16 取代**——以 §14/§16 为准）
 
 | 项 | 方案 | 可行性判定（本环境） |
 |---|---|---|
-| 口型驱动（Wav2Lip/SadTalker） | 独立 venv + 模型文件推理 + 音轨→口型管线 | **不可行**：模型下载源（HF）不可达；无离线模型资产 → 除非外部提供模型文件 |
+| 口型驱动（Wav2Lip/SadTalker） | 独立 venv + 模型文件推理 + 音轨→口型管线 | **⚠ 已被 §14/§16 取代：可行**（魔搭通道 + 本地 GPU torch；先冒烟后全链） |
 | 局部重绘 Inpaint | ComfyUI `InpaintModelConditioning`+`VAEEncodeForInpaint`+SAM mask（需 SAM/Inpaint 节点与模型） | **待探测**：若 `~/ai/ComfyUI/custom_nodes` 含 ComfyUI-Inpaint 类节点且模型存在→可行（`/object_info` 枚举）；否则不可行 |
 | 标题/图表后期装配 | ffmpeg `drawtext` + Noto CJK（黑体/描边/安全区已有同参数）；数据图表=SVG 渲染→ffmpeg overlay（纯本地） | **可行**（无需新模型；工作量中） |
 | 1080p 输出 | 模型上限 768p；增强链 2x 可得 **1216×704（≈720p）**；如需 1080p 类：`--scale 2.84` 到 1728×1000? **建议口径**：交付档=768p 原生或 2x 增强，**不宣称 1080p 原生**；`--scale` 自定义允许用户自选 | 可行（如实标注：超分非原生） |
 | 齿音处理 | ffmpeg `afftdn` 已加；齿音=谱减（`highpass`+`deesser` 类无内建） | 低价值，维持暂缓 |
 
-## 13. 请审核者重点评审（五大疑点）
+## 13. 请审核者重点评审（**“五大”实为六条；各疑点结论见 §15/§16，本节保留原问供比对**）
 
 1. **S2 顺序**：『先增强后字幕/语音』是否优于『先字幕/语音后增强』？（我的理由：增强后再烧录字幕=字号语义一致、drawtext 在 2x 画布上更清晰；语音在增强前后无差别（音轨 copy））；
 2. **S7 前提检测失败时的处置**：我定为『探测失败→标记不可行并如实归档』，是否同意（vs 预留抽象接口等待模型）？
@@ -113,11 +117,11 @@
 
 ---
 
-## 附录：可复用实现索引（审核者抽查用）
+## 附录：可复用实现索引（审核者抽查用；**二轮审阅后：process 已支持 srt 单编码；run_fast/run_full 为合并链速查**）
 
 | 能力 | 文件/函数 | 备注 |
 |---|---|---|
-| 超分/降噪/锐化 | `runs/h3/postprocess.py::process`（lanczos/hqdn3d/unsharp, ffprobe 断言） | T2 已验收 |
+| 超分/降噪/锐化 | `runs/h3/postprocess.py::process`（lanczos/hqdn3d/unsharp/**srt 并入同 -vf 单编码**）；`run_fast`；`run_full`（完整链=单编码+音轨） | T2/T2b 已验收；二轮审阅已重构 |
 | 字幕 | `postprocess.render_subtitle`（libass/Noto CJK/字号描边安全区参数化） | book-18 已参数化 |
 | 语音 | `runs/h3/tts.py::synthesize/attach_speech_and_subtitle/build_srt_speech`（edge-tts/逐句/重试/loudnorm） | 听测通过 |
 | 队列/取消 | `runs/h3/queue_probe.py::collect/find_owned/cancel_owned_task` | T9 已验证 |
@@ -222,3 +226,22 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 4. 混音扩展 `mix_audio` 双轨音量配比参数（amix 权重语义）。
 
 **审核闭环**：以上即对审阅意见的完整应答；如审核方复轮，仅需针对 §15.1 未接受项说明理由。
+---
+
+## 16. 二轮审核应答与实测修订（2026-09-05）
+
+**审核方主要结论与处置**：
+
+1. S2 不二次转码声明与自身方案矛盾（双次 CRF18）——**已重构为合并单次编码并实测**（process 支持 srt 并入同 -vf；run_full 同步；钩子 fast+tts 并存走合并链）：离线实测 video_31 合并链 **2.4s** 出 1216×704/5.167s；
+2. render_subtitle 默认绝对 20px 使先增强后字幕字号静默变小——**默认改比例字号**（0.07xH；实测 704p 字幕≈49px 帧目检清晰）；
+3. mix_audio 实为替换非混流（§7 前提错误）——**docstring 更正为单轨替换 + 新增 mix_tracks 双轨混音**（旁白主轨 -14 + 底轨 -12dB amix）；
+4. ESRGAN 视频超分成本低估一个数量级——**实测单帧 ~11.8s（1216 到 2432，双模型同），串行 124 帧约 24min**；采纳 **P1a/P1b 拆分**：P1a=lanczos fast 默认；P1b=--esrgan 交付档可选 + 先做批处理并行优化（目标 3-6min，未优化前禁默认）；
+5. §0/§12/§13 与 §14 矛盾——已就地标注（§12 行改注、§13 说明、§12 标题注）；次要项（附录补 run_fast/run_full、S11 缺号补注、§15.2 序号说明、§15.3 次数回填）全部落地。
+
+**实测新增事实（登记）**：ComfyUI 超分节点 schema：`UpscaleModelLoader` 输入键=**model_name**（非 upscale_model）；`ImageUpscaleWithModel`=upscale_model；LoadImage 需 input/ 根目录（user_uploads 子目录不能被直接解析）。
+
+**审核问题“需要我直接落补丁吗？”**——已由本项目落地提交（commit 8c971f7/84f7b69 + 1c4c4d7/d2d4c95），证据=上述实测。
+
+**仍未决/待实施前置（如实）**：① ESRGAN 批处理并行优化（S2-P1b 第一步）；② §15.5 其余项（魔搭模型真实 ID、Ref2VA 探测、amix 权重语义）按确认一项动工一项；③ S2 正式实施（钩子默认 fast 接线）：前置=合并链已就绪（✓）+ 队列空闲窗口 + 回滚开关 --postprocess none（已有）——待第一批整体拍板。
+
+**第三轮建议聚焦**：批处理并行超分可行性验证 + Wav2Lip 冒烟流程设计。
