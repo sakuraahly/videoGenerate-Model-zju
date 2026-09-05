@@ -2,9 +2,9 @@
 
 > 用途：**让新 Agent 无缝接手规划任务**（不依赖原会话上下文）。本档自包含；
 > 与 `docs/handoff-2026-09-05-L-tasks.md`（book-14 L1–L5，已完成）互不覆盖。
-> 现状时间点：**九轮外部审核闭环**（八轮=代码修复+真机验收；九审=S7 规格专项修订——纯文档，权威见 changelog §20 与 pending-tasks-implementation §7 九审定稿）；仓库双端干净。
+> 现状时间点：**十轮外部审核闭环**（八轮=代码修复+真机验收；九审/十审=S7 规格专项修订——纯文档，权威见 changelog §20/§21 与 pending-tasks-implementation §7 十审定稿）；仓库双端干净。
 >
-> 一句话现状：规划书 `docs/pending-tasks-implementation.md`（S1–S13 + P2–P6）经 **9 轮审核**定稿（九审=S7 规格专项，含 uiapi 文件选择器分支/GetVideoComponents 链/登记补全/两级验证判据），
+> 一句话现状：规划书 `docs/pending-tasks-implementation.md`（S1–S13 + P2–P6）经 **10 轮审核**定稿（十审=S7 计数修正 + 主案改 API 层注入（apply_lora 同型）/GetVideoComponents 链/登记补全/两级验证判据），
 > 唯二被审出的**代码回归**（TTS 钩子两处 UnboundLocalError、workflow UI 存档缺失）已修复；
 > **剩余全部为待实施任务**，推荐从 S2-P1a → S3 → S8 开始（§5）。
 
@@ -100,7 +100,7 @@ python runs/dev.py logs view -N / check / clean [--yes]
 | **S2-P1a**（§2） | agent 默认 `--postprocess fast` + 合并单次编码链 | 钩子 fast 分支现已修复+测试（八审），P1a 绿灯；回滚开关 `--postprocess none` 已存在；tools.py 在 `--submit-only` 之后追加；dry_run 不带 |
 | **S3**（§3） | 取消后任务表残留 → `mark_cancelled(cid,pid)` 是唯一权威（发『已取消』+停轮询）；CancelTask 成功仅调它，`clear_tasks` 会在下一轮 send 被覆盖 | `runs/agent/{task_watch,tools,queue_probe}.py`；单测 mock task_watch 状态 |
 | **S8**（§8） | `h3_batch` 状态重写：`ComfyClient(retries=1, request_timeout=5)` + `queue_pids()` + 决策树 | “cancelled/从未排队”不可区分（如实标注）；勿改 queue_probe.collect 职责 |
-| **S7**（§7） | 参考视频/音频原生支持（ref2va；**最大工程**，推荐排在 S8 后） | 九审定稿：本地 r2v 模板即 Ref2VA（ref_* 槽位已有、仅未接线）；**ref_videos 槽位类型=IMAGE**——LoadVideo（VIDEO）须经 GetVideoComponents 拆帧/拆声（images→ref_videos、audio→同号 ref_video_audios；utility-gan_upscaler.json 已实证同型链）；**uiapi.py 需新增文件选择器转换分支**（LoadVideo/LoadAudio 的 object_info 只声明 1 COMBO 而 UI widgets_values 记 2 值→通用路径抛 UiUnsupported）；7a 登记后必须补全 slots/features（add_local 默认全空）；bind_refs_to_template 的 template 设为必填；验证=两级判据（在线 API dict 断言 + 真实提交）；探测失败→如实归档不臆造 |
+| **S7**（§7） | 参考视频/音频原生支持（ref2va；**最大工程**，推荐排在 S8 后） | 十审定稿：本地 r2v 模板即 Ref2VA（ref_* 槽位已有、仅未接线）；**ref_videos 槽位类型=IMAGE**——LoadVideo（VIDEO）须经 GetVideoComponents 拆帧/拆声（images→ref_videos、audio→同号 ref_video_audios；utility-gan_upscaler.json 已实证同型链）；**主案=API 层注入**（循 apply_lora 先例 stage.py:180-220：转换后注 LoadVideo/GetVideoComponents/LoadAudio + 槽位键；免 uiapi 文件选择器分支与 UI 行合成；注入 id 用数字字符串）；**计数口径=模板 8/1/1 行、node 上限 9/3/3**（7a 目标 images count=8，勿写 9）；7a 登记后必须补全 slots/features（add_local 默认全空）；验证=两级判据（在线注入后 API dict 断言 + 真实提交）；探测失败→如实归档不臆造 |
 | S1（§1） | gallery caption/可用性 | 读时计算不持久 |
 | S4（§4） | `idea2prompts --segments-json` 对齐 h3_batch `--prompts-file`；真 LLM 验证**在 spark 本机** | `config/llm.json` 别手改；deploy.py --set 管 base_url |
 | S5（§5） | `svc_main.py` 增 `selfcheck-llm`：前置 `llm_mem.comfy_queue_idle()`、复用 `llm_mem.nap()`、恢复窗口 **≥300s**、与 restart-llm 互补、`selfcheck` 与 `selfcheck-llm` 一并对齐 `--yes` | 一次性改动三处（docstring/choices/分派）+ 注册 nap vs supervisor 冲突（book-13 #16） |
@@ -123,7 +123,7 @@ python runs/dev.py logs view -N / check / clean [--yes]
 |---|---|
 | ESRGAN | 两模型均 **4x**：608×352→2432×1408；测试帧 1216×704→**4864×2816**；单帧 ~11.8s；串行 124 帧≈24min；P1b 目标 3-6min=待验证非承诺；**单卡并发路数/显存上限未测** |
 | ComfyUI schema | `UpscaleModelLoader` 输入键=`model_name`；`ImageUpscaleWithModel`=`upscale_model`；LoadImage 需 `input/` 根目录（user_uploads 子目录不被解析）；`/queue` item[1]=prompt_id；运行中取消=`POST /interrupt`（本 build `/queue {"interrupt":true}` 无效）；pending 取消=`/queue {"delete":[pid]}`；`/history/{pid}` 未知=运行中均返回 `{}`（须靠队列判别） |
-| Ref2VA 链（九审定稿） | `LoadVideo`=io.Combo(file+video_upload 标记)→VIDEO；`LoadAudio`=io.Combo(audio+audio_upload)→AUDIO；`MiniMaxH3ReferenceToVideo` 四 AUTOGROW 槽：ref_images≤9（IMAGE）/ref_videos≤3（**IMAGE=24fps 帧序列**）/ref_video_audios≤3（AUDIO，与同号视频配对）/ref_audios≤3（AUDIO）；**LoadVideo/LoadAudio 的 UI widgets_values=[文件名,'image'] 双值**——uiapi 通用路径会抛 UiUnsupported，须文件选择器分支；拆帧链=LoadVideo→GetVideoComponents（VIDEO→images IMAGE+audio AUDIO+fps） |
+| Ref2VA 链（十审定稿） | `LoadVideo`=io.Combo(file+video_upload 标记)→VIDEO；`LoadAudio`=io.Combo(audio+audio_upload)→AUDIO；`MiniMaxH3ReferenceToVideo` 四 AUTOGROW 槽：ref_images（**模板 8 行**/上限 9，IMAGE）/ref_videos（**模板 1 行**/上限 3，**IMAGE=24fps 帧序列**）/ref_video_audios（模板 1 行/上限 3，AUDIO 与同号视频配对）/ref_audios（模板 1 行/上限 3，AUDIO）；**LoadVideo/LoadAudio 的 UI widgets_values=[文件名,image] 双值**——uiapi 通用路径会抛 UiUnsupported（设计 B 主案下注入在 API 层、转换器遇不到，属已知边界）；拆帧链=LoadVideo→GetVideoComponents（VIDEO→images IMAGE+audio AUDIO+fps）；UI 行合成先例=grow_slots（refimage.py:497-526）；模板簿记 last_node_id=140/last_link_id=282/nodes=29/links=25 |
 | ffmpeg | volume dB 语义：`0.0`=-91dB 静音、`-12.0`=0dB 削波、`-12dB`=正确衰减；amix 需 `normalize=0`；`-shortest` 会截断（用 apad+`-t duration`）；音轨替换用 tmp+rename（原地写会 EIO） |
 | argparse | `--rate -8%` 会被当旗标 → 必须 `--rate=-8%`；`--tts-voice` choices=[xiaoxiao,yunxi,两全名] |
 | TTS | edge-tts 经 CLI 子进程调用（`_edge_tts_cmd` 三路探测 qwen-agent-venv）；**偶发 NoAudioReceived 网络抖动**（会以 `tts_error err=ValueError` 落日志，主产物不受影响——这不是代码缺陷，重试即好） |
@@ -152,7 +152,7 @@ cd /home/Developer/videoGenerate-Model-zju || exit 2
 1. **nap() vs supervisor 冲突**（book-13 #16）：`llm_mem.nap()` 停机意图被 supervisor ≤30s 拉回——对 §5 自愈利、对内存编排可能失效；二选一（supervisor 识别 NAPKILL_FINISHED 跳过唤醒 vs 保留“nap 必被拉起”）；
 2. ESRGAN 批处理并行的单卡并发路数与显存上限（§15.5 项）；
 3. requirements/lock 文件口径（仓库无任何 pin；S13/P2-P6 会引入 modelscope/FunASR/Wav2Lip/F5-TTS 多套依赖，需独立 venv）；
-4. Ref2VA 探测**已提前完成（九审实测，写入 §7 定稿）**：`MiniMaxH3ReferenceToVideo` 四类 AUTOGROW 槽位（images≤9 / ref_videos≤3=IMAGE 帧 / ref_video_audios≤3=同号视频配乐 / ref_audios≤3）＋ spark core 已有 LoadVideo/LoadAudio；剩余=实施期复核模板版本并决策接线（LoadVideo→GetVideoComponents→ref_videos/ref_video_audios；LoadAudio→ref_audios）；
+4. Ref2VA 探测**已定案（十审实测，§7 十审定稿）**：槽位计数=模板 8/1/1 行、node 上限 9/3/3；接线设计=**API 层注入**（apply_lora 同型，免 uiapi 分支与 UI 行合成，实施期仅复核模板版本+节点存在）；
 5. 魔搭模型真实 ID 清单（RIFE/SD-Inpaint/Wav2Lip+S3FD/FunASR/Paraformer/F5-TTS）+ 下载时长与大小登记（§15.5）。
 
 ---

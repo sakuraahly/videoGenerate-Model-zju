@@ -170,3 +170,22 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 - spark core 已有 LoadVideo（comfy_extras/nodes_video.py，io.Combo file + video_upload）与 LoadAudio（nodes_audio.py，io.Combo audio + audio_upload）。
 
 **机制备注**：本轮为纯规格修订（spec §0/§7 + changelog + session-summary + handoff 同步），未动代码，故无单测/真机验收；所有“成立/采纳”声明均已按落点 grep 机械核对（§7 更新后 grep：uiapi.py 文件选择器、GetVideoComponents、template 设为必填、登记后必须补全、两级判据、中-大 逐条命中）。
+---
+
+## 21. 十审应答（2026-09-05 · S7 规格复核）
+
+**正面清单确认（九审 §7 断言逐条抽查，全部属实）**：node id 136／四类前缀名一致／ref_videos 槽位类型=IMAGE（最反直觉且最关键）/ref_video_audios+ref_audios=AUDIO／8 张 LoadImage 仅 2 张接（link 278/282）／uiapi.py:302-305 残留 widget 触发 UiUnsupported（stale 语义推理成立）／prune_dead_output_nodes 在 :48／template_health 只数 LoadImage（:128-130）／add_local 空 slots+features 全 false（:177-200/:190-196）／stage.py:322-326 ParamError。
+
+**十审意见 → 处置对照表**：
+
+| # | 级别 | 意见 | 核查（证据） | 处置 |
+|---|---|---|---|---|
+| 1 | 高 | 槽位计数错误（images 实为 8 非 9；videos/audios 各 1 行非 3），且同段自相矛盾（后文自写 slots.images=8） | **成立**：实测 node 136 inputs——ref_images=8 行（ref_image_0..7，仅 0/1 接）、ref_videos/ref_video_audios/ref_audios 各 1 行（index 0，均 link=null）；2.1 数学链成立（按 count:9 登记 → template_health :130 “期望 9 实际 8”） | §7 现状段改两栏口径（模板已暴露行数 8/1/1 vs node 上限 9/3/3）；7a 目标条目 images count=**8**（勿写 9；第 9 行=行合成扩容，非本任务目标）；videos/audios 保持 3=能力口径并标注来源 |
+| 2 | 高 | “上限 3”未区分模板行与 node 支持上限，实施成本差一个量级 | 成立（两栏实测数字见上） | 同上（现状段两栏表列式；7a/7b 引用时注明口径） |
+| 3 | 高 | 7b 接 N=2..3 需合成 UI 输入行；_wire_slot 硬编码 “IMAGE”（:551）与源拾 0（:554），音频接线需 “AUDIO”+GVC 槽 1 | **成立**：_wire_slot（refimage.py:541-556）:551 链接类型硬编码、:554 输出匹配按 IMAGE/“”且只取首个；:547 假定目标行已存在。**更正一点**：目标行合成并非“现有代码无能力”——同构先例= `grow_slots`（refimage.py:497-526：追加 ref_image_N 行 + _clone_loadimage 克隆占位），仅泛化缺失（前缀/类型/输出槽/节点克隆硬编码） | 此缺口在**设计 B（主案）下全部消失**（无 UI 行合成）；已写入 §7 备选（设计 A）清单作翻案记录，含 grow_slots 先例引用 |
+| 4 | 中 | 设计替代未记录：API 层注入（apply_lora 先例 stage.py:196-213）可省掉落点 1 与落点 2 大部；代价=UI 往返缺失与字符串 id 脆弱史（96d2188） | **成立**：apply_lora 实为 :180-220（`new_id="lora_"+str(len(wf))` 字符串 id + 全图重接线），调用点 h3_submit.py:545；96d2188 注释（workflow.py:165）确认字符串 id 曾致 UI 仅 API**——采纳并定稿：主案=设计 B**（理由：同型先例生产验证过/槽位键注入零成本/免 uiapi 分支与簿记；注入 id 用数字字符串规避脆弱史；代价=双注入点分裂与模板副本 UI 无参考节点，如实记录） | §7 新增“设计决策”段（A/B 对照+定稿+代价）；落点 1（uiapi 文件选择器分支）**从主案移除**（B 下转换器不会遇到 LoadVideo/LoadAudio，降级为已知边界）；备选 A 完整记录三缺口+ grow_slots 先例 |
+| 5 | 低 | 模板簿记实测可回填：last_link_id=282、links 25 条、节点总数 29 | 成立（另实测 last_node_id=140）；_wire_slot 用 max(links)+1 规避了 link 簿记，但新建节点需同步 last_node_id | §7 现状段回填四值（A 备选清单含簿记同步项） |
+
+**自查补充（十审未点名、按印证逻辑发现并已修）**：上轮 7c 的 tag 映射差 1——官方 `<Video N>` 从 1 起（按连接顺序）、槽位键从 0 起（ref_video_0），上版写 “<Video N>→ref_videos.ref_video_N” 错误，已更正为 **N-1**（`<Audio N>` 同）。
+
+**机制**：本轮零代码改动（S7 仍待实施）；“采纳/成立”均已按落点 grep 核对；模板计数用程序化统计（collections.Counter 按点分键前缀），非目测。

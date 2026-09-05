@@ -850,6 +850,11 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.20 十审闭环：S7 规格**第三轮**修订——计数修正 + 主案改 API 层注入（2026-09-05）
+- **十审三高项**：① 槽位计数错误（模板实测 ref_images=8 行、ref_videos/ref_video_audios/ref_audios 各 1 行；node 上限 9/3/3）——§7 改两栏口径；7a 目标 images count=8（按 9 登记会被 template_health “期望 9 实际 8”拦截）；② “上限 3”两栏化；③ _wire_slot 三缺口（:551 类型硬编码 IMAGE/:554 输出槽 0/:547 目标行假定存在）——**在选定的设计 B 下全部消失**；同构先例更正=grow_slots（refimage.py:497-526，非“无能力”）。
+- **设计定稿（十审中项→主案=设计 B）**：API 层注入（循 apply_lora 先例 stage.py:180-220、调用点 h3_submit.py:545）——`inject_media_refs(wf, videos, audios)` 在转换后注 LoadVideo/GetVideoComponents/LoadAudio + 槽位键（ref_videos.ref_video_i=[gvc,0]、ref_video_audios…=[gvc,1]、ref_audios…=[la,0]）；**免去** uiapi.py 文件选择器分支（九审落点 1）与 UI 行合成/簿记；注入 id 用数字字符串（避开 96d2188 字符串 id 脆弱史）；代价=双注入点分裂（images 仍 UI 层）+模板副本 UI 无参考节点——如实记录，设计 A 保留为翻案记录。
+- **自查补充**：上轮 7c tag 映射差 1 已修（<Video N>↔ref_videos.ref_video_(N-1)）；簿记回填 last_node_id=140/last_link_id=282/nodes=29/links=25。
+- **工作量**：7b 中（B 下 4 落点）回落，总评大；翻案 A=中-大乃至大上沿。零代码改动（S7 仍待实施）。
 ### 20.19 九审闭环：S7（参考视频/音频）规格重定稿 + 实测新取证（2026-09-05）
 - **九审意见（S7 专项）→ 处置**：①【高】S7 漏必需落点 uiapi.py 文件选择器转换分支 → §7 7b 落点 1（实测失效机制：LoadVideo/LoadAudio object_info 只声明 1 个 COMBO 而 UI widgets_values 记 2 值 → 通用路径 :302-305 抛 UiUnsupported；实证 spark utility-gan_upscaler.json node 9）；②【高】“dry-run 断言图注入”离线不可达成（7 份模板全 UI，stage.py:322-326 无 client 抛 ParamError）→ 验证改两级判据（一级=在线 convert_ui_file API dict 断言，可 mock 单测；二级=真实提交）；③【中】api_* 实为 UI 格式 → 现状改写 + §0 新事实行；④【中】add_local 登记默认值相反 → 7a 补“登记后补全”（扩展 add_local 收 slots/features 或 patch+validate_all）+ template_health 扩展数 LoadVideo/LoadAudio；⑤【中】bind_refs_to_template 的 template 设为必填（book-11 污染模式不从签名留后门）。工作量 7b 中→**中-大**（5 个落点）。
 - **新取证（实施期无需再探测）**：MiniMaxH3ReferenceToVideo 四类 AUTOGROW 槽位上限 9/3/3/3；**ref_videos 槽位类型=IMAGE（24fps 帧序列）**——LoadVideo 不能直连，须经 GetVideoComponents（VIDEO→images IMAGE+audio AUDIO，utility-gan_upscaler.json 同型链实证）；本地 video_minimax_h3_r2v.json 即 Ref2VA 模板（全套 ref_* 槽位已有、仅未接线，8 张 LoadImage 仅 2 张已接）→ 更正原“无 Ref2VA 模板/第一步须探测”；spark core 已有 LoadVideo/LoadAudio。
