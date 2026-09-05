@@ -24,7 +24,7 @@ if str(_ROOT) not in sys.path:
 
 # 登记事实（来自 docs/code-fact-registry.md；改这里须同步改登记表）
 FACTS = {
-    "ctx": {"MODEL_MAX_CTX_TOKENS": 8192, "REPLY_MAX_TOKENS": 2048,
+    "ctx": {"MODEL_MAX_CTX_TOKENS": 8192, "REPLY_MAX_TOKENS": 800,  // book-16 复读根治：2048→800
             "UI_TRIM_TOKENS": 2200, "CONV_MSG_BUDGET_TOKENS": 2500,
             "TOOL_PRELUDE_TOKENS": 1500, "SAFETY_TOKENS": 300},
     "tools": ["run_script", "modify_workflow", "call_comfyui", "read_doc",
