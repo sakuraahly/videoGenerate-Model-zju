@@ -346,9 +346,9 @@
       "ref2v_8step"
     ],
     "files": {
-      "fl2v_4step": "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
-      "ref2v_4step": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
-      "ref2v_8step": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
+      "fl2v_4step": "MiniMax_H3/minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
+      "ref2v_4step": "MiniMax_H3/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+      "ref2v_8step": "MiniMax_H3/minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
     },
     "steps": {
       "fl2v_4step": 4,
