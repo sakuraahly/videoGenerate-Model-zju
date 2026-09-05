@@ -50,7 +50,8 @@
       **⚠️ 用户实测反馈（2026-09-05）：4 步加速版画面瑕疵比 20 步正常流程多**（速度换质量代价，已实证）。策略：候选/构景筛选用 4 步；确认出片/正式交付用 ref2v_8step(v1.0) 或禁用加速(20 步)；T2 质量链（超分/降噪/插帧）对低步瑕疵有补偿；T7 自检把“低步瑕疵”列为重点项。**⚠️ 2026-09-05 用户指令（已批准，book-17 §3.1 实施中）**：LoRA **必须用上**——验证/普通档默认 `fl2v_4step/ref2v_4step + 360p/5s`；交付/精品档 `ref2v_8step 768p 或 none 20 步`；工具 `lora` 默认值由 none 改为验证档 4 步（不再“仅用户同意才用”）。落地：`runs/agent/agent_params.py` + CallComfyUI 默认参数/转发 `--lora` + SYSTEM_MESSAGE 档位规则。
 - [x] **T2 v1 完成（2026-09-05，ffmpeg 管线）**：`runs/h3/postprocess.py`（probe/process/run_fast；2x lanczos 超分 + hqdn3d 降噪 + unsharp 锐化 + 可选调色滤镜串 + `--interp` 插帧[默认关]；**ffprobe 断言输出分辨率/时长漂移**，失败非 0 不打折）；`h3_submit --postprocess none|fast`（spark-local 完成后自动增强，失败不阻断主产物）；`dev.py postprocess`（Windows 侧一键调 spark 执行）；真机集成：video_12.mp4(608×352) → **1200 路 1216×704**/5.17s/124 帧 ✓。
 - [x] **T2b v1 完成（2026-09-05）**：字幕烧录（`render_subtitle`：libass subtitles 滤镜 + Noto Sans CJK SC 字体、`validate_srt` 先验、输出分辨率不变断言）+ 音频混流（`mix_audio`：-shortest + AAC 192k）+ `run_full` 完整链（增强→字幕→音频，失败即抛不产半成品）；`dev.py postprocess --subtitle/--audio/--font-size` 透传；真机集成：video_12 → **video_12_full.mp4 1216×704 + AAC 5s + 中文 SRT 烧录**，抽帧目检中文无乱码 ✓；单测 148 全绿。
-- [ ] **T2b 语音链升级（2026-09-05 升级 **P0**；来源=用户四问「成品语音混乱不可辨析」）**：
+- [x] **T2b 语音链 v1 完成（2026-09-05）**：P0-1 **edge-tts**（pypi 200/bing 可达/实测合成成功；中文女声 XiaoxiaoNeural 默认）；P0-2 `runs/h3/tts.py`（合成/替换/apad 保留完整时长；修复 -shortest 截断、原地写、edge-tts 三路定位）；P0-3 自动接线（call_comfyui `tts_text` → h3_submit `--tts-text` → 任务记录 → 完成钩子 `TTS_OUT`）；真实链：`--tts-text 再见了，故乡。` → `outputs/video_23.mp4`（608×352/5.167s/124f/AAC 5.167s 完整时长）。**待收尾**：① 逐句对齐（SRT→逐句语音，`build_srt_speech` 已实现待接 dev.py 流程）；② 听测判据（用户确认可辨析）；③ 无台词策略（保留环境音/静音轨）听测后定（book-17 决策点 C）。
+
       - **根因**：t2v 工作流**无音频通道**（capabilities `features.audio=false`）→ 无音轨输入 → 输出音频=**随机噪声**；任何“说话/配音”需求都不可达（非 TTS 质量问题，是通道缺失）。
       - **子任务**：
         1. **P0-1 TTS 引擎选型**（spark 环境探测出网与本地推理；候选：edge-tts 离线模型 / piper / ComfyUI 本地 TTS 节点；判据=中文音质+离线可用）；

@@ -142,6 +142,19 @@
 
 ---
 
+## 5b. 实施状态（2026-09-05 用户批准后执行，截至当日）
+| 项 | 状态 | 证据/备注 |
+|---|---|---|
+| §3.1/3.2 参数策略 | ✅ 完成 | `agent_params.py`（验证档 360p/5s+4 步；交付档 8/20 步）+工具默认+SYSTEM_MESSAGE 三分同步；真实链：`start argv=--resolution 360p --seconds 5 --lora fl2v_4step`；产物 video_18（608×352/5.167s/124f） |
+| P2.2.1+P2.2.3 | ✅ 完成 | `validate_tool_call`（白名单/必填/类型/枚举/未知参数）+ `_parse_and_coerce_args` 统一强转 + 修复重试≤3；`test_fabrication_guard.py` 10 例全绿；真实链 gen 通过 |
+| P2.1.1+P2.1.2 | ✅ 完成 | SYSTEM_MESSAGE 指令区/数据区；工具边界描述；动态下发子集（默认不含 modify_workflow，含关键词才下发） |
+| P2.3 | ✅ 完成 | 轮级 900s 超时、同指纹 Fast-Fail、连 3 错熔断、会话生成限流 10 次（回归捕获并修复 getattr 包裹 bug） |
+| §3.3 W4 | ✅ 完成 | 4 步 video_19（280KB/434kbps）vs 20 步 video_24（240KB/372kbps），同 608×352/5.167s/124f；**SSIM All=0.864（Y:0.798）**；4 步码率更高=噪声/伪影更多——与用户“4 步瑕疵多”观感一致；两片路径：`outputs/video_19.mp4`（4 步）/`outputs/video_24.mp4`（20 步） |
+| §3.3 W2 | ✅ 完成 | 中文招牌“山间茶舍”：video_25.mp4（360p/5s/4 步）；**抽帧目检 1.5s/3.5s 两帧：四字清晰无错别字、无乱码**（逐字枚举提示词路线有效） |
+| T2b P0 | ✅ v1 完成 | **P0-1=edge-tts**（pypi 200+bing 400=可达；实测合成 3.43s）；P0-2=`tts.replace_with_speech_text`（apad 至视频时长；修复 -shortest 截断、原地写、edge-tts 三路定位三个问题）；P0-3=tts_text→h3_submit 任务记录→完成钩子；真实链：`--tts-text 再见了，故乡。` → `TTS_OUT: outputs/video_23.mp4`（608×352/5.167s/124f/AAC 5.167s）；**听测判据待用户**（voice=zh-CN-XiaoxiaoNeural） |
+| P2.2.2 约束解码 | ✅ 完成（负结论） | SGLang `structured_output` 接受但**不生效**（返回未约束文本）；`response_format=json_object` 与 tools 模式冲突；结论：本部署无有效约束解码，依赖 P2.2.1+P2.2.3 生成后校验闭环（如实登记） |
+| P2.6 | ✅ 完成（v1） | audit 增加 `injection_flag` + `validation` 字段；人在回路清单入 SYSTEM_MESSAGE 不可执行项（取消/销毁/改配置只提议）；T9 联动待 book-14 |
+
 ## 7. 待批准清单（请确认，批准后按 §5 顺序实施）
 
 - [ ] **A** 批准 §5 实施顺序与范围（8 项；可裁剪/调序）；
