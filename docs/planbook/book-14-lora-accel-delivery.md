@@ -75,12 +75,12 @@
 > 另 agent 命名约定：只改指定文件、跑 python runs/dev.py test + 单测、更新 docs（事实登记表）、
 > 双端 sync/commit 用 python runs/dev.py；不重启 ComfyUI、不碰生成引擎核心、不可修改共享模板。
 
-- [ ] L1 90 天会话清理脚本（纯新增：runs/agent/session_cleanup.py + 配置 + 单测 + 文档；不接生成流程）
-- [ ] L2 UI 刷新语义（runs/agent/ui_app.py 文案与事件名小改；只读校验 /config 文案变化）
-- [ ] L3 加速 LoRA 事实登记（只写 docs/code-fact-registry.md 新章 + capabilities.json 的 lora 段 + 文档图表；
-      不改引擎）
-- [ ] L4 book-13↔book-14 条目迁移核对（仅文档：把 book-13 §3.1/3.2/见闻迁移到本册，串引用）
-- [ ] L5 dev.py queue status（只读：队列清单+归属判定=本会话登记/未知/他人；**禁止**实现删除——删除/取消由 **T9** 实现，含归属校验）。**L5 已完成**（book-12 A5：`dev.py queue`，只读+归属，spark 实测）。
+- [x] L1 90 天会话清理脚本（纯新增：runs/agent/session_cleanup.py + 配置 + 单测 + 文档；不接生成流程）。**已完成 2026-09-05**：`session_cleanup.py`（status/clean，默认 dry-run，只删 `<cid>.jsonl`+`.meta.json`、thumbs 不删、判定基准=mtime 与 meta.ts 较新者）+ `config/session_retention.json`（tracked）+ `test_session_cleanup.py`（6 例）+ code-fact-registry §9；全量单测 138 绿。
+- [x] L2 UI 刷新语义（runs/agent/ui_app.py 文案与事件名小改；只读校验 /config 文案变化）。**代码已完成并提交 master 2026-09-05**：`刷新`→`刷新历史列表` + 相邻 Markdown 提示（仅刷新左侧历史下拉），`.click` 事件绑定未动；docs/agent-workflow.md 同步。⚠️ **spark /config 文案验证待两端 reconcile 后随一次 agent 重启确认**（协作裁定 #3：不 sync/覆盖 spark；当前 spark ui_app 为分叉版本）。
+- [x] L3 加速 LoRA 事实登记（只写 docs/code-fact-registry.md 新章 + capabilities.json 的 lora 段 + 文档图表；
+      不改引擎）。**已完成（被 T1 吸收）2026-09-05**：capabilities.json 顶层 `lora` 段以 **T1 引擎 schema 为准**（`choices/files/steps/stages`），按协作裁定 #1 **不再改**；L3 保留 code-fact-registry §10 登记小节（3 个 LoRA 路径/步数/用途）。
+- [x] L4 book-13↔book-14 条目迁移核对（仅文档：把 book-13 §3.1/3.2/见闻迁移到本册，串引用）。**已完成 2026-09-05**：book-13 参考视频支持(P2#10)→T8、§3.1/§3.2/§3.3 各加「关联 book-14」前向指针；本册 §4 加「架构优化项归属」；git diff 仅增标注、原文无损。
+- [x] L5 dev.py queue status（只读：队列清单+归属判定=本会话登记/未知/他人；**禁止**实现删除——删除/取消由 **T9** 实现，含归属校验）。**L5 已完成**（book-12 A5：`dev.py queue`，只读+归属，spark 实测）。**2026-09-05 补**：dev.py 加 `queue status` 动作（`queue`/`queue status` 均可）、queue_probe 输出加节点数；grep 确认无 delete/cancel 写路径。⚠️ 与 spark 侧 T9（`queue cancel`）在 dev.py/queue_probe.py 上分叉，待 reconcile 合并。
 
 > **协作裁定（2026-09-05，给执行 L 类的 agent）**：
 > 1. **L3 已由 T1 吸收**：capabilities.json 顶层 `lora` 段以 **T1 引擎 schema 为准**（`files` 值为 ComfyUI 枚举名，含 `MiniMax_H3/` 前缀；`choices/steps/stages` 为运行字段）——**不要再改 capabilities.json 的 lora 段**；L3 仅需在 docs/code-fact-registry.md 追加登记小节（3 个 LoRA 路径/步数/用途）。

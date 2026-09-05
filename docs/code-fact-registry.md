@@ -118,4 +118,4 @@
 | `minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16` | Ref2VA（r2v） | 8 | 768p v1.0 正式 | 同上但质量更高（细节/人物一致性/复杂运镜更稳），速度≈4 步版 2 倍；正式出片 |
 
 - **加速 LoRA ≠ 风格/角色 LoRA**：后者固定特定视觉特征（画风/角色一致性），与加速 LoRA 是不同用途，可叠加（需校验兼容）。
-- **边界**：本节仅登记事实（路径/模式/步数/分辨率/用途）；把 LoRA 接入模板 + 降 `BasicScheduler.steps` + `h3_submit --lora` 属 book-14 **T1**（加速）/**T6**（风格/角色），不在 L3 范围，引擎未改。
+- **边界**：本节仅登记事实（路径/模式/步数/分辨率/用途）。把 LoRA 接入模板 + 降 `BasicScheduler.steps` + `h3_submit --lora` 属 book-14 **T1**（加速，**引擎侧已于 2026-09-05 完成**：`stage.apply_lora` / `h3_submit --lora` / tools.py lora 枚举；真机 2.26× 加速）/**T6**（风格/角色，未做）；**L3 本身仅登记事实、未改引擎**。`config/capabilities.json` 的 `lora` 段现以 **T1 引擎 schema**（`choices/files/steps/stages`，`files` 值为带 `MiniMax_H3/` 前缀的 ComfyUI 枚举名）为准——协作裁定 #1：L 类不再改该段。
