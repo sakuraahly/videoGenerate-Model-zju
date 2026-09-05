@@ -321,9 +321,20 @@ def _run_tool(name: str, args) -> str:
         _props = (getattr(inst, 'parameters', None) or {}).get('properties') or {}
         if isinstance(args, dict):
             for _k, _v in list(args.items()):
-                if isinstance(_v, str) and _k in _props and _props[_k].get('type') == 'integer' and _v.strip().lstrip('-').isdigit():
+                if not isinstance(_v, str):
+                    continue
+                _pt = _props.get(_k, {}).get('type')
+                _sv = _v.strip()
+                if _pt == 'integer' and _sv.lstrip('-').isdigit():
                     try:
-                        args[_k] = int(_v)
+                        args[_k] = int(_sv)
+                    except ValueError:
+                        pass
+                elif _pt == 'boolean' and _sv.lower() in ('true', 'false'):
+                    args[_k] = _sv.lower() == 'true'
+                elif _pt == 'number':
+                    try:
+                        args[_k] = float(_sv)
                     except ValueError:
                         pass
         out = inst.call(args) if args else inst.call({})

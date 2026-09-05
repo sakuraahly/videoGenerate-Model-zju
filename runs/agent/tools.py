@@ -297,8 +297,9 @@ class CallComfyUI(BaseTool):
     }
 
     def call(self, params: Union[str, dict], **kwargs) -> str:
-        params = _coerce_int_fields(self._verify_json_format_args(params)) if isinstance(params, dict) else self._verify_json_format_args(params)
-        params = _coerce_int_fields(params)
+        if isinstance(params, dict):
+            params = _coerce_fields(params)
+        params = self._verify_json_format_args(params)
         stage = params['stage']
 
         submit_script = os.path.join(PROJECT_ROOT, 'runs', 'h3_submit.py')
@@ -488,8 +489,9 @@ class BatchSubmit(BaseTool):
     }
 
     def call(self, params: Union[str, dict], **kwargs) -> str:
-        params = _coerce_int_fields(self._verify_json_format_args(params)) if isinstance(params, dict) else self._verify_json_format_args(params)
-        params = _coerce_int_fields(params)
+        if isinstance(params, dict):
+            params = _coerce_fields(params)
+        params = self._verify_json_format_args(params)
         batch_script = os.path.join(PROJECT_ROOT, 'runs', 'h3_batch.py')
         if not os.path.isfile(batch_script):
             return f'错误：h3_batch.py 不存在于 {batch_script}'
@@ -594,17 +596,22 @@ def _log_tool(name, event, **fields):
         pass
 
 
-def _coerce_int_fields(params, fields=('seconds', 'seed')):
-    """book-16：模型常把整数参数写成字符串（seconds: '5'）→ 参数校验拒收；提交前统一强转。"""
+def _coerce_fields(params, fields=('seconds', 'seed')):
+    """book-16：模型常把整数/布尔参数写成字符串（seconds: '5', wait_until_done: 'True'）
+    → 参数校验拒收；提交前统一强转。"""
     if not isinstance(params, dict):
         return params
     for k in fields:
         v = params.get(k)
-        if isinstance(v, str) and v.strip().lstrip('-').isdigit():
-            try:
-                params[k] = int(v)
-            except ValueError:
-                pass
+        if isinstance(v, str):
+            s = v.strip()
+            if s.lstrip('-').isdigit():
+                try:
+                    params[k] = int(s)
+                except ValueError:
+                    pass
+            elif s.lower() in ('true', 'false'):
+                params[k] = s.lower() == 'true'
     return params
 
 
