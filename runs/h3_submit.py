@@ -267,6 +267,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--lora", type=str, default="none",
                    choices=["none", "fl2v_4step", "ref2v_4step", "ref2v_8step"],
                    help="book-12 B1 加速 LoRA: none(默认)/fl2v_4step(t2v·i2v·flf2v)/ref2v_4step|ref2v_8step(r2v); steps 自动 4/8")
+    p.add_argument("--postprocess", type=str, default="none", choices=["none", "fast"],
+                   help="book-14 T2: 完成后质量增强 none(默认)/fast(2x+降噪+锐化)")
     p.add_argument("--width", type=int, default=None)
     p.add_argument("--height", type=int, default=None)
     p.add_argument("--seconds", type=float, default=None)
@@ -850,6 +852,24 @@ def main(argv: Optional[list] = None) -> int:
         # win-remote → 保持 scp 提示（由外层/人工经隧道下载）。
         if _site(project_dir) == "spark-local":
             _finalize_local_outputs(project_dir, all_remote, gp=gp)
+            # book-14 T2：完成后质量增强（--postprocess fast=2x+降噪+锐化；失败不阻断主产物）
+            if getattr(args, 'postprocess', '') == 'fast':
+                try:
+                    import glob as _glob
+                    _outs = sorted(Path(project_dir, "outputs").glob("video_*.mp4"),
+                                   key=lambda p: p.stat().st_mtime, reverse=True)
+                    if _outs:
+                        from h3 import postprocess as _pp
+                        _src = _outs[0]
+                        _dst = _src.with_name(_src.stem + "_pp.mp4")
+                        _pp.run_fast(_src, _dst)
+                        print(f"POSTPROCESS_OUT: outputs/{_dst.name}", flush=True)
+                        _log_event(f"postprocess_done file={_dst.name}")
+                    else:
+                        _log_event("postprocess_skip (no local output)")
+                except Exception as _e:  # noqa: BLE001
+                    _log_event(f"postprocess_error err={type(_e).__name__}: {_e}")
+                    print(f"[提示] 后处理失败（不影响主产物）: {_e}", file=sys.stderr, flush=True)
         else:
             print(f"\nTo download:")
             print(f"  scp {host}:{remote_path} {args.output}/", flush=True)

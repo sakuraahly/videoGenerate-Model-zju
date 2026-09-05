@@ -630,6 +630,13 @@ def main(argv=None):
     q = sub.add_parser("queue", help="ComfyUI 队列只读探测+归属判定（book-12 A5/L5；禁写）")
     q.add_argument("action", nargs="?", choices=["status"], default="status",
                    help="status=只读展示 running/pending + 归属判定（默认）")
+    pp = sub.add_parser("postprocess", help="视频质量增强链（book-14 T2；spark 侧执行）")
+    pp.add_argument("input", help="视频路径（相对 outputs/ 或 spark 绝对路径）")
+    pp.add_argument("--scale", type=float, default=2.0)
+    pp.add_argument("--denoise", type=float, default=1.0)
+    pp.add_argument("--sharpen", type=float, default=0.4)
+    pp.add_argument("--interp", action="store_true", help="插帧（minterpolate，慢，默认关）")
+    pp.add_argument("--out", default="")
     args = ap.parse_args(argv)
 
     if args.cmd == "check":
@@ -650,7 +657,19 @@ def main(argv=None):
         return cmd_workflows(args)
     if args.cmd == "queue":
         return cmd_queue(args)
-    return 2
+    if args.cmd == "postprocess":
+        # book-14 T2：在 spark 侧执行（Windows 无 ffmpeg）
+        extra = f" --scale {args.scale} --denoise {args.denoise} --sharpen {args.sharpen}"
+        if args.interp:
+            extra += " --interp"
+        if args.out:
+            extra += f" --out {args.out}"
+        inp = args.input
+        if not inp.startswith("/"):
+            inp = f"{SPARK_REPO}/outputs/{inp}"
+        rc, out, err = _ssh(f"cd {SPARK_REPO} && /home/Developer/qwen-agent-venv/bin/python runs/h3/postprocess.py process {inp}{extra}")
+        print((out or err).strip()[-600:] or "(no output)")
+        return rc
 
 
 if __name__ == "__main__":

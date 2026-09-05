@@ -47,9 +47,8 @@
 - [x] T1 候选加速（**引擎侧完成 2026-09-05**）：capabilities.json 顶层 `lora` 注册（3 文件/steps/适用阶段）；`h3stage.apply_lora`（LoraLoaderModelOnly 注入+model 引用替换+steps 4/8 覆写+防自环）；`h3_submit --lora`（choices+日志同步）；tools.py CallComfyUI 新增 `lora` 参数（注册表派生枚举，agent 重启后可见）；单测 138 全绿；spark dry-run 双验证（r2v+ref2v_4step / t2v+fl2v_4step → LoraLoader+steps=4）。
       **真机对比（2026-09-05 完成，全程项目程序）**：r2v 360p/5s/seed42 同提示词：A=ref2v_4step（bb4387d9）**72s** vs B=none 20 步（0727000d）**163s** → **≈2.26× 加速**；两产物 ffprobe 完全一致（608×352/24fps/5.17s/124 帧）；修复 lora_name 须带 `MiniMax_H3/` 前缀（ComfyUI /object_info 枚举确认，原 400 提交拒绝已修）；B2 守卫补 resume 参数恢复（下次完成自动 verify 对冲）。
       **⚠️ 用户实测反馈（2026-09-05）：4 步加速版画面瑕疵比 20 步正常流程多**（速度换质量代价，已实证）。策略：候选/构景筛选用 4 步；确认出片/正式交付用 ref2v_8step(v1.0) 或禁用加速(20 步)；T2 质量链（超分/降噪/插帧）对低步瑕疵有补偿；T7 自检把“低步瑕疵”列为重点项；工具 `lora` 默认 none，agent 默认 none、仅用户同意后用于候选筛选。
-- [ ] T2 质量增强链（新管线 runs/h3/postprocess.py，接入取片）：超分（Real-ESRGAN 类）/插帧（RIFE）/降噪/调色、
-      字幕与声音（TTS 语音清晰；字幕字体不乱码——必须校验字体渲染，中文字体嵌入）；
-      dev.py postprocess 子命令 + 单测（输入输出参数断言 + ffprobe）。
+- [x] **T2 v1 完成（2026-09-05，ffmpeg 管线）**：`runs/h3/postprocess.py`（probe/process/run_fast；2x lanczos 超分 + hqdn3d 降噪 + unsharp 锐化 + 可选调色滤镜串 + `--interp` 插帧[默认关]；**ffprobe 断言输出分辨率/时长漂移**，失败非 0 不打折）；`h3_submit --postprocess none|fast`（spark-local 完成后自动增强，失败不阻断主产物）；`dev.py postprocess`（Windows 侧一键调 spark 执行）；真机集成：video_12.mp4(608×352) → **1200 路 1216×704**/5.17s/124 帧 ✓。
+- [ ] **T2b 剩余**：字幕与声音（TTS 语音清晰+中文字体嵌入不乱码渲染校验——最容易翻车，独立子任务）；真实超分模型（Real-ESRGAN）与 RIFE 插帧（ComfyUI 节点）接入（v1 为低依赖 ffmpeg 兜底）。
 - [ ] T3 参数注入回归守卫（book-12 已修）：consistency_check 增加「模板默认值 vs 注册表 params」核对
       （防止再做"默认 480p/5s"模板翻车）。
 
