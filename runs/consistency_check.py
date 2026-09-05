@@ -82,6 +82,30 @@ def check_pipeline():
             ISSUES.append(f"stage {sid} builtin 未知: {b}")
 
 
+def check_registry_vs_pipeline():
+    """book-12 A3：注册表(启用本地工作流) vs pipeline.json stages 差异核对。
+    pipeline.json 是机器配置（两端各自维护），不做自动合并——只提示差异，防"新增工作流忘了登记引擎参数"。
+    """
+    try:
+        from h3 import workflow_registry as _wreg
+        cap = _wreg.load_registry(ROOT)
+        reg_stages = set(_wreg.enabled_stages(cap))
+    except Exception as e:  # noqa: BLE001
+        ISSUES.append(f"注册表(stage)核对失败: {e}")
+        return
+    p = ROOT / "config" / "pipeline.json"
+    if not p.exists():
+        return  # check_pipeline 已报缺失
+    cfg = jload(p)
+    stages = set((cfg.get("stages") or {}).keys())
+    for sid in sorted(reg_stages - stages):
+        ISSUES.append(f"注册表启用工作流 {sid} 未在 pipeline.json 登记引擎参数（两端各自维护）")
+    for sid in sorted(stages - reg_stages):
+        if sid in ("character", "keyframes"):
+            continue  # 占位阶段不强制登记
+        NOTES.append(f"pipeline.json 阶段 {sid} 不在注册表（可能为机器特配或待迁移）")
+
+
 def check_capabilities_vs_manifest():
     cap = jload(ROOT / "config" / "capabilities.json")
     man = jload(ROOT / "prompts" / "manifest.json")
@@ -172,7 +196,8 @@ def check_runtime_facts():
 
 
 def main() -> int:
-    for fn in (check_manifest, check_pipeline, check_capabilities_vs_manifest,
+    for fn in (check_manifest, check_pipeline, check_registry_vs_pipeline,
+           check_capabilities_vs_manifest,
                check_templates_images, check_prompt_multi_injection,
                check_leftovers_and_git, check_runtime_facts):
         try:
