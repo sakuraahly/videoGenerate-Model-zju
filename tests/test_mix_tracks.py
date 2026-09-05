@@ -21,7 +21,7 @@ class TestMixTracksOutput(unittest.TestCase):
                         "-v", "error", "-c:a", "pcm_s16le", str(path)], check=True, capture_output=True)
 
     def _band_db(self, path, filt):
-        r = subprocess.run([FFMPEG, "-i", str(path), "-af", filt, "-f", "null", "-"],
+        r = subprocess.run([FFMPEG, "-i", str(path), "-af", filt + ",volumedetect", "-f", "null", "-"],
                            capture_output=True, text=True)
         m = re.search(r"mean_volume: ([0-9.\-]+)", r.stderr or "")
         return float(m.group(1)) if m else 0.0
