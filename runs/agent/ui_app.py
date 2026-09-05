@@ -247,6 +247,10 @@ def _tool_defs() -> list:
     return _TOOL_SCHEMA_CACHE
 
 
+_TOOL_LIMITS = {'call_comfyui': 1, 'batch_submit': 1, 'list_references': 2,
+                'run_script': 3, 'read_doc': 2, 'modify_workflow': 1}  # book-16 频控
+
+
 def _parse_tool_args(text) -> dict:
     """工具参数解析（book-16）：兼容 JSON、```围栏、以及 qwen3.8 KV 裸串（stage=t2v, seconds=5）。"""
     if isinstance(text, dict):
@@ -369,6 +373,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
         acc = 0
         _last = ['']
         _tool_call_cache: dict = {}  # book-16：本轮同参数去重
+        _tool_count: dict = {}  # book-16：本轮频控计数
         for rnd in range(6):
             try:
                 msg = _http_chat_once(cur, _tool_defs())
@@ -409,12 +414,16 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                         events.put({'kind': 'chunk', 'text': delta})
                 if fname:
                     events.put({'kind': 'tool', 'text': fname[:36]})
-                    # book-16：同参数去重（模型反复提交同一任务 → 只执行一次，防重复提交/生成）
+                    # book-16：同参数去重 + 频控（模型反复提交 → 只执行一次；防重复生成/六连提交）
                     tkey = fname + '|' + json.dumps(_parse_tool_args(fc.get('arguments')), ensure_ascii=False, sort_keys=True)
                     if tkey in _tool_call_cache:
                         out = _tool_call_cache[tkey]
                         events.put({'kind': 'tool', 'text': f'{fname[:28]}（已执行过，结果复用）'})
+                    elif _tool_count.get(fname, 0) >= _TOOL_LIMITS.get(fname, 4):
+                        out = f'[频控] {fname} 本轮已执行 {_tool_count.get(fname)} 次，跳过重复调用（结果以第一次为准）'
+                        events.put({'kind': 'tool', 'text': f'{fname[:28]}（频控跳过）'})
                     else:
+                        _tool_count[fname] = _tool_count.get(fname, 0) + 1
                         out = _run_tool(fname, fc.get('arguments'))
                         _tool_call_cache[tkey] = out
                         events.put({'kind': 'tool', 'text': f'{fname[:28]} 完成'})
