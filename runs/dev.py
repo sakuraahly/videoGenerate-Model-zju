@@ -637,6 +637,9 @@ def main(argv=None):
     pp.add_argument("--sharpen", type=float, default=0.4)
     pp.add_argument("--interp", action="store_true", help="插帧（minterpolate，慢，默认关）")
     pp.add_argument("--out", default="")
+    pp.add_argument("--subtitle", default="", help="SRT 字幕（中文，spark 绝对路径）")
+    pp.add_argument("--audio", default="", help="音轨文件（spark 绝对路径）")
+    pp.add_argument("--font-size", type=int, default=20)
     args = ap.parse_args(argv)
 
     if args.cmd == "check":
@@ -664,6 +667,11 @@ def main(argv=None):
             extra += " --interp"
         if args.out:
             extra += f" --out {args.out}"
+        if args.subtitle:
+            extra += f" --subtitle {args.subtitle}"
+        if args.audio:
+            extra += f" --audio {args.audio}"
+        extra += f" --font-size {args.font_size}"
         inp = args.input
         if not inp.startswith("/"):
             inp = f"{SPARK_REPO}/outputs/{inp}"
