@@ -850,6 +850,11 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.11 计划·待批准（book-18，2026-09-05 用户指令）
+- **质量提示词固化**：Q+（masterpiece/best quality/…+sharp legible text 触发段）与 Q-（blurred scene/motion blur/…+文字防乱码补词）单源进 prompts/；consistency_check 新增「质量词断言」（每次运行必须注入，缺失即 FAIL）；SYSTEM_MESSAGE 提示词规则「质量词不得删除」。
+- **语音/文字清晰度加强**：按用户指导意见**审慎取舍**——采纳：台词脚本规范（短句/常用字/标点+--rate -8%）·逐句合成+客观审听+单句重试·必加字幕（已落地）·**loudnorm -14/轻降噪**·字幕规范参数化·参考图驱动内嵌文字·1080p=交付档现实化（768p+超分+高码率，如实标注不可原生 1080p）；**远期不承诺**：口型驱动（Wav2Lip 等）/局部重绘 Inpaint/标题图表装配。
+- 待批准项 A-D（见 book-18 §7）；后续行动序：book-15 → book-16 → **book-18**。
+
 ### 20.10 book-14 完成（2026-09-05，按册序）
 - **T2b v2 修复批 #1-#5 ✅**：钩子本任务文件；时长守卫；**台词→SRT→烧录→语音替换一步到位**；会话级去重（归一化指纹）；客观回执（PROBE+TTS_OUT）。真实链：**video_27**（608×352/5.167s/124f/AAC5.167s+字幕“再见了，故乡。”帧目检清晰）+ **video_28**（agent 自取片：语音 2.83s+srt）。
 - **T9 取消任务 ✅**：归属校验（last_job/job.json）→ 运行中 `POST /interrupt` / 排队中 `POST /queue delete` → 成功后清断点；agent 工具 `cancel_task`；非本人/不在队列如实拒绝；真机验证三点全过。端点差异（/queue interrupt 惰性）已登记。
