@@ -526,6 +526,19 @@ def main(argv: Optional[list] = None) -> int:
     root_state = jobstate.load_root_state(project_dir)
 
     # ------------------------------------------------------------ 任务路由
+    # book-12 步骤2：--stage 校验走注册表（可用清单/禁用原因；未知即拒，文案兼容旧断言）
+    if args.stage and not (args.resume or "").strip():
+        try:
+            from h3 import workflow_registry as _wreg
+            _cap = _wreg.load_registry(project_dir)
+            _entry, _why = _wreg.resolve(_cap, args.stage)
+            if _entry is None:
+                _log_event(f"stage_rejected key={args.stage} reason={_why}")
+                _err(f"未知的生成阶段: {args.stage}（{_why}）" if _why.startswith("未知工作流") else f"{_why}")
+                return EXIT_DETERMINISTIC
+        except Exception:  # noqa: BLE001 - 注册表缺失/临时目录无配置时回退旧行为（宽松）
+            pass
+
     resume_id = args.resume.strip() if args.resume else ""
     if not resume_id and not _has_new_task_args(args) and root_state.get("prompt_id"):
         resume_id = root_state["prompt_id"]  # 无参数 + 有断点 => 自动续传
