@@ -574,8 +574,23 @@ def cmd_queue(args):
     本机为 spark-local 时直跑 queue_probe.py（无 ssh）；Windows 侧则 ssh 到 spark。
     """
     action = getattr(args, "action", "status")
+    if action == "cancel":
+        pid = getattr(args, "prompt_id", "") or ""
+        if not pid:
+            print("[FAIL] cancel 需要 --prompt-id <任务id>（归属校验后才会执行）")
+            return 2
+        # 归属校验+zastępca执行均在 spark 侧 queue_probe（同机直跑/Windows ssh 同路径）
+        if Path(SPARK_REPO).exists():
+            rc, out, err = _run([sys.executable, str(ROOT / "runs" / "h3" / "queue_probe.py"),
+                                 "cancel", pid], timeout=30)
+        else:
+            rc, out, err = _ssh(f"cd {SPARK_REPO} && /home/Developer/qwen-agent-venv/bin/python "
+                                f"runs/h3/queue_probe.py cancel {pid} 2>/dev/null")
+        msg = (out or err or "").strip().splitlines()[-1] if (out or err) else ""
+        print(msg or f"[FAIL] 取消动作未返回结果: {(err or out).strip()[:160]}")
+        return 0 if rc == 0 and msg.startswith("{") and '"ok": true' in msg else 1
     if action != "status":
-        print(f"[FAIL] 未知 queue 动作: {action}（仅支持 status，只读）")
+        print(f"[FAIL] 未知 queue 动作: {action}（仅支持 status/cancel）")
         return 2
     if Path(SPARK_REPO).exists():  # spark 本地运行
         rc, out, err = _run([sys.executable, str(ROOT / "runs" / "h3" / "queue_probe.py")], timeout=30)
@@ -632,9 +647,10 @@ def main(argv=None):
     wf_sub.add_argument("--template", default="", help="add/swap 的模板相对路径")
     wf_sub.add_argument("--purpose", default="", help="add 的用途说明")
     wf_sub.add_argument("--format", default="ui", help="add 的模板格式 ui/api")
-    q = sub.add_parser("queue", help="ComfyUI 队列只读探测+归属判定（book-12 A5/L5；禁写）")
-    q.add_argument("action", nargs="?", choices=["status"], default="status",
-                   help="status=只读展示 running/pending + 归属判定（默认）")
+    q = sub.add_parser("queue", help="ComfyUI 队列只读探测+归属判定（book-12 A5/L5；cancel=归属校验后取消，book-14 T9）")
+    q.add_argument("action", nargs="?", choices=["status", "cancel"], default="status",
+                   help="status=只读展示 running/pending + 归属判定（默认）；cancel=取消（须 --prompt-id 且归属本机）")
+    q.add_argument("--prompt-id", default="", help="cancel: 本机登记的 prompt_id（未命中一律拒绝）")
     pp = sub.add_parser("postprocess", help="视频质量增强链（book-14 T2；spark 侧执行）")
     pp.add_argument("input", help="视频路径（相对 outputs/ 或 spark 绝对路径）")
     pp.add_argument("--scale", type=float, default=2.0)

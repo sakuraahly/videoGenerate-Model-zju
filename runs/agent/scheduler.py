@@ -88,6 +88,7 @@ SYSTEM_MESSAGE = """\
 - modify_workflow(path, changes) — 修改工作流节点
 - read_doc(filename) — 读取参考文档（按需）
 - list_references() — 列出可用素材
+- cancel_task(prompt_id) — 取消**本机登记的**生成任务（归属校验；他人任务一律拒绝）
 
 ═══ 创意→成片流程 ═══
 1. 判断工作流：默认 t2v；用户提供/提到图片→i2v/r2v；需要首末帧→flf2v
@@ -140,7 +141,7 @@ N 张图 → 一次 batch_submit(stage=flf2v, images=逗号分隔) 提交全部 
 请用中文回答。
 """
 
-TOOL_NAMES = ['run_script', 'modify_workflow', 'call_comfyui', 'read_doc',
+TOOL_NAMES = ['run_script', 'modify_workflow', 'call_comfyui', 'read_doc', 'cancel_task',
                'list_references', 'batch_submit']
 
 

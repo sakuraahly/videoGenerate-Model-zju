@@ -26,6 +26,48 @@ def _get(url: str) -> dict:
         return json.loads(r.read().decode())
 
 
+def find_owned(prompt_id: str) -> str:
+    """归属校验（book-14 T9）：prompt_id 命中本机登记/本项目任务 → 返回归属标签；否则空串=非本人。
+    """
+    pid = str(prompt_id or "").strip()
+    if not pid:
+        return ""
+    rj = ROOT / "last_job.json"
+    if rj.exists():
+        try:
+            if str(json.loads(rj.read_text(encoding="utf-8")).get("prompt_id") or "") == pid:
+                return "本机登记(last_job)"
+        except Exception:  # noqa: BLE001
+            pass
+    for f in ROOT.glob("workflows/h3_*/job.json"):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            continue
+        if str(d.get("prompt_id") or "") == pid:
+            return "本项目任务(" + f.parent.name + ")"
+    return ""
+
+
+def cancel_owned_task(prompt_id: str, reason: str = "") -> dict:
+    """book-14 T9：仅取消【归属校验通过】的任务：POST /queue {"delete":[qid]}。
+    qid==prompt_id（本项目强制 prompt id）；失败/非本人一律拒绝并说明。"""
+    who = find_owned(prompt_id)
+    if not who:
+        return {"ok": False, "msg": "取消被拒：prompt_id 不在本机登记/本项目中（共享服务器红线）。"}
+    body = json.dumps({"delete": [str(prompt_id)]}).encode()
+    req = urllib.request.Request(COMFY + "/queue", data=body,
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            resp = json.loads(r.read().decode())
+        return {"ok": True, "msg": f"已取消（{who}）。{reason}", "resp": resp}
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "msg": f"取消失败 HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:200]}"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "msg": f"取消失败: {type(e).__name__}: {e}"}
+
+
 def collect() -> dict:
     q = _get(COMFY + "/queue")
     last = ""
@@ -61,7 +103,13 @@ def collect() -> dict:
             "known_count": len(known), "last_known": bool(last)}
 
 
-def main() -> int:
+def main(argv=None) -> int:
+    import sys
+    argv = list(argv or sys.argv[1:])
+    if argv and argv[0] == "cancel" and len(argv) > 1:
+        # book-14 T9：归属校验后取消（find_owned 未命中即拒绝，绝不触碰他人任务）
+        print(json.dumps(cancel_owned_task(argv[1]), ensure_ascii=False))
+        return 0
     try:
         print(json.dumps(collect(), ensure_ascii=False))
     except Exception as e:  # noqa: BLE001

@@ -543,6 +543,31 @@ class BatchSubmit(BaseTool):
             return f'错误：{e}'
 
 
+@register_tool('cancel_task')
+class CancelTask(BaseTool):
+    description = (
+        '取消【本会话/本机登记的】生成任务（book-14 T9）：必须传真实 prompt_id；'
+        '工具内部会做归属校验（本机登记 last_job 或本项目 workflows job.json 命中才执行），'
+        '他人/未知任务一律拒绝。取消后任务停止并清理断点；可重新提交。'
+    )
+    parameters = {
+        'type': 'object',
+        'properties': {
+            'prompt_id': {'type': 'string',
+                          'description': '要取消的任务 prompt_id（TASK_SUBMITTED 输出中的 id）'},
+        },
+        'required': ['prompt_id'],
+    }
+
+    def call(self, params, **kwargs) -> str:
+        from h3 import queue_probe as _qp
+        pid = str(params.get('prompt_id') if isinstance(params, dict) else params or '').strip()
+        res = _qp.cancel_owned_task(pid)
+        if res.get('ok'):
+            return f'已取消任务 {pid}（归属校验通过）。{res.get("msg", "")}'
+        return f'[取消被拒] {res.get("msg", "")}'
+
+
 @register_tool('read_doc')
 class ReadDoc(BaseTool):
     description = (
