@@ -51,3 +51,6 @@
 
 ## 4. 与其它册
 - book-13 P0（输出异常保护已做展示层；本册补生成层）；book-15（服务编排：E1 需要改 sglang 启动参数，经 memory_planner 管理）；book-01（基线：复读率作为稳定性指标）。
+
+## 5. 根治完成记录（2026-09-05）
+- **✅ 已实施并全链路验证**：① 自管工具循环（_one_run 重写：≤6 轮、增量解码、超限即断、每轮审计）；② 直连 SGLang 用 **tools= 格式**（关键：只有 tools= 触发 qwen3.8 的 <tool_call><function=..> 标签；functions= 不触发）；③ 新增 runs/agent/toolcall_parse.py；④ 工具结果 user 视角回填（规避 tools 模式 function/tool role 400）；⑤ SYSTEM_MESSAGE 增“工具执行铁律”；⑥ 真实 run_turn 验证：A 问候 done / B 素材链 done（list_references→回填→中文收尾 3883 字）/ C 5 工具连锁 done；无复读、无 146 次循环；单测 152 全绿。

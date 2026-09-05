@@ -188,6 +188,82 @@ def trim_context(msgs: list) -> tuple:
     return out, dropped
 
 
+from runs.agent.toolcall_parse import _parse_tool_calls  # noqa: E402  book-16：qwen3.8 native tool-call
+
+
+LLM_HTTP = 'http://127.0.0.1:8000/v1/chat/completions'
+LLM_MODEL = 'Qwen3.8-27B'
+
+
+def _http_chat_once(messages: list, tools_schemas: list, timeout: int = 120) -> dict:
+    """book-16 自管循环：直连 SGLang OpenAI 端点（tools= 格式触发 qwen3.8 的 <tool_call> 标签）。
+    返回 message dict（含 content / function_call / tool_calls）；异常抛 ValueError。
+    """
+    import json as _json
+    import urllib.request as _ur
+    body = {'model': LLM_MODEL, 'messages': messages,
+            'tools': [{'type': 'function', 'function': s} for s in (tools_schemas or [])],
+            'max_tokens': REPLY_MAX_TOKENS, 'temperature': 0.2, 'top_p': 0.8,
+            'repetition_penalty': 1.05, 'frequency_penalty': 0.05, 'stream': False}
+    req = _ur.Request(LLM_HTTP, data=_json.dumps(body).encode(),
+                      headers={'Content-Type': 'application/json'}, method='POST')
+    try:
+        with _ur.urlopen(req, timeout=timeout) as r:
+            d = _json.loads(r.read().decode())
+    except Exception as e:  # noqa: BLE001
+        raise ValueError(f'{getattr(e, "code", "?")} {str(e)[:160]}') from e
+    try:
+        return (d.get('choices') or [{}])[0].get('message') or {}
+    except Exception as e:  # noqa: BLE001
+        raise ValueError('响应解析失败: ' + str(e)[:120]) from e
+
+
+_TOOL_SCHEMA_CACHE: list = []
+
+
+def _tool_defs() -> list:
+    """book-16 自管循环：从 qwen_agent 工具注册表生成 OpenAI functions schema（模块级，可单测）。"""
+    if _TOOL_SCHEMA_CACHE:
+        return _TOOL_SCHEMA_CACHE
+    try:
+        from qwen_agent.tools import TOOL_REGISTRY
+        from runs.agent.scheduler import TOOL_NAMES
+        for name in TOOL_NAMES:
+            cls = TOOL_REGISTRY.get(name)
+            if cls is None:
+                continue
+            inst = cls()
+            fn = getattr(inst, 'function', None)
+            if isinstance(fn, dict):
+                _TOOL_SCHEMA_CACHE.append(dict(fn))
+            else:
+                _TOOL_SCHEMA_CACHE.append({'name': getattr(inst, 'name', name),
+                                           'description': str(getattr(inst, 'description', ''))[:1500],
+                                           'parameters': getattr(inst, 'parameters', {})})
+    except Exception:  # noqa: BLE001
+        pass
+    return _TOOL_SCHEMA_CACHE
+
+
+def _run_tool(name: str, args) -> str:
+    """执行工具（qwen_agent 0.0.34 实例约定）并返回字符串结果（模块级，可单测）。"""
+    try:
+        from qwen_agent.tools import TOOL_REGISTRY
+        cls = TOOL_REGISTRY.get(name)
+        if cls is None:
+            return f'[错误] 工具未注册: {name}'
+        inst = cls()
+        if isinstance(args, str):
+            try:
+                args = json.loads(args) if args.strip() else {}
+            except Exception:  # noqa: BLE001
+                pass
+        out = inst.call(args) if args else inst.call({})
+        return str(out)
+    except Exception as e:  # noqa: BLE001
+        return f'[错误] {name} 执行失败: {type(e).__name__}: {e}'
+
+
 # ---------------------------------------------------------------- 模型回合
 def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     """后台线程：新开一个 Assistant 处理当前轮（无状态，历史由外部传入）。"""
@@ -235,38 +311,75 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     events.put({'kind': 'phase', 'text': '🔶 模型就绪：推理/工具调度中（长任务期间此状态会持续跳动，请勿重复发送）'})
 
     def _one_run(msgs):
-        bot = Assistant(llm=llm, system_message=system_message,
-                        function_list=TOOL_NAMES)
+        """book-16 根治：直连 SGLang（tools= 格式）+ 自管工具循环（≤6 轮、每轮审计、复读即断）。"""
+        cur = [{'role': 'system', 'content': system_message}] + dedupe_messages(list(msgs))  # book-16：自管循环须显式带 system
         final = ''
         acc = 0
-        _last = ['']  # book-16：qwen_agent 0.0.34 流式 yield 的是【累计】而非增量 → 增量差分解码
-        for chunk in bot.run(messages=msgs):
-            # chunk: List[Message]; 消息级 yield —— book-13 C1：逐批即时送显
-            for m in chunk:
-                role = m.get('role')
-                if role == 'assistant':
-                    t = _content_text(m.get('content'))
-                    if t:
-                        if t == _last[0]:
-                            continue  # 与上次完全相同：已渲染过
-                        if t.startswith(_last[0]) and len(t) > len(_last[0]):
-                            delta = t[len(_last[0]):]  # 累计扩展 → 取增量
-                        else:
-                            delta = t  # 新消息（工具轮后新段）
-                        _last[0] = t
-                        acc += len(delta)
-                        if acc > MAX_OUTPUT_CHARS:
-                            events.put({'kind': 'error',
-                                        'text': '输出异常超限（模型可能复读，已中断展示；请重试或换一种说法）'})
-                            return
-                        final = t
-                        if delta:
-                            events.put({'kind': 'chunk', 'text': delta})
-                elif role in ('function', 'tool'):
-                    name = m.get('name') or m.get('function', {}).get('name') if isinstance(m.get('function'), dict) else m.get('name')
-                    name = str(name or '')[:36]
-                    if name and '{' not in name:
-                        events.put({'kind': 'tool', 'text': name})
+        _last = ['']
+        for rnd in range(6):
+            try:
+                msg = _http_chat_once(cur, _tool_defs())
+            except Exception as e:  # noqa: BLE001
+                events.put({'kind': 'error', 'text': f'{type(e).__name__}: {e}'})
+                return final
+            msgs_out = [msg]
+            text = _content_text(msg.get('content') if isinstance(msg, dict) else '')
+            fc = (msg.get('function_call') if isinstance(msg, dict) else None) or {}
+            raw_text = text
+            # book-16：qwen3.8 native tool-call（<tool_call> 标签，SGLang 原样吐出）解析
+            tag_calls, clean_text = _parse_tool_calls(text)
+            if tag_calls or fc:
+                if tag_calls:
+                    fname = tag_calls[0][0]
+                    fc = {'name': fname, 'arguments': tag_calls[0][1]}
+                    text = clean_text
+                else:
+                    fname = str(fc.get('name') or '')
+                if text and text != raw_text:
+                    final = text
+                elif text:
+                    final = text
+                if text:
+                    if text == _last[0]:
+                        delta = ''
+                    elif text.startswith(_last[0]) and len(text) > len(_last[0]):
+                        delta = text[len(_last[0]):]
+                    else:
+                        delta = text
+                    _last[0] = text
+                    acc += len(delta)
+                    if acc > MAX_OUTPUT_CHARS:
+                        events.put({'kind': 'error',
+                                    'text': '输出异常超限（模型可能复读，已中断展示；请重试或换一种说法）'})
+                        return final
+                    if delta:
+                        events.put({'kind': 'chunk', 'text': delta})
+                if fname:
+                    events.put({'kind': 'tool', 'text': fname[:36]})
+                    out = _run_tool(fname, fc.get('arguments'))
+                    events.put({'kind': 'tool', 'text': f'{fname[:28]} 完成'})
+                    # book-16：下一轮回填用 user 视角（规避 SGLang tools 模式对 function/tool role 的 400 校验）
+                    cur = cur + [{'role': 'assistant', 'content': raw_text or ''},
+                                 {'role': 'user', 'content': f'[工具 {fname} 返回]\\n{out}'}]
+                    continue
+                continue
+            if text:
+                if text == _last[0]:
+                    delta = ''
+                elif text.startswith(_last[0]) and len(text) > len(_last[0]):
+                    delta = text[len(_last[0]):]
+                else:
+                    delta = text
+                _last[0] = text
+                acc += len(delta)
+                if acc > MAX_OUTPUT_CHARS:
+                    events.put({'kind': 'error',
+                                'text': '输出异常超限（模型可能复读，已中断展示；请重试或换一种说法）'})
+                    return final
+                final = text
+                if delta:
+                    events.put({'kind': 'chunk', 'text': delta})
+            break
         return final
 
     try:
