@@ -297,7 +297,8 @@ class CallComfyUI(BaseTool):
     }
 
     def call(self, params: Union[str, dict], **kwargs) -> str:
-        params = _coerce_int_fields(self._verify_json_format_args(params))
+        params = _coerce_int_fields(self._verify_json_format_args(params)) if isinstance(params, dict) else self._verify_json_format_args(params)
+        params = _coerce_int_fields(params)
         stage = params['stage']
 
         submit_script = os.path.join(PROJECT_ROOT, 'runs', 'h3_submit.py')
@@ -487,7 +488,8 @@ class BatchSubmit(BaseTool):
     }
 
     def call(self, params: Union[str, dict], **kwargs) -> str:
-        params = _coerce_int_fields(self._verify_json_format_args(params))
+        params = _coerce_int_fields(self._verify_json_format_args(params)) if isinstance(params, dict) else self._verify_json_format_args(params)
+        params = _coerce_int_fields(params)
         batch_script = os.path.join(PROJECT_ROOT, 'runs', 'h3_batch.py')
         if not os.path.isfile(batch_script):
             return f'错误：h3_batch.py 不存在于 {batch_script}'

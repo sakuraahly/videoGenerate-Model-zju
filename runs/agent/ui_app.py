@@ -317,6 +317,15 @@ def _run_tool(name: str, args) -> str:
             return f'[错误] 工具未注册: {name}'
         inst = cls()
         args = _parse_tool_args(args)
+        # book-16：模型常把整数写成字符串（seconds:'5'）→ 按工具 schema 先强转，再校验/执行
+        _props = (getattr(inst, 'parameters', None) or {}).get('properties') or {}
+        if isinstance(args, dict):
+            for _k, _v in list(args.items()):
+                if isinstance(_v, str) and _k in _props and _props[_k].get('type') == 'integer' and _v.strip().lstrip('-').isdigit():
+                    try:
+                        args[_k] = int(_v)
+                    except ValueError:
+                        pass
         out = inst.call(args) if args else inst.call({})
         return str(out)
     except Exception as e:  # noqa: BLE001
