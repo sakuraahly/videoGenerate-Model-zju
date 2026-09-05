@@ -85,7 +85,31 @@ def _next_output_name(outputs_dir: Path) -> str:
     return f"video_{highest + 1}.mp4"
 
 
-def _finalize_local_outputs(project_dir, remote_paths) -> None:
+def _probe_diff(probe_lines: str, width, height, length, seconds) -> str:
+    """book-12 B2/T3：ffprobe 文本 vs 请求参数（width/height/length/seconds）对冲。
+    返回 '' 表示符合；否则返回问题摘要（分辨率/帧数/时长）。
+    """
+    d = {}
+    for line in probe_lines.splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            d[k.strip()] = v.strip()
+    try:
+        w, h = int(d.get("width", 0) or 0), int(d.get("height", 0) or 0)
+        if width and height and (w, h) != (int(width), int(height)):
+            return f"分辨率 {w}x{h} != {int(width)}x{int(height)}"
+        frames = int(d.get("nb_frames", 0) or 0)
+        if frames and length and abs(frames - int(length)) > 2:
+            return f"帧数 {frames} != {int(length)}"
+        dur = float(d.get("duration", 0) or 0)
+        if dur and seconds and abs(dur - float(seconds)) > 0.8:
+            return f"时长 {dur:.1f}s != {seconds}s"
+    except (TypeError, ValueError):
+        return "无法解析 ffprobe 输出"
+    return ""
+
+
+def _finalize_local_outputs(project_dir, remote_paths, gp=None) -> None:
     """spark-local 直跑（无外层下载器）：产物本机复制直接保存到程序文件夹 outputs/。
 
     仅由无人负责下载的直跑路径调用；编排层（H3_KEEP_BREAKPOINT=1）自行下载，不重复。
@@ -109,6 +133,24 @@ def _finalize_local_outputs(project_dir, remote_paths) -> None:
             shutil.copy2(src, dst)
             print(f"LOCAL_OUTPUT: outputs/{dst.name}", flush=True)
             _log_event(f"local_output file={dst.name} bytes={dst.stat().st_size}")
+            # book-12 B2/T3：产物参数回归守卫（仅实际请求信息可用时）
+            if gp is not None and getattr(gp, 'width', None):
+                import subprocess as _sp
+                try:
+                    pr = _sp.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+                                  "-show_entries", "stream=width,height,r_frame_rate,nb_frames,duration",
+                                  "-of", "default=noprint_wrappers=1", str(dst)],
+                                 capture_output=True, text=True, timeout=30)
+                    issue = _probe_diff(pr.stdout, gp.width, gp.height,
+                                        getattr(gp, 'length', None), getattr(gp, 'seconds', None))
+                    if issue:
+                        _log_event(f"verify_mismatch file={dst.name} {issue}")
+                        print(f"[警告] 产物参数回归: {issue}（请检查模板默认值/参数注入）",
+                              file=sys.stderr, flush=True)
+                    else:
+                        _log_event(f"verify_ok file={dst.name} w={gp.width} h={gp.height}")
+                except Exception as _e:  # noqa: BLE001
+                    _log_event(f"verify_skip file={dst.name} err={type(_e).__name__}")
         except OSError as e:
             _log_event(f"local_output_failed file={dst.name} err={e}")
 
@@ -797,7 +839,7 @@ def main(argv: Optional[list] = None) -> int:
         # 直跑（CLI/agent，无外层下载器）：spark-local → 产物直接保存到 outputs/；
         # win-remote → 保持 scp 提示（由外层/人工经隧道下载）。
         if _site(project_dir) == "spark-local":
-            _finalize_local_outputs(project_dir, all_remote)
+            _finalize_local_outputs(project_dir, all_remote, gp=gp)
         else:
             print(f"\nTo download:")
             print(f"  scp {host}:{remote_path} {args.output}/", flush=True)
