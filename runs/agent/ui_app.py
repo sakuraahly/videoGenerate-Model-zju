@@ -254,6 +254,85 @@ _TOOL_LIMITS = {'call_comfyui': 1, 'batch_submit': 1, 'list_references': 2,
                 'run_script': 3, 'read_doc': 2, 'modify_workflow': 1}  # book-16 频控
 
 
+# ---------------------------------------------------------------- book-17 P2.2 硬约束
+def _tool_schema(name):
+    """白名单 + 工具实例 schema。返回 (ok, schema)。未注册/非法名 → ok=False。"""
+    try:
+        from runs.agent.scheduler import TOOL_NAMES
+        if name not in TOOL_NAMES:
+            return False, None
+        from qwen_agent.tools import TOOL_REGISTRY
+        cls = TOOL_REGISTRY.get(name)
+        if cls is None:
+            return False, None
+        inst = cls()
+        return True, (getattr(inst, 'parameters', None) or {})
+    except Exception:  # noqa: BLE001
+        return True, None
+
+
+def validate_tool_call(name, args, schema=None):
+    """book-17 P2.2.1：调用前 schema 校验（白名单/必填/类型/枚举/未知参数）。
+    返回 None=通过；字符串=首个错误。纯内置实现（可单测，Windows 无 qwen_agent 也可测 schema 部分）。"""
+    if not name or not str(name).strip():
+        return '工具名为空'
+    ok, sch = _tool_schema(name) if schema is None else (True, schema)
+    if not ok:
+        return f'工具未注册/不在白名单: {name}'
+    if not isinstance(args, dict):
+        return f'{name} 参数必须为 JSON 对象'
+    if not sch:
+        return None
+    props = sch.get('properties') or {}
+    req = sch.get('required') or []
+    for k in req:
+        if k not in args:
+            return f'缺少必填参数 {k!r}'
+    for k, v in args.items():
+        p = props.get(k)
+        if p is None:
+            return f'未知参数 {k!r}（允许: {chr(44).join(sorted(props)) or "无"}）'
+        t = p.get('type')
+        if t == 'integer' and not isinstance(v, int):
+            return f'参数 {k} 应为整数（int），收到 {type(v).__name__}: {v!r}'
+        if t == 'boolean' and not isinstance(v, bool):
+            return f'参数 {k} 应为布尔（true/false），收到 {type(v).__name__}: {v!r}'
+        if t == 'string' and not isinstance(v, str):
+            return f'参数 {k} 应为字符串，收到 {type(v).__name__}: {v!r}'
+        if t == 'number' and not isinstance(v, (int, float)):
+            return f'参数 {k} 应为数值，收到 {type(v).__name__}: {v!r}'
+        enum = p.get('enum')
+        if enum and v not in enum:
+            return f'参数 {k} 取值 {v!r} 不在允许集 {enum}'
+    return None
+
+
+def _parse_and_coerce_args(fname, raw):
+    """book-16/17：参数解析 + 按工具 schema 通用 int/bool/number 强转（统一入口）。"""
+    args = _parse_tool_args(raw)
+    ok, sch = _tool_schema(fname)
+    props = (sch or {}).get('properties') or {}
+    if isinstance(args, dict):
+        for _k, _v in list(args.items()):
+            if not isinstance(_v, str):
+                continue
+            _pt = props.get(_k, {}).get('type')
+            _sv = _v.strip()
+            if _pt == 'integer' and _sv.lstrip('-').isdigit():
+                try:
+                    args[_k] = int(_sv)
+                except ValueError:
+                    pass
+            elif _pt == 'boolean' and _sv.lower() in ('true', 'false'):
+                args[_k] = _sv.lower() == 'true'
+            elif _pt == 'number':
+                try:
+                    args[_k] = float(_sv)
+                except ValueError:
+                    pass
+    return args
+
+
 def _parse_tool_args(text) -> dict:
     """工具参数解析（book-16）：兼容 JSON、```围栏、以及 qwen3.8 KV 裸串（stage=t2v, seconds=5）。"""
     if isinstance(text, dict):
@@ -316,27 +395,7 @@ def _run_tool(name: str, args) -> str:
         if cls is None:
             return f'[错误] 工具未注册: {name}'
         inst = cls()
-        args = _parse_tool_args(args)
-        # book-16：模型常把整数写成字符串（seconds:'5'）→ 按工具 schema 先强转，再校验/执行
-        _props = (getattr(inst, 'parameters', None) or {}).get('properties') or {}
-        if isinstance(args, dict):
-            for _k, _v in list(args.items()):
-                if not isinstance(_v, str):
-                    continue
-                _pt = _props.get(_k, {}).get('type')
-                _sv = _v.strip()
-                if _pt == 'integer' and _sv.lstrip('-').isdigit():
-                    try:
-                        args[_k] = int(_sv)
-                    except ValueError:
-                        pass
-                elif _pt == 'boolean' and _sv.lower() in ('true', 'false'):
-                    args[_k] = _sv.lower() == 'true'
-                elif _pt == 'number':
-                    try:
-                        args[_k] = float(_sv)
-                    except ValueError:
-                        pass
+        args = _parse_and_coerce_args(name, args)  # book-17：统一参数解析+schema 强转
         out = inst.call(args) if args else inst.call({})
         return str(out)
     except Exception as e:  # noqa: BLE001
@@ -402,6 +461,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
         _tool_call_cache: dict = {}  # book-16：本轮同参数去重
         _tool_count: dict = {}  # book-16：本轮频控计数
         _tool_errs: list = []  # book-16：本轮工具失败结果（如实兜底）
+        _fix_budget: dict = {}  # book-17 P2.2.3：参数校验失败-修复重试次数限定（≤3）
         for rnd in range(6):
             try:
                 msg = _http_chat_once(cur, _tool_defs())
@@ -442,8 +502,23 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                         events.put({'kind': 'chunk', 'text': delta})
                 if fname:
                     events.put({'kind': 'tool', 'text': fname[:36]})
+                    # book-17 P2.2.1/P2.2.3：白名单+Schema 前置校验；失败回传具体错误，修复重试 ≤3 次
+                    _p_args = _parse_and_coerce_args(fname, fc.get('arguments'))
+                    _verr = validate_tool_call(fname, _p_args)
+                    if _verr:
+                        _tool_errs.append((fname, '校验拦截: ' + _verr[:70]))
+                        _fix_budget[fname] = _fix_budget.get(fname, 0) + 1
+                        if _fix_budget[fname] > 3:
+                            _fin = (f'{fname} 参数校验连续 4 次未通过（最近: {_verr[:120]}）；'
+                                    '已终止本轮，请调整请求后再试。')
+                            events.put({'kind': 'error', 'text': _fin})
+                            return _fin
+                        cur = cur + [{'role': 'assistant', 'content': (clean_text or text or '')[:6000]},
+                                     {'role': 'user',
+                                      'content': f'[参数校验失败] {fname}: {_verr}。请修正参数后重新调用（本次未执行，不计次数）。'}]
+                        continue
                     # book-16：同参数去重 + 频控（模型反复提交 → 只执行一次；防重复生成/六连提交）
-                    tkey = fname + '|' + json.dumps(_parse_tool_args(fc.get('arguments')), ensure_ascii=False, sort_keys=True)
+                    tkey = fname + '|' + json.dumps(_p_args, ensure_ascii=False, sort_keys=True)
                     if tkey in _tool_call_cache:
                         out = _tool_call_cache[tkey]
                         events.put({'kind': 'tool', 'text': f'{fname[:28]}（已执行过，结果复用）'})
