@@ -368,6 +368,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
         final = ''
         acc = 0
         _last = ['']
+        _tool_call_cache: dict = {}  # book-16：本轮同参数去重
         for rnd in range(6):
             try:
                 msg = _http_chat_once(cur, _tool_defs())
@@ -408,8 +409,15 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                         events.put({'kind': 'chunk', 'text': delta})
                 if fname:
                     events.put({'kind': 'tool', 'text': fname[:36]})
-                    out = _run_tool(fname, fc.get('arguments'))
-                    events.put({'kind': 'tool', 'text': f'{fname[:28]} 完成'})
+                    # book-16：同参数去重（模型反复提交同一任务 → 只执行一次，防重复提交/生成）
+                    tkey = fname + '|' + json.dumps(_parse_tool_args(fc.get('arguments')), ensure_ascii=False, sort_keys=True)
+                    if tkey in _tool_call_cache:
+                        out = _tool_call_cache[tkey]
+                        events.put({'kind': 'tool', 'text': f'{fname[:28]}（已执行过，结果复用）'})
+                    else:
+                        out = _run_tool(fname, fc.get('arguments'))
+                        _tool_call_cache[tkey] = out
+                        events.put({'kind': 'tool', 'text': f'{fname[:28]} 完成'})
                     # book-16：回填用【清洗后文本】(无 <tool_call> 标签，规避 SGLang tools 模式序列校验 400)
                     # 且结果以 user 视角注入（规避 function/tool role 校验）
                     cur = cur + [{'role': 'assistant', 'content': (clean_text or text or '')[:6000]},
