@@ -628,6 +628,16 @@ def main(argv: Optional[list] = None) -> int:
         print(f"恢复任务: prompt_id={resume_id}（跳过提交，直接轮询原任务）", flush=True)
         task_folder = _task_folder_for_prompt(project_dir, resume_id)
         _adopt_task_log(project_dir, task_folder)
+        # book-12 B2：resume 也恢复请求参数（供产物 verify 对冲；缺失时不校验）
+        try:
+            _job = jobstate.read_json(jobstate.task_job_path(project_dir, task_folder)) if task_folder else None
+            _p = (_job or {}).get("params") or {}
+            if _p.get("width"):
+                gp = argparse.Namespace(width=int(_p["width"]), height=int(_p["height"]),
+                                        length=int(_p.get("length") or 0),
+                                        seconds=float(_p.get("seconds") or 0))
+        except Exception:  # noqa: BLE001
+            gp = None
         _log_event(f"resume prompt_id={resume_id}")
     else:
         # ---- 模式选择 ----
