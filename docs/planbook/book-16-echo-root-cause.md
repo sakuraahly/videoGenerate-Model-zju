@@ -93,6 +93,12 @@
   2. 轮末兜底：`final==''` 且本轮执行过工具 → 生成状态总结事件（『任务已完成：本轮共调用工具 N 次（…）』），杜绝空内容。
 - 验证判据（下一批真实链）：R2 生成轮 END=done 且 text_len>0 且 call_comfyui 仅真实执行 1 次。
 
+### 6.3b 真实链复验新发现的两处根因（2026-09-05 深夜，已修）
+1. **done 文本误追加占位**：真实链 t0（你好）——模型回复已流式入 msgs，但 send() 收尾的 `elif final_text and not endswith(...)` 分支失败后落入 `else`，追加 "(模型未返回内容)" 并推送占位 note → 用户在界面看到“真回复+占位”或纯占位。**修复**：`final_text` 非空即视为完成（endswith 命中则仅记 ✅ note，未命中才追加），占位仅保留给真正空回复。
+2. **自动续接注入 content=None 的 user 消息**：真实链 list（含“素材”任务关键词）→ should_continue=True → attempt1 的 run_turn(user_text=None) 仍追加 `{'role':'user','content':None}` → SGLang tools 模式 validation 400（`role must be one of ...`；3 个 validation errors）。**修复**：run_turn 仅当 user_text 非空才追加 user 消息（续接历史已含 [系统自动续接] 消息）。
+3. **调试增强**：`_http_chat_once` HTTPError 携带 SGLang 响应体（500 字符）——400 可诊断（本轮即借此定位）。
+- **验证记录**：t0 通过（done/66 字/✅）；list 通过（done/212 字/✅/list_references 真实执行×2（频控上限 2））；R2 生成链待队列空闲后执行（外部任务在跑，未触碰）。
+
 ### 6.4 思维链关闭结论（定案）
 - 语法位置：`chat_template_kwargs={"enable_thinking": False}`（顶层 `"enable_thinking": false` 被忽略/纯 400 风险——此前实测）。
 - 探针证据（tools 模式，同请求仅此一处差异）：
