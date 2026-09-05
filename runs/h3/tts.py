@@ -133,15 +133,24 @@ def build_track(parts: list, total: float, out: Path, tmp: Path) -> Path:
 
 def replace_with_speech_text(input_video: Path, text: str, out: Path = None,
                              voice: str = DEFAULT_VOICE) -> Path:
-    """整段文本 → 中文语音 → 替换视频音轨（-shortest；保留画面；临时文件+原子替换，防原地写失败）。"""
-    from h3.postprocess import mix_audio
+    """整段文本 → 中文语音 → 替换视频音轨（语音 apad 至视频时长，保留完整画面；
+    临时文件+原子替换；防 -shortest 截断、防原地写失败）。"""
     input_video = Path(input_video)
     dest = Path(out) if out else input_video
     tmp_out = dest.with_name(dest.stem + "_tts" + dest.suffix)
     speech = Path(tempfile.mkstemp(suffix=".mp3")[1])
+    dur = probe_duration(input_video)
     try:
         synthesize(text, speech, voice=voice)
-        mix_audio(input_video, tmp_out, speech)
+        cmd = ["ffmpeg", "-y", "-i", str(input_video), "-i", str(speech),
+               "-map", "0:v", "-map", "1:a", "-c:v", "copy",
+               "-filter:a", "apad", "-c:a", "aac", "-b:a", "192k"]
+        if dur and dur > 0:
+            cmd += ["-t", f"{dur:.3f}"]
+        cmd += [str(tmp_out)]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+        if r.returncode != 0 or not tmp_out.is_file():
+            raise ValueError("TTS 音轨替换失败: " + (r.stderr or "")[-300:])
         tmp_out.replace(dest)
     finally:
         speech.unlink(missing_ok=True)
