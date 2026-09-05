@@ -37,8 +37,7 @@
 1. `runs/agent/tools.py`：CallComfyUI 提交参数追加 `--postprocess fast`（在 `--submit-only` 之后追加；dry_run 不带）；
 2. `runs/h3_submit.py` 完成钩子（**三审定稿=合并单次编码**，与 h3_submit.py:884-895 一致）：`finalize(原片) → [fast 且 tts 并存时] tts.prepare_speech(text)→ srt_+speech → postprocess.process(原片, _pp, srt=...)  ← 增强+字幕同 -vf 单次编码 → tts.replace_audio_only(_pp, speech)（视频 copy）→ PROBE/TTS_OUT`；仅有 tts 时走 attach_speech_and_subtitle（单次烧录编码+音轨 copy）；仅 fast 时走 run_fast。**不再存在双次 CRF18 路径**；
 3. 增强滤镜链（现有 `process()`，纯 ffmpeg，无 GPU）：`scale=iw*2:ih*2:flags=lanczos` → `hqdn3d=1.0` → `unsharp=5:5:0.4`（各向异性 lanczos 放大；降噪=时域去低步伪影；锐化恢复边缘；参数均可 `--postprocess fast` 固定）。
-**超分方案的取舍说明**：v1 用 lanczos（平滑、零依赖、秒级）；**真实超分模型（Real-ESRGAN x4plus）**：ComfyUI 输出目录历史中存在 `UpscaleModelLoader(RealESRGAN_x4plus.pth)` 节点（同事模板在用）→ **本机 ComfyUI 已可能持有该模型文件**（实施期核实 `~/ai/ComfyUI/models/upscale_models/`）——若存在：v2 可加 `--esrgan` 走 ComfyUI 独立请求（BatchProcess? 或者本地推理需 ComfyUI API 工作流：LoadImage+ImageUpscaleWithModel+SaveImage）；**若无该模型文件：放弃 v2，保留 lanczos**（外网受限无法下载）。
-**验证**：真实链 gen 一次（4 步 360p）：产物=1216×704、时长/帧数不变、字幕抽帧清晰、音轨 AAC 且时长=视频；`PROBE` 断言宽高。
+**超分方案（六审定稿——回填已确定事实，删除已撤回/未核实措辞）**：① v1 lanczos 保留兜底；② **v2 真实超分=本机已就位零下载**（§0 实测：`upscale_models/` 有 `RealESRGAN_x4plus.pth(+safetensors)` 与 `4x-UltraSharp.pth`）；**schema 已实测**（changelog 登记）：`UpscaleModelLoader` 输入键=**model_name**、`ImageUpscaleWithModel`=**upscale_model**、`LoadImage` 需 **input/ 根目录**（user_uploads 子目录不被解析）；工作流=`UpscaleModelLoader+ImageUpscaleWithModel+SaveImage`（经 `/prompt` 独立请求，不等 H3 生成队列）；**默认模型=4x-UltraSharp**（锐利/纹理优）；③ **倍率口径（六审更正）**：两模型均 **4x**——源 608×352→**2432×1408**；测试帧 1216×704→**4864×2816**（此前“1216→2432/2x”系误写）；按目标分辨率配合 lanczos 下采样即可得 720p/1080p/2K 档（如实标注=超分合成非原生）；④ 可选 RIFE 插帧（`frame_interpolation/` 为空→魔搭下载；`--interp 60fps`）；⑤ 顺序仍=增强→字幕/语音（合并单次编码）。**验证**：真实链 gen 一次（4 步 360p）：产物=1216×704、时长/帧数不变、字幕抽帧清晰、音轨 AAC 且时长=视频；`PROBE` 断言宽高。
 **风险**：**二轮审阅修正（撤回“已遵守”声明）**：旧链 process+render_subtitle 曾为两次 CRF18；现已重构为合并单次编码（process 支持 srt 并入同一 -vf；run_full 同步；钩子 fast+tts 并存走合并链）——实测：video_31 离线合并链 2.4s，产物 1216×704/5.167s，字幕比例字号（0.07×704≈49px，旧绝对 20px 已废）帧目检清晰。P1 拆分：**P1a=默认 lanczos fast（单次编码，即时收益）**；**P1b=--esrgan 交付档可选（单帧实测 ~11.8s（1216→2432）；串行 124 帧≈24min——成本一个数量级，仅精品/交付显式启用；先做批处理并行优化，目标 3-6min，未优化前禁默认）**。工作量：P1a 小-中；P1b 中。
 
 ## 3. S3 T9 收尾（取消后任务表残留）
@@ -66,8 +65,8 @@
 
 ## 6. S6 男/女声可选 + 字幕字号可调
 
-**实现**：`runs/h3/tts.py` 已支持 `voice` 参数（`DEFAULT_VOICE=XiaoxiaoNeural`；备选 `zh-CN-YunxiNeural`）；① `tools.py CallComfyUI` schema 增 `tts_voice`（enum: xiaoxiao|yunxi，缺省=默认）→ `h3_submit --tts-voice` → 任务记录 `tts_voice` → 完成钩子传入 `tts.attach(..., voice=...)`（`record_task_start` 已存 tts_text，扩展同结构）；② `--font-size`：`h3_submit` 已有?（无——`postprocess` CLI 有 `--font-size`；h3_submit 完成钩子烧录字幕走 `attach_speech_and_subtitle`→`render_subtitle` 默认字号=0.07×高）→ 增 `h3_submit --font-size` + `tools.py tts_font_size` 透传；③ SYSTEM_MESSAGE 台词规则加一句：『用户指定男/女声或字号→传给 tts_voice/tts_font_size』。
-**验证**：真实链指定 `tts_voice=yunxi` → run log `start argv` 含 `--tts-voice yunxi` + `tts_done ... voice=zh-CN-YunxiNeural`；字号=抽帧目检（更大/更小）。工作量：小。
+**实现（六审定稿——引擎侧已预接通）**：`runs/h3/tts.py` 已支持 `voice`（XiaoxiaoNeural 女 / YunxiNeural 男）。**引擎预接通已完成（commit 93c1533）**：`h3_submit --tts-voice`（choices=两个 Neura 音色，默认女声）+ 任务记录 `tts_voice` + 完成钩子**两条路径**均传 voice（合并链 `prepare_speech(voice=...)` 与非合并 `attach_speech_and_subtitle(voice=...)`）+ `tts_done` 日志取**实际 voice**（六审：旧日志硬编码 DEFAULT_VOICE 会让验证判据必然误判——已修）。剩 S6 剩余项：① `tools.py CallComfyUI` schema 增 `tts_voice`（enum 由上述 choices 派生）→ 透传 `--tts-voice`；② `--font-size` 透传（`process/render_subtitle` 默认=比例字号 0.07×H）；③ SYSTEM_MESSAGE 台词规则补一句（用户指定男/女声或字号→传给 tts_voice/tts_font_size）。
+**验证**：真实链指定 yunxi → `start argv` 含 `--tts-voice zh-CN-YunxiNeural` 且 `tts_done ... voice=zh-CN-YunxiNeural`（**此判据六审后可信**）；字号=抽帧目检。工作量：小。
 
 ## 7. S7 参考视频/音频原生支持（book-14 T8）——最大工程
 
@@ -90,64 +89,46 @@
    - history(pid) == `{}` → pid ∈ queue_running → running；∈ queue_pending → pending；皆不在 → failed；
    - **诚实标注**：cancelled 与 never-queued 在 ComfyUI 侧**不可区分**（均不在 history/queue）——「含 cancelled 标记」做不到；如需区分须本地 manifest/job 记录（可选增强，不承诺）；
 5. `runs/h3_batch.py` status 分支据此改写（输出兼容，--wait 轮询间隔 10s）。
-**验证**：已完成 manifest status --wait 瞬时返回且状态正确；与旧输出人工 diff。**前置**：task_watch.poll_batch 缺 pathlib 修复（已在场——见 §15），S8 须确认。工作量：中（含 API 扩展 queue_pids 与决策树——五审上调说明）。
+**验证**：已完成 manifest status --wait 瞬时返回且状态正确；与旧输出人工 diff。**前置**：task_watch.poll_batch 缺 pathlib 修复（已在场——见 changelog §15 与提交记录），S8 须确认。工作量：中（含 API 扩展 queue_pids 与决策树——五审上调说明）。
 
 ## 9. S9 会话历史导出/搜索
 
 **现状（审核修订）**：`dev.py` **无 sessions 子命令**（零命中；`list_chats` 在 ui_app，非 dev.py）——**全新建**。**实现（四审补两点）**：`list` 须 **glob '*.jsonl'**（`logs/agent_chats/` 下有 `thumbs/` 子目录，遍历目录条目会把 thumbs 当会话）；路径常量**复用 `session_cleanup.CHATS_DIR`**（唯一权威，防第三份硬编码）。**实现**：`dev.py sessions`（新建）：`list`、`export <cid>`、`search <kw>`；纯文件读。ut ...]`、`search <kw> [--cid]`；纯文件读。
-**验证**：对真实会话 export → 目检 md 内容完整；search '水墨' 命中既有会话。工作量：小。
+**验证**：对真实会话 export（md 完整：用户/助手分段+UTC+8 时间戳）→ 目检；search '水墨' 命中既有会话。工作量：小。
 
 ## 10. S10 质量看板（quality-report）
 
 **现状（审核修订）**：`runs/h3/quality.py` **不存在**（零命中）——**全新建**。**实现（五审字段缺口修正）**：① `runs/h3/quality.py`（新建）：`append(path, prompt_id='')`——**四值来源明确**：ts=append 时自生成；prompt_id=调用点传参（h3_submit 在 PROBE 处持有）；bytes=`Path.stat().st_size`；**audio 需 `postprocess.probe_av()`（五审新增：视频+音频双流探测——原 probe() 用 `-select_streams v:0`，音频结构性缺失）**；video 字段=PROBE/probe() 既有；② `compare(a,b)`（ffmpeg ssim）、`report()`；③ `dev.py quality-report`（新建）；④ h3_submit PROBE 后自动 append（probe_av）。工作量：小-中（含 probe_av 扩展与传参路径）。
-**验证**：对比命令在 video_19/24（已知 SSIM 0.864）复算一致性；report 输出含该记录。工作量：小。
+**验证**：对比命令在 video_19/24（已知 SSIM 0.864）复算一致性；report 输出含该记录。工作量：小-中（与 §10 实现估值一致）。
 
-## 11. S12 跨会话「显式共享区」选项
+## 12. S12 跨会话「显式共享区」选项
 
 **设计（语义请审核）**：新增 `refimage list --scope-shared`（=本会话 + 用户最近 7 天内『显式授权』的会话——授权=UI 新增『允许本会话访问这些会话』多选下拉，写入 `logs/agent_chats/<cid>.meta.json` `shared_from:[]`）；`list_references` 默认仍仅本会话；用户文本含『用第 X 会话的素材』时工具校验授权否则报错（复用现有『素材边界』模板）。
 **实现**：`refimage.py`（scope-shared 分支）+ `ui_app`（授权多选，小型 `gr.CheckboxGroup`）+ `tools.py list_references` 透传。**风险**：权限语义（默认不授权、显式点名、可撤销）必须先在 planbook 定稿；实现排在 S9 之后。工作量：中。
 
-## 11b. S11（不建议近期项）——规格留空
+## 11. S11（不建议近期项）——规格留空
 
 S11=§3.2 图片解析收敛（assets.py 重构）：价值/风险比低，登记观察；不提供实施规格（详见 book-13 总览）。
 
-## 12. S13 远期池的实现预研（**注意：个别“不可行”判定已被 §14/§16 取代**——以 §14/§16 为准）
+## 13. S13 远期池（**当前结论**；演变见 changelog）
 
-| 项 | 方案 | 可行性判定（本环境） |
+| 项 | 方案 | 当前结论 |
 |---|---|---|
-| 口型驱动（Wav2Lip/SadTalker） | 独立 venv + 模型文件推理 + 音轨→口型管线 | **⚠ 已被 §14/§16 取代：可行**（魔搭通道 + 本地 GPU torch；先冒烟后全链） |
-| 局部重绘 Inpaint | ComfyUI `InpaintModelConditioning`+`VAEEncodeForInpaint`（KJNodes 等已装；模型 SD1.5/SDXL-Inpaint 走魔搭） | **⚠ 已被 §14/§16 取代：可行**（图侧修复参考图乱码区；视频内逐帧重绘=远期） |
-| 标题/图表后期装配 | ffmpeg `drawtext` + Noto CJK（黑体/描边/安全区已有同参数）；数据图表=SVG 渲染→ffmpeg overlay（纯本地） | **可行**（无需新模型；工作量中） |
-| 1080p-级输出 | **⚠ 已被 §14/§16 取代（口径修正）**：ESRGAN 为 **4x** 模型——608×352 源→2432×1408（≈2K）；768p 源→3072×1728；按目标分辨率做 lanczos 下采样即可得 1080p/2K 档；仍如实标注=超分合成非原生 | 可行（需视觉抽检：4x 伪影/插值叠加） |
-| 齿音处理 | ffmpeg `afftdn` 已加；齿音=谱减（`highpass`+`deesser` 类无内建） | 低价值，维持暂缓 |
+| 口型驱动（Wav2Lip/SadTalker） | 独立 venv + 模型(魔搭) + 音轨→口型管线；先 5s 冒烟后全链 | 可行（魔搭通道 + sglang-venv torch；工作量=大） |
+| 局部重绘 Inpaint | SD1.5/SDXL-Inpaint（魔搭）+ ComfyUI inpaint 节点（KJNodes 已装） | 可行（图侧修复参考图乱码区；视频内逐帧=远期） |
+| 标题/图表后期装配 | ffmpeg drawtext（Noto CJK）/ 数据图=SVG→overlay | 可行（无新模型；工作量中） |
+| 1080p-级输出 | 4x 模型 608→2432×1408（测试帧 1216→4864×2816），按目标 lanczos 降采样 | 可行（如实=超分合成非原生；P6 需视觉抽检） |
+| 齿音处理 | afftdn 已加；齿音=谱减类无内建 | 暂缓（低价值） |
 
-## 13. 请审核者重点评审（**“五大”实为六条；各疑点结论见 §15/§16，本节保留原问供比对**）
+## 14. 疑点与结论（对照表；演变见 changelog）
 
-1. **S2 顺序**：『先增强后字幕/语音』是否优于『先字幕/语音后增强』？（我的理由：增强后再烧录字幕=字号语义一致、drawtext 在 2x 画布上更清晰；语音在增强前后无差别（音轨 copy））；
-2. **S7 前提检测失败时的处置**：我定为『探测失败→标记不可行并如实归档』，是否同意（vs 预留抽象接口等待模型）？
-3. **S7 音轨冲突决策**：参考音频 + T2b 旁白并存时以旁白为准——是否有更优次序（如参考音频做底、旁白做叠层混音）？
-4. **S8 语义差异**：history vs 轮询在『取消/失败/从未入队』三种状态下的归一口径（我方案：空/404→标记 failed，未知→pending 再查一次）；
-5. **S12 权限模型**：显式共享区（meta 授权+可撤销）vs 维持『线索+逐次授权』现状——哪个更符合本项目共享纪律；
-6. **通用**：所有真机验证的 GPU 占用（S2/S6 各 1 次 4 步 ×2 等）预算与队列纪律（一意图一驱动、队列空闲等待）是否认可。
-
----
-
-## 附录：可复用实现索引（审核者抽查用；**二轮审阅后：process 已支持 srt 单编码；run_fast/run_full 为合并链速查**）
-
-| 能力 | 文件/函数 | 备注 |
+| # | 疑点 | 结论 |
 |---|---|---|
-| 超分/降噪/锐化 | `runs/h3/postprocess.py::process`（lanczos/hqdn3d/unsharp/**srt 并入同 -vf 单编码**）；`run_fast`；`run_full`（完整链=单编码+音轨） | T2/T2b 已验收；二轮审阅已重构 |
-| 字幕 | `postprocess.render_subtitle`（libass/Noto CJK/字号描边安全区参数化） | book-18 已参数化 |
-| 语音 | `runs/h3/tts.py::synthesize/attach_speech_and_subtitle/build_srt_speech`（edge-tts/逐句/重试/loudnorm） | 听测通过 |
-| 队列/取消 | `runs/h3/queue_probe.py::collect/find_owned/cancel_owned_task` | T9 已验证 |
-| 服务/自愈/内存 | `runs/agent/{supervisor,svc_main,llm_mem}.py` | book-15 |
-| 历史查询 | `runs/h3/comfy.py::ComfyClient.history` / **`queue_pids()`（五审新增）** | S8 用（类名=ComfyClient） |
-| 参数档位 | `runs/agent/agent_params.py`（验证档/交付档） | book-17 §3 |
-| 一致性断言 | `runs/consistency_check.py::check_quality_prompt_baseline` | Q+/Q- |
-
----&nbsp;
----
-
-## 修订历史（§14-§16：审核应答与更正——独立存档，实施者不必读）
+| 1 | S2 先增强后字幕？（原论证基于字号语义） | 成立（三审后字号=比例，增强后更清晰）；顺序定稿=合并单次编码（§2） |
+| 2 | S7 探测失败处置 | 同意「标记不可行并归档」（§7） |
+| 3 | 参考音频 vs 旁白 | 定稿混音（§7 mix_tracks） |
+| 4 | S8 归一口径 | 定稿决策树（§8：空 dict 须队列消歧；cancelled 不可区分） |
+| 5 | S12 权限模型 | 定稿一次性 token（§12） |
+| 6 | GPU 预算/队列纪律 | 认可（changelog §15.3 预算表；按一意图一驱动） |## 修订历史（§14-§16：审核应答与更正——独立存档，实施者不必读）
 
 审核演变与应答全文见 **`docs/pending-tasks-changelog.md`**（§14 模型可用性更正 / §15 一轮应答 / §16 二轮应答；后续轮次应答追加于该文件）。本文档只保留各任务**当前定稿**；任务节内“审核修订”字样仅供参考。
