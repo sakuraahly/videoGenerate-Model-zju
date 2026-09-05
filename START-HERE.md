@@ -37,7 +37,8 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 | 9 | `docs/quickstart.md` / `docs/user-guide.md` / `docs/deploy-modes.md` / `docs/llm-memory-optimization.md` / `docs/qwen38-deployment.md` / `docs/h3-workflow-architecture.md` / `docs/h3-troubleshooting.md` / `docs/long-term-maintenance.md` 等 | 新手入门 / 用户手册 / 部署形态 / 内存账本 / Qwen 部署 / 工作流架构 / 故障排查 / 长期维护 | 按需定向阅读 |
 | 10 | **`docs/planbook/book-00-overview.md`**（+ book-01…book-17） | **系统性修复计划书**：痛点→阶段映射、基座/可信部署、前端/输出/自动完成/资源隔离/工作流/引擎/风格、验收门禁与黄金路径 | 修复负责人（多轮校验先读 book-00） |
 | 10b | `docs/planbook/book-17-model-fabrication-defense.md` | **计划·待批准**：模型伪造工具调用纵深防御（白名单/Schema 前置校验/修复重试/钩子/幂等/审计/人在回路）+ 流程自动化合规（必用 dev.py + spark 项目文件口径）+ LoRA/低参验证策略 + T2b 语音链联动 | 批准后实施负责人 |
-| 10c | `docs/planbook/book-18-quality-prompts-and-clarity.md` | **计划·待批准**：质量提示词固化（masterpiece/blurred scene 类每轮注入+防漂移断言）+ 语音/文字清晰度加强（用户指导意见取舍表：采纳项+远期不承诺项） | 批准后实施负责人 |
+| 10c | `docs/planbook/book-18-quality-prompts-and-clarity.md` | **已实施完成**：质量提示词固化（Q+/Q- 每轮注入+防漂移断言）+ 语音/文字清晰度加强（取舍表已定；听测通过） | 已归档 |
+| 10d | `docs/pending-tasks-implementation.md` | **待做任务·具体实现规格（供外部 AI 审核）**：S1-S13 各任务的文件级实现/验证/风险取舍/审核疑点 + 技术约束事实表 | 待审核 |
 | 11 | `docs/dev-workflow.md` / `skills/dev-workflow.md` | **变更与交付工作流**：执行→修改→测试→自测通过→写入文档→双端核对→git 提交（含如何操作） | 所有改动者（改任何文件前必读） |
 | 12 | `docs/prompt-taxonomy.md` | **H3 提示词属性词库**：10 正向 + 9 负向分类（book-06 保留/注入的图像属性词） | 工作流/提示词维护者 |
 | 13 | `docs/code-fact-registry.md` | **代码事实登记表**：路径/端口/常量/工具数/部署形态/模型模板唯一口径（冲突以运行代码为准） | 所有改动者（改前查表） |

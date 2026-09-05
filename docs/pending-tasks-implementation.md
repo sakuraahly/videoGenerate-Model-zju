@@ -1,0 +1,127 @@
+﻿# 待做任务·具体实现规格（供外部 AI 审核）
+
+> 文档性质：把「甜点/待做任务」的具体实现方案（含现状复用、文件级步骤、验证方法、风险取舍）写清，供**另一位 AI 审核**；审核者只需审本文件+抽查引用代码（所有路径相对项目根 `D:/MY_CODING_PROGRAM/videoGenerate-Model-zju`，spark 同构 `~/videoGenerate-Model-zju`）。
+> 版本：2026-09-05 · 关联计划书：book-13 §6（S1-S14 总览）、book-14、book-15、book-18。
+> 审核者请注意：文档中「待核实」= 需实施期探测确认；「不承诺」= 结论性取舍，若不同意请批注理由。
+
+---
+
+## 0. 审核输入：技术约束事实表（2026-09-05 实测）
+
+| 约束 | 事实 | 影响 |
+|---|---|---|
+| 外网 | pypi.org=200；huggingface/github/translate=000（不可达）；speech.platform.bing.com 可达（edge-tts 可用）；cdn.jsdelivr=301 | **任何需下载模型/数据的任务默认不可行**（S13 口型驱动=不可行；Inpaint 若需新模型=不可行，除非已有本地资产） |
+| GPU | 共享队列（归属校验才可取消/删除；新任务走提交即返回）；ComfyUI=systemd 且**禁止人工重启**（崩溃自愈由 systemd 承担；运行时只允许队列空闲时 POST /free） | 一切真机验证须队列空闲等待；任务数受控 |
+| 模板红线 | spark 同事模板 `~/ai/ComfyUI/user/default/workflows/` **永不修改**；只改本地镜像 `workflows/remote_workflows/` 与本地扩展 | S7 的 Ref2VA 模板只能本地镜像/本地扩展 |
+| 已可用组件 | `h3.postprocess.process`（lanczos 2x + hqdn3d + unsharp，ffprobe 断言）；`render_subtitle`（libass + Noto CJK，字号/描边/安全区可参数化）；`h3.tts`（edge-tts：合成/逐句/音轨替换/字幕一步到位/loudnorm -14）；`queue_probe`（队列只读/归属/条件取消）；`svc_main`（services 观测动作）；`supervisor`（自愈守护）；`llm_mem`（planner/wake 自适应）；`comfy.history(prompt_id)`（O(1) 单任务历史） | 多数任务=接线/组合，非新建 |
+| 组件能力缺口 | gradio 5.23 `Gallery` 支持 (image, caption) 元组（文档声明，实施时以 `view_api` 实测为准）；`File/UploadButton.select` 事件存在（已条件绑定实测无异常） | S1/S6 前端实现的可选路径 |
+
+---
+
+## 1. S1 上传预览可判定性（gallery 缩略图标注所属会话/可用性）
+
+**目标**：预览缩略图标注「会话来历/已用/可用」，用户不再混淆多会话素材。
+**现状**：`_previews_for_cid(cid)` 已按 cid 重建预览（book-13 #9b）；`_gal_by_cid` 存路径列表；gallery 无 caption。
+**实现（文件级）**：
+1. `runs/agent/ui_app.py`：`_previews_for_cid`/`_upload` 输出改为 `[(path, caption), ...]`，caption 由 `uploads/log.jsonl`（cid/sha/ts）拼装：`[会话 20260905_… · 已用/可用]`；可用性=该 sha 是否仍存在于 uploads 归档或 ComfyUI input/user_uploads（`_known_shas` 已有同构判定，抽为 `_asset_available(sha)`）；
+2. `gr.Gallery` 直接收元组；若无 caption 支持则降级：加 `gr.Markdown` 行列出可用项（计划 B，不改组件）。
+**验证**：真实链 `_load`（驱动脚本 `load_drv.py` 模式）断言 gallery 元素含 caption 文本；浏览器目检。
+**风险/取舍**：低；captions 为静态生成（上传时点），已用标记以「是否出现在本会话 list_references 输出」为基准（读取时计算，不持久）。工作量：小。
+
+## 2. S2 agent 出片默认走 T2 增强（超分/降噪/锐化）——「超分怎么实现」
+
+**目标**：agent 提交的每个任务完成后默认产出增强版（4 步瑕疵补偿），`--postprocess none` 可关。
+**现状**：T2 链已存在且真机验证过（video_12：608×352→1216×704/720p、5.17s/124f，ffprobe 断言）。`h3_submit --postprocess fast` 现有完成钩子；**但 agent（call_comfyui）当前不传 `--postprocess`**。
+**实现（文件级）**：
+1. `runs/agent/tools.py`：CallComfyUI 提交参数追加 `--postprocess fast`（在 `--submit-only` 之后追加；dry_run 不带）；
+2. `runs/h3_submit.py` 完成钩子**顺序重构**：`finalize(原片) → run_fast(原片→_pp) → tts.attach_speech_and_subtitle(_pp, tts_text) → PROBE/TTS_OUT`（**先增强后字幕/语音**——否则字幕被放大产生软边、语音在 608 源上烧录后增强音轨 copy 不受影响但画面字幕模糊）；有 `tts_text` 且无 `postprocess` 时仍走原路径；
+3. 增强滤镜链（现有 `process()`，纯 ffmpeg，无 GPU）：`scale=iw*2:ih*2:flags=lanczos` → `hqdn3d=1.0` → `unsharp=5:5:0.4`（各向异性 lanczos 放大；降噪=时域去低步伪影；锐化恢复边缘；参数均可 `--postprocess fast` 固定）。
+**超分方案的取舍说明**：v1 用 lanczos（平滑、零依赖、秒级）；**真实超分模型（Real-ESRGAN x4plus）**：ComfyUI 输出目录历史中存在 `UpscaleModelLoader(RealESRGAN_x4plus.pth)` 节点（同事模板在用）→ **本机 ComfyUI 已可能持有该模型文件**（实施期核实 `~/ai/ComfyUI/models/upscale_models/`）——若存在：v2 可加 `--esrgan` 走 ComfyUI 独立请求（BatchProcess? 或者本地推理需 ComfyUI API 工作流：LoadImage+ImageUpscaleWithModel+SaveImage）；**若无该模型文件：放弃 v2，保留 lanczos**（外网受限无法下载）。
+**验证**：真实链 gen 一次（4 步 360p）：产物=1216×704、时长/帧数不变、字幕抽帧清晰、音轨 AAC 且时长=视频；`PROBE` 断言宽高。
+**风险**：增强会重编码（libx264 CRF18，一次成片不二次转码——已遵守）；时间+约 10-20s CPU。工作量：小-中。
+
+## 3. S3 T9 收尾（取消后任务表残留）
+
+**现状**：`cancel_task` 取消成功即清 last_job 断点；但 `send()` 里 `all_pending_tasks/add_tasks(cid)` 登记仍在，`task_watch` 会继续轮询已取消 pid。
+**实现**：`runs/agent/task_watch.py` 新增 `mark_cancelled(cid, pid)`；`tools.py CancelTask.call` 取消成功后调用之（去重同方法）；task_watch 轮询到 cancelled 标记→立即发 done 事件（『已取消』）并停止；同时 `send()` 在收到 cancel 结果后 `clear_tasks(cid)` 清该会话任务表。
+**验证**：单测（mock task_watch 状态）；真实链=取消运行中任务后在会话继续「查询」→ 收到『已取消』而非轮询等待。工作量：小。
+## 4. S4 idea2prompts `--segments` 真实验证 + 与 batch 衔接
+
+**现状（已取证）**：`h3_batch submit --prompts-file <json>` **已存在**，格式=按段索引的 JSON 字典 `{"0":"pos...","1":...}`（`runs/h3_batch.py:133-151`）；`idea2prompts --segments N` 已实现（book-13 #5）但**输出为 `video_flf2v.segment_<i>.positive.txt` 文件**（与 batch 期望不匹配），且从未用真实 LLM 跑过。
+**实现**：① 改 `idea2prompts._write_segments`：追加写入 `--segments-json <path>`（默认 `prompts/workflows/video_flf2v.segments.json`，即 `{"0":..,"1":..}` 结构，与 `--prompts-file` 对齐；旧 txt 文件保留兼容）；② 真实 LLM 验证：临时启用 `config/llm.json`（`enabled=true; base_url=http://127.0.0.1:8000/v1; model=Qwen3.8-27B`，`chat_once` 走 urllib 直连 spug sglang——与 ui_app 同栈）跑 1 次 3 段 → 校验 parse/写文件；验证后关闭（默认不启用，避免二义性）。
+**验证**：dry-run `python runs/h3/idea2prompts.py --idea ... --workflow video_r2v?`（flf2v 段）→ 打印 JSON；用 `h3_batch submit --stage flf2v --image a,b,c ... --prompts-file <json> --dry-run` 断言 manifest 携带每段提示词。工作量：小。
+
+## 5. S5 SGLang 销毁性自愈演练（selfcheck --llm）
+
+**现状**：supervisor/`selfcheck`（agent 演练）已通过；`llm_mem.wake` 自适应链存在；**sglang 销毁性演练未做**（成本顾虑）。
+**实现**：`svc_main.py` 增 `selfcheck-llm`：① 前置校验 ComfyUI 队列空闲（`queue_probe.collect`）+ 本会话无生成任务（提示语：演练会中断当前对话）；② `pkill -f sglang.launch_server` + `tmux kill-session -t sglang`；③ 轮询 90s：`/v1/models` 200 或 supervisor 已拉起（supervisor 会调用 `llm_mem.wake`）；④ 输出 `{ok, detail}`；`dev.py services` 增参数透传；**本命令须显式 `--yes` 二次确认**（红线：非授权不执行）。
+**验证**：授权后执行一次（队列空闲窗口），断言 `wake 完成 档位=0`；记录耗时与降额日志。**风险**：SGLang 冷启动 1-3 分钟；若失败自动回退监督（supervisor 最多 3 次拉起后报警）。工作量：小。
+
+## 6. S6 男/女声可选 + 字幕字号可调
+
+**实现**：`runs/h3/tts.py` 已支持 `voice` 参数（`DEFAULT_VOICE=XiaoxiaoNeural`；备选 `zh-CN-YunxiNeural`）；① `tools.py CallComfyUI` schema 增 `tts_voice`（enum: xiaoxiao|yunxi，缺省=默认）→ `h3_submit --tts-voice` → 任务记录 `tts_voice` → 完成钩子传入 `tts.attach(..., voice=...)`（`record_task_start` 已存 tts_text，扩展同结构）；② `--font-size`：`h3_submit` 已有?（无——`postprocess` CLI 有 `--font-size`；h3_submit 完成钩子烧录字幕走 `attach_speech_and_subtitle`→`render_subtitle` 默认字号=0.07×高）→ 增 `h3_submit --font-size` + `tools.py tts_font_size` 透传；③ SYSTEM_MESSAGE 台词规则加一句：『用户指定男/女声或字号→传给 tts_voice/tts_font_size』。
+**验证**：真实链指定 `tts_voice=yunxi` → run log `start argv` 含 `--tts-voice yunxi` + `tts_done ... voice=zh-CN-YunxiNeural`；字号=抽帧目检（更大/更小）。工作量：小。
+
+## 7. S7 参考视频/音频原生支持（book-14 T8）——最大工程
+
+**现状（已取证）**：本地模板仅 7 份（t2v/i2v/r2v/flf2v × api/video），**无 Ref2VA 模板**；capabilities.json slots 含 `videos/audios: []` 占位；`MiniMaxH3ReferenceToVideo` 为多图节点（r2v 现模板）；T1 真机曾用 `ref2v_4step` LoRA（说明 spark 侧存在 Ref2VA 模板或节点 `MiniMaxH3ReferenceToVideo` 支持视频/音频槽位——**实施第一步必须探测**：`curl /object_info` 枚举节点（MiniMaxH3ReferenceToVideo 的 inputs 是否含 video/audio）＋ spark 同事模板目录/`~/ai/ComfyUI/user/default/workflows` 是否为 ref2v；`T1 用 ref2v lora` 意味着节点存在）。
+**分三步实现（每步可独立验收）**：
+- **7a 探测登记**：节点/模板存在性 → 结果写入 capabilities.json 新 stage `video_ref2v`（slots=videos up to 3 / audios up to 3 / images up to 9）与 code-fact-registry；若本地无模板→**从 spark 模板库复制镜像**（不改同事原件，仅本地镜像，遵守红线）；
+- **7b 引擎接线**：`runs/h3/stage.py` 增 `bind_refs_to_template(stage, images, videos, audios)`——复用现有 `bind_images_to_template` 的图像路径，扩展 LoadVideo/LoadAudio 节点注入（节点 key 探测期确定）；`h3_submit --videos/--audios`（逗号分隔本地素材 id）；`capabilities` 注册 params；
+- **7c 工具/提示词**：`tools.py call_comfyui` 增 `videos/audios`（枚举 id）；SYSTEM_MESSAGE 加 `<Video N>/<Audio N>` 提示词规范（N 与槽位序号一一对应）与使用边界（视频=动作参考/音频=氛围参考；不一致会导致编辑层重音轨，见下）；
+**取舍（关键，请审核）**：Ref2VA 生成的音轨与「T2b 中文旁白替换」存在冲突——若用户同时要求「参考音频 + 中文旁白」，**文档化决策**：以 T2b 旁白为最终音轨（提示词规则要求模型如实说明），参考音频仅用于氛围；`tts_text` 存在时 hook 仍执行替换。
+**验证**：dry-run 断言 LoadVideo/LoadAudio 图注入；真实链一次（提交 r2v+1 视频参考）产物 ffprobe 正常；**若 7a 探测失败（无节点/无模板）→ S7 标记为『不可行（环境缺能力）』并如实归档**，不做任何臆造接线。工作量：大（7a 小 / 7b 中 / 7c 小）。
+## 8. S8 批量状态轮询 O(1)
+
+**现状**：`h3_batch status` 每段新起 `h3_submit --resume`（每段 30s）；`comfy.history(prompt_id)` 已存在（单任务 O(1)）。
+**实现**：`runs/h3_batch.py`：`status` 分支改为：读 manifest `segments[].prompt_id` 列表 → 复用 `comfy.Client`（同进程连接，不新起子进程）逐段 `client.history(pid)` + 一次 `/queue` 判断 pending/running → 汇总打印（与现有输出格式兼容，`--wait` 语义保留（轮询间隔 10s））。
+**验证**：对已完成的 batch manifest 跑 `status --wait`（瞬时返回）断言各段状态正确；与旧输出 diff 人工核对一次。**风险**：`client.history` 对未入队/被取消 pid 的返回语义需实施期核对（空 dict vs 404）→ 加 `try/except` 归一字典。工作量：中。
+
+## 9. S9 会话历史导出/搜索
+
+**实现**：`dev.py sessions` 新子命令：`list`（已有 list_chats 口径）、`export <cid> [--out docs/exports/<cid>.md]`（读 `logs/agent_chats/<cid>.jsonl` → markdown：用户/助手分段 + 时间戳（已 UTC+8））、`search <kw> [--cid]`（jsonl 全文匹配，输出会话/行号/片段）；纯文件读，无风险。
+**验证**：对真实会话 export → 目检 md 内容完整；search '水墨' 命中既有会话。工作量：小。
+
+## 10. S10 质量看板（quality-report）
+
+**实现**：① `runs/h3/quality.py`：`append(path)`（读 PROBE 行/ffprobe → 追加 `logs/quality.jsonl`：ts/prompt_id/file/w/h/fps/frames/dur/bytes/audio）、`compare(a,b)`（ffmpeg ssim → {y,all,lra?} 存 jsonl）、`report()`（汇总表：最近 N 项 + 低步/交付档分组）；② `dev.py quality-report {append,compare a b,list}`；③ 在 `h3_submit` PROBE 输出后自动 append（一行调用，失败不影响主产物）。
+**验证**：对比命令在 video_19/24（已知 SSIM 0.864）复算一致性；report 输出含该记录。工作量：小。
+
+## 11. S12 跨会话「显式共享区」选项
+
+**设计（语义请审核）**：新增 `refimage list --scope-shared`（=本会话 + 用户最近 7 天内『显式授权』的会话——授权=UI 新增『允许本会话访问这些会话』多选下拉，写入 `logs/agent_chats/<cid>.meta.json` `shared_from:[]`）；`list_references` 默认仍仅本会话；用户文本含『用第 X 会话的素材』时工具校验授权否则报错（复用现有『素材边界』模板）。
+**实现**：`refimage.py`（scope-shared 分支）+ `ui_app`（授权多选，小型 `gr.CheckboxGroup`）+ `tools.py list_references` 透传。**风险**：权限语义（默认不授权、显式点名、可撤销）必须先在 planbook 定稿；实现排在 S9 之后。工作量：中。
+
+## 12. S13 远期池的实现预研（不承诺，仅给审核者方案口径）
+
+| 项 | 方案 | 可行性判定（本环境） |
+|---|---|---|
+| 口型驱动（Wav2Lip/SadTalker） | 独立 venv + 模型文件推理 + 音轨→口型管线 | **不可行**：模型下载源（HF）不可达；无离线模型资产 → 除非外部提供模型文件 |
+| 局部重绘 Inpaint | ComfyUI `InpaintModelConditioning`+`VAEEncodeForInpaint`+SAM mask（需 SAM/Inpaint 节点与模型） | **待探测**：若 `~/ai/ComfyUI/custom_nodes` 含 ComfyUI-Inpaint 类节点且模型存在→可行（`/object_info` 枚举）；否则不可行 |
+| 标题/图表后期装配 | ffmpeg `drawtext` + Noto CJK（黑体/描边/安全区已有同参数）；数据图表=SVG 渲染→ffmpeg overlay（纯本地） | **可行**（无需新模型；工作量中） |
+| 1080p 输出 | 模型上限 768p；增强链 2x 可得 **1216×704（≈720p）**；如需 1080p 类：`--scale 2.84` 到 1728×1000? **建议口径**：交付档=768p 原生或 2x 增强，**不宣称 1080p 原生**；`--scale` 自定义允许用户自选 | 可行（如实标注：超分非原生） |
+| 齿音处理 | ffmpeg `afftdn` 已加；齿音=谱减（`highpass`+`deesser` 类无内建） | 低价值，维持暂缓 |
+
+## 13. 请审核者重点评审（五大疑点）
+
+1. **S2 顺序**：『先增强后字幕/语音』是否优于『先字幕/语音后增强』？（我的理由：增强后再烧录字幕=字号语义一致、drawtext 在 2x 画布上更清晰；语音在增强前后无差别（音轨 copy））；
+2. **S7 前提检测失败时的处置**：我定为『探测失败→标记不可行并如实归档』，是否同意（vs 预留抽象接口等待模型）？
+3. **S7 音轨冲突决策**：参考音频 + T2b 旁白并存时以旁白为准——是否有更优次序（如参考音频做底、旁白做叠层混音）？
+4. **S8 语义差异**：history vs 轮询在『取消/失败/从未入队』三种状态下的归一口径（我方案：空/404→标记 failed，未知→pending 再查一次）；
+5. **S12 权限模型**：显式共享区（meta 授权+可撤销）vs 维持『线索+逐次授权』现状——哪个更符合本项目共享纪律；
+6. **通用**：所有真机验证的 GPU 占用（S2/S6 各 1 次 4 步 ×2 等）预算与队列纪律（一意图一驱动、队列空闲等待）是否认可。
+
+---
+
+## 附录：可复用实现索引（审核者抽查用）
+
+| 能力 | 文件/函数 | 备注 |
+|---|---|---|
+| 超分/降噪/锐化 | `runs/h3/postprocess.py::process`（lanczos/hqdn3d/unsharp, ffprobe 断言） | T2 已验收 |
+| 字幕 | `postprocess.render_subtitle`（libass/Noto CJK/字号描边安全区参数化） | book-18 已参数化 |
+| 语音 | `runs/h3/tts.py::synthesize/attach_speech_and_subtitle/build_srt_speech`（edge-tts/逐句/重试/loudnorm） | 听测通过 |
+| 队列/取消 | `runs/h3/queue_probe.py::collect/find_owned/cancel_owned_task` | T9 已验证 |
+| 服务/自愈/内存 | `runs/agent/{supervisor,svc_main,llm_mem}.py` | book-15 |
+| 历史查询 | `runs/h3/comfy.py::Client.history` | S8 用 |
+| 参数档位 | `runs/agent/agent_params.py`（验证档/交付档） | book-17 §3 |
+| 一致性断言 | `runs/consistency_check.py::check_quality_prompt_baseline` | Q+/Q- |
