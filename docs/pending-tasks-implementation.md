@@ -15,7 +15,7 @@
 | GPU | 共享队列（归属校验才可取消/删除；新任务走提交即返回）；ComfyUI=systemd 且**禁止人工重启**（崩溃自愈由 systemd 承担；运行时只允许队列空闲时 POST /free） | 一切真机验证须队列空闲等待；任务数受控 |
 | 模板红线 | spark 同事模板 `~/ai/ComfyUI/user/default/workflows/` **永不修改**；只改本地镜像 `workflows/remote_workflows/` 与本地扩展 | S7 的 Ref2VA 模板只能本地镜像/本地扩展 |
 | 已可用组件 | `h3.postprocess.process`（lanczos 2x + hqdn3d + unsharp，ffprobe 断言）；`render_subtitle`（libass + Noto CJK，字号/描边/安全区可参数化）；`h3.tts`（edge-tts：合成/逐句/音轨替换/字幕一步到位/loudnorm -14）；`queue_probe`（队列只读/归属/条件取消）；`svc_main`（services 观测动作）；`supervisor`（自愈守护）；`llm_mem`（planner/wake 自适应）；`comfy.history(prompt_id)`（O(1) 单任务历史） | 多数任务=接线/组合，非新建 |
-| 组件能力缺口 | gradio 5.23 `Gallery` 支持 (image, caption) 元组（文档声明，实施时以 `view_api` 实测为准）；`File/UploadButton.select` 事件存在（已条件绑定实测无异常） | S1/S6 前端实现的可选路径 |
+| 组件能力缺口 | **gradio 版本未在仓库固定（无 requirements/pin 文件；Windows 无 gradio）**——Gallery 是否支持 (image, caption) 元组须 spark `view_api()` 实测并**登记实际版本号**；File/UploadButton.select 已条件绑定实测无异常 | S1/S6 前端实现的可选路径 |
 
 ---
 
@@ -81,8 +81,16 @@
 ## 8. S8 批量状态轮询优化（消除子进程开销；**非真 O(1)**——ComfyUI 无批量接口，实为 O(N) 但无逐段子进程/30s 开销）
 
 **现状**：`h3_batch status` 每段新起 `h3_submit --resume`（每段 30s）；`comfy.history(prompt_id)` 已存在（单任务 O(1)）。
-**实现**：`runs/h3_batch.py`：`status` 分支改为：读 manifest `segments[].prompt_id` 列表 → 复用 `comfy.Client`（同进程连接，不新起子进程）逐段 `client.history(pid)` + 一次 `/queue` 判断 pending/running → 汇总打印（与现有输出格式兼容，`--wait` 语义保留（轮询间隔 10s））。
-**验证**：对已完成的 batch manifest 跑 `status --wait`（瞬时返回）断言各段状态正确；与旧输出 diff 人工核对一次。**归一口径（审核修订）**：已取消/从未入队=`/history/{pid}` 空 dict `{}`；提交前错误=404/连接错——`{}`→failed（含 cancelled 标记），404/连接错→pending（下次再查）。**S8 前置（审核抓出的真 bug）**：`runs/agent/task_watch.py::poll_batch` 缺 `from pathlib import Path`（NameError→恒 failed）——已在审核当轮修复（见 §15）；S3/S8 须确认修复在场。工作量：中。
+**实现（五审定稿——按现有 API 可照写）**：
+1. **类名**：`from h3.comfy import ComfyClient`（**非 Client**——仓库无 Client 类；五审修正附录同步）；
+2. **新增 `ComfyClient.queue_pids()`**（五审已落地代码：返回 (running_pids, pending_pids) 集合——queue() 只返回计数，无法定位 pid）；
+3. **状态构造参数**：`ComfyClient(retries=1, request_timeout=5)`（五审：默认 retries=3/退避5-10s/request_timeout=30 在故障时 10 段可达 150-1050s，比现状 300s 更慢；重试语义交给外层 --wait 轮询）；
+4. **归一口径=决策树**（五审：`{}` 不等于失败——在途任务 history 亦为 `{}`）：
+   - history(pid) 非空且含 outputs → completed；非空且 status.error → failed；
+   - history(pid) == `{}` → pid ∈ queue_running → running；∈ queue_pending → pending；皆不在 → failed；
+   - **诚实标注**：cancelled 与 never-queued 在 ComfyUI 侧**不可区分**（均不在 history/queue）——「含 cancelled 标记」做不到；如需区分须本地 manifest/job 记录（可选增强，不承诺）；
+5. `runs/h3_batch.py` status 分支据此改写（输出兼容，--wait 轮询间隔 10s）。
+**验证**：已完成 manifest status --wait 瞬时返回且状态正确；与旧输出人工 diff。**前置**：task_watch.poll_batch 缺 pathlib 修复（已在场——见 §15），S8 须确认。工作量：中（含 API 扩展 queue_pids 与决策树——五审上调说明）。
 
 ## 9. S9 会话历史导出/搜索
 
@@ -91,7 +99,7 @@
 
 ## 10. S10 质量看板（quality-report）
 
-**现状（审核修订）**：`runs/h3/quality.py` **不存在**（零命中）——**全新建**。**实现**：① `runs/h3/quality.py`（新建）：`append(path)`（读 PROBE 行/ffprobe → 追加 `logs/quality.jsonl`）、`compare(a,b)`（ffmpeg ssim）、`report()`；② `dev.py quality-report`（新建）；③ `h3_submit` PROBE 后自动 append。
+**现状（审核修订）**：`runs/h3/quality.py` **不存在**（零命中）——**全新建**。**实现（五审字段缺口修正）**：① `runs/h3/quality.py`（新建）：`append(path, prompt_id='')`——**四值来源明确**：ts=append 时自生成；prompt_id=调用点传参（h3_submit 在 PROBE 处持有）；bytes=`Path.stat().st_size`；**audio 需 `postprocess.probe_av()`（五审新增：视频+音频双流探测——原 probe() 用 `-select_streams v:0`，音频结构性缺失）**；video 字段=PROBE/probe() 既有；② `compare(a,b)`（ffmpeg ssim）、`report()`；③ `dev.py quality-report`（新建）；④ h3_submit PROBE 后自动 append（probe_av）。工作量：小-中（含 probe_av 扩展与传参路径）。
 **验证**：对比命令在 video_19/24（已知 SSIM 0.864）复算一致性；report 输出含该记录。工作量：小。
 
 ## 11. S12 跨会话「显式共享区」选项
@@ -133,7 +141,7 @@ S11=§3.2 图片解析收敛（assets.py 重构）：价值/风险比低，登�
 | 语音 | `runs/h3/tts.py::synthesize/attach_speech_and_subtitle/build_srt_speech`（edge-tts/逐句/重试/loudnorm） | 听测通过 |
 | 队列/取消 | `runs/h3/queue_probe.py::collect/find_owned/cancel_owned_task` | T9 已验证 |
 | 服务/自愈/内存 | `runs/agent/{supervisor,svc_main,llm_mem}.py` | book-15 |
-| 历史查询 | `runs/h3/comfy.py::Client.history` | S8 用 |
+| 历史查询 | `runs/h3/comfy.py::ComfyClient.history` / **`queue_pids()`（五审新增）** | S8 用（类名=ComfyClient） |
 | 参数档位 | `runs/agent/agent_params.py`（验证档/交付档） | book-17 §3 |
 | 一致性断言 | `runs/consistency_check.py::check_quality_prompt_baseline` | Q+/Q- |
 
@@ -230,7 +238,7 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 1. ComfyUI `/object_info`：ImageUpscaleWithModel / SaveImage / Min v（v2 超分工作流 schema）；
 2. 魔搭模型真实 ID：RIFE、SD1.5/SDXL-Inpaint、Wav2Lip(含 S3FD)、FunASR/Paraformer、F5-TTS（下一条=下载时长与大小登记）；
 3. Ref2VA 节点/模板（spark `/object_info` + 同事模板目录——未确认前 S7 只做 7a 探测）；
-4. ~~混音扩展 mix_audio 双轨音量配比~~（**已由三审完成并回填**：mix_tracks 新建+接线+dB 修正+spark 测试通过）；**新增**：ESRGAN 批处理并行的**单卡并发路数与显存上限实测**（目标 3-6min 为待验证目标，非承诺）。
+4. ~~混音扩展 mix_audio 双轨音量配比~~（**已由三审完成并回填**：mix_tracks 新建+接线+dB 修正+spark 测试通过）；**新增**：ESRGAN 批处理并行的**单卡并发路数与显存上限实测**（3-6min=待验证目标，非承诺）；**新增（五审）**：**建立 requirements/lock 文件口径**——仓库无任何依赖 pin 文件，S13/P2-P6 将引入 modelscope/FunASR/Wav2Lip/F5-TTS 等多套新依赖（独立 venv），无 lock 会快速产生依赖漂移与 venv 边界问题。
 
 **审核闭环**：以上即对审阅意见的完整应答；如审核方复轮，仅需针对 §15.1 未接受项说明理由。
 ---
@@ -247,7 +255,7 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 
 **实测新增事实（登记）**：ComfyUI 超分节点 schema：`UpscaleModelLoader` 输入键=**model_name**（非 upscale_model）；`ImageUpscaleWithModel`=upscale_model；LoadImage 需 input/ 根目录（user_uploads 子目录不能被直接解析）。
 
-**审核问题“需要我直接落补丁吗？”**——已由本项目落地提交（**Windows 侧哈希：8c971f7/1c4c4d7/fecbcee（三审修复）**；spark 侧对应 84f7b69/d2d4c95/7f5da21；三审修复 fecbcee=dB 后缀+normalize=0+afftdn 补回+run_full 接线+测试），证据=上述实测。**三审新增实测**（spark）：volume 语义=`0.0→-91dB 静音 / -12.0→0dB 削波 / -12dB→-33.1dB 衰减`（审核判断证实）；mix_tracks 真实测试通过（dB 相对差≈12 assert）；afftdn 已补回 replace_audio_only（attach 与合并路径一致）。
+**审核问题“需要我直接落补丁吗？”**——已由本项目落地提交（**Windows 侧哈希：8c971f7/1c4c4d7/fecbcee（三审修复）**；spark 侧对应 84f7b69/d2d4c95/7f5da21；三审修复 fecbcee=dB 后缀+normalize=0+afftdn 补回+run_full 接线+测试），证据=上述实测。**三审新增实测**（spark）：volume 语义=`0.0→-91dB 静音 / -12.0→0dB 削波 / -12dB→-33.1dB 衰减`（审核判断证实）；mix_tracks 真实测试通过（dB 相对差≈12 assert；**该护栏=四审补强后成立**——三审时仅 is_file 断言）；afftdn 已补回 replace_audio_only（attach 与合并路径一致）。
 
 **仍未决/待实施前置（如实）**：① ESRGAN 批处理并行优化（S2-P1b 第一步）；② §15.5 其余项（魔搭模型真实 ID、Ref2VA 探测、amix 权重语义）按确认一项动工一项；③ S2 正式实施（钩子默认 fast 接线）：前置=合并链已就绪（✓）+ 队列空闲窗口 + 回滚开关 --postprocess none（已有）——待第一批整体拍板。
 
