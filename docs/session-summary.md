@@ -850,6 +850,12 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.21 十一审闭环：S7 接口约定层复核（2026-09-05）
+- **更正接受**：十审“UI 输入行合成现有代码没有”判断作废——grow_slots（refimage.py:497-526）已实现（目标行追加+_clone_loadimage 占位克隆，COMFY_AUTOGROW_V3）；A 的真实缺口=参数化（四处硬编码：前缀 :511/类型 :520/:551/源输出槽 :551/:554/占位克隆 :522）+ 两条新增（last_node_id 不更新→workflow.py:255 算法未被复用、无副本参数→按 template 必填原则改造）；A 成本下调为“中”，主案 B 不变。
+- **§7c 双通道硬约束**（最实质风险）：tag（提示词文本）与槽位（--videos/--audios 列表顺序）独立通道，顺序错位=产物正常+判据全过但参考关系错（静默错配）——定稿：槽位由列表顺序唯一决定；tools.py 拼装时校验 tag 序号集合==列表索引集合（{1..len}），不一致报错拒提交；SYSTEM_MESSAGE 明示一一对应；一级验证判据④升级为一致性守卫。
+- **不对称说明**：video/audio 用 tag 的理由=动作/氛围参考须在提示词显式指代（H3 官方 tag 语义）；images 维持位置序（refimage use --slot N 已管，全仓无 <Picture N> 约定；官方 <Picture N> 列为可选增强低优先）。
+- **双源证据补入 §7**：本地 refimage.py:487 widgets_values=["文件名","image"] 双值模式（克隆逻辑自身生成）与 spark utility-gan_upscaler.json node 9 实测同构→支撑 uiapi 文件选择器分支判据（方案 A 前置；B 下为已知边界）。
+- **defaults 取模**：8 项取模，slot=8 回绕复用 defaults[0] 但 mode=4 占位无害——支持“images=8 勿写 9”。零代码改动。
 ### 20.20 十审闭环：S7 规格**第三轮**修订——计数修正 + 主案改 API 层注入（2026-09-05）
 - **十审三高项**：① 槽位计数错误（模板实测 ref_images=8 行、ref_videos/ref_video_audios/ref_audios 各 1 行；node 上限 9/3/3）——§7 改两栏口径；7a 目标 images count=8（按 9 登记会被 template_health “期望 9 实际 8”拦截）；② “上限 3”两栏化；③ _wire_slot 三缺口（:551 类型硬编码 IMAGE/:554 输出槽 0/:547 目标行假定存在）——**在选定的设计 B 下全部消失**；同构先例更正=grow_slots（refimage.py:497-526，非“无能力”）。
 - **设计定稿（十审中项→主案=设计 B）**：API 层注入（循 apply_lora 先例 stage.py:180-220、调用点 h3_submit.py:545）——`inject_media_refs(wf, videos, audios)` 在转换后注 LoadVideo/GetVideoComponents/LoadAudio + 槽位键（ref_videos.ref_video_i=[gvc,0]、ref_video_audios…=[gvc,1]、ref_audios…=[la,0]）；**免去** uiapi.py 文件选择器分支（九审落点 1）与 UI 行合成/簿记；注入 id 用数字字符串（避开 96d2188 字符串 id 脆弱史）；代价=双注入点分裂（images 仍 UI 层）+模板副本 UI 无参考节点——如实记录，设计 A 保留为翻案记录。

@@ -189,3 +189,22 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **自查补充（十审未点名、按印证逻辑发现并已修）**：上轮 7c 的 tag 映射差 1——官方 `<Video N>` 从 1 起（按连接顺序）、槽位键从 0 起（ref_video_0），上版写 “<Video N>→ref_videos.ref_video_N” 错误，已更正为 **N-1**（`<Audio N>` 同）。
 
 **机制**：本轮零代码改动（S7 仍待实施）；“采纳/成立”均已按落点 grep 核对；模板计数用程序化统计（collections.Counter 按点分键前缀），非目测。
+---
+
+## 22. 十一审应答（2026-09-05 · S7 接口约定层复核）
+
+**一、更正接受（十审曾断言"追加 UI 输入行现有代码没有"——十一审的更正本身也须再核）**：核验 `grow_slots`（refimage.py:497-526）确实已实现目标行追加（:518-521）+ `_clone_loadimage` 占位克隆（:480-494，docstring 点名 COMFY_AUTOGROW_V3）；**采纳更准确的缺口表述**：能力已有（grow_slots＋_wire_slot），A 的缺口=参数化。已按"四处硬编码"表写入 §7 备选 A（① 前缀 :511 → ref_videos./ref_video_audios./ref_audios.（_owner_rows :529-538 已前缀泛化）；② 类型 :520/:551 "IMAGE"→"AUDIO"；③ 源输出槽 :551/:554（0＋按名匹配）→GVC audio=槽 1；④ 占位节点克隆 :522 → LoadVideo/LoadAudio），并**降低 A 成本估计**（"中"而非"大上沿"）；主案 B 维持不变（B 连 uiapi 分支都省）。
+
+**二、【中】§7c 双通道（tag 文本 vs --videos 列表顺序）不一致风险——最实质**：
+- 核验对称性：tools.py:296 明确"r2v 按顺序绑定"（位置序）；bind_images_to_template:191-200 顺序填槽；全仓无 `<Picture N>` tag 约定——**images 位置序、video/audio 将引入 tag，不对称属实**。处置=§7c 写明理由：视频=动作参考/音频=氛围参考须在提示词显式指代（H3 官方 Markdown 即 "reference the inputs by tag, in the exact order they were connected"）；图片=身份/场景参考，既有链已由 refimage use --slot N 位置管理覆盖，保持不动（官方 `<Picture N>` 列为可选增强低优先）。
+- 核验静默错配：情形表成立（tag 越界/顺序错位时产物正常、ffprobe 与一级判据全过、参考关系错）——**采纳定稿硬约束**：槽位由 `--videos/--audios` 列表顺序**唯一**决定；tools.py 拼装时校验 tag 序号集合 == 列表索引集合（{1..len}），不一致**报错拒提交**；SYSTEM_MESSAGE 明示一一对应；一级验证判据④升级为"一致性守卫（上限>3 报错 + tag/列表一致）"。
+
+**三、【中】设计 A 缺口补两条**：
+- 3.1 **核验成立**：`_clone_loadimage`（:485-486）max(id)+1 分配新 id，但 grow_slots（:497-526）全程未触碰 `last_node_id`（:525 直接写回）；正确算法在 workflow.py:255（max(node_ids)）但 refimage.py 未导入 workflow（:432 仅局部导入 workflow_registry）→ §7 备选 A 已补"⑤ 复用 max(node_ids) 更新 last_node_id"（后果=UI 打开扩槽模板后新节点 id 冲突）。
+- 3.2 **核验成立**：grow_slots 签名仅 (tpl, total, defaults)，:525 原地 write_text、无副本参数——并发风险高于 bind_images_to_template → §7 备选 A 已补"⑥ 按 template 必填/任务副本原则改造"（与 bind_refs_to_template 同原则）。
+
+**四、【低·正面】本地佐证采纳**：refimage.py:487 `new["widgets_values"] = [defaults[slot % len(defaults)], "image"]` —— 本项目克隆逻辑自身生成"文件名+展示值 image"双值模式，与 spark utility-gan_upscaler.json node 9 实测同构（LoadImage 声明 2 输入故不残留、LoadVideo 仅声明 1 输入故必残留——与 uiapi.py:302-305 stale 检查吻合）→ 已作为**双源证据**写入 §7 备选 A 前置（uiapi 文件选择器分支）依据栏。
+
+**五、【低】defaults 取模**：确认 8 项取模（:487/:504-508）slot=8 回绕复用 defaults[0]，但占位节点 mode=4（:490）不参与生成、无害——支持"7a images=8 勿写 9"（写 9 不会 IndexError，但引入重复占位名且被 template_health 判"槽位不足"）→ 已记录在本应答，spec 维持 8。
+
+**机制**：零代码改动（S7 仍待实施）；"成立/采纳"均按证据行 grep 核对；A 成本估计下调已同步 §7 备选段与工作量（主案 B 不变）。
