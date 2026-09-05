@@ -169,6 +169,11 @@ def replace_audio_only(input_video: Path, audio: Path, out: Path, dur: float = 0
     """二轮审阅：仅替换音轨（视频 copy，不重编码）——合并链最后一环。"""
     input_video = Path(input_video)
     out = Path(out)
+    try:
+        dur = float(dur or 0)
+    except (TypeError, ValueError):
+        dur = 0.0
+    out = Path(out)
     tmp = out.with_name(out.stem + "_aud" + out.suffix)
     cmd = ["ffmpeg", "-y", "-i", str(input_video), "-i", str(audio),
            "-map", "0:v", "-map", "1:a", "-c:v", "copy",
