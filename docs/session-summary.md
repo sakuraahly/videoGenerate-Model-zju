@@ -807,3 +807,35 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 |---|---|
 | `docs/handoff-2026-09-04.md` | 新建（交接文档） |
 | `docs/session-summary.md` | 修改（+§19） |
+
+## 20. 2026-09-05 批次：复读根治（book-16）+ 用户四问反思 + 语音链 P0 升级
+
+### 20.1 本批结论（评审摘要，详细见 docs/planbook/book-16-echo-root-cause.md）
+- **复读根因定案**：非模型/服务端；是 qwen_agent 0.0.34 function-call 循环协议与 SGLang 不合（自然文本被误判为未完成工具调用 → 反复重调 LLM 146 次 → 累增=复读观感）。用户最初「内容追加导致重复」判断方向正确。
+- **已根治**：自管工具循环（`_one_run` ≤6 轮 + 增量差分解码 + 工具三格式参数解析 + 同参数去重 + 频控 + 直连 SGLang `tools=` 格式 + 清洗回填 + SYSTEM_MESSAGE 铁律）。
+- **思维链定案**：`chat_template_kwargs={"enable_thinking": False}`（顶层字段无效且有 400 风险）为 qwen3 tools 模式标准；关闭的是「将英文推理链注入 content」而非内部思考；探针实证（默认 content 被英文链污染 / 关闭后干净中文+有效 `<tool_call>`）。
+- **验收口径加严**（docs/dev-workflow.md 新增 §12，强制）：真实 UI send 链 / 界面可见非空文本（done 且 text_len>0）/ 真实产物+可验证参数 / 语音要求时可辨析语音——四者缺一不得称「通过」。
+
+### 20.2 用户四问处置（2026-09-05）
+| 用户问题 | 结论与处置 |
+|---|---|
+| 测试是 Qwen 真调工具还是你替代调用？ | 此前多用脚本化 run_turn/直调——已如实承认；自本轮起以真实 UI 链为准（dev-workflow §12） |
+| 每次说测试通过但网页没成功过？ | 口径过宽；「UI 无内容」已修复（ui_app 轮末兜底总结 + 促收尾回填，见 book-16 §6.3） |
+| 成品语音混乱不可辨析？ | **根因=t2v 无音频通道（features.audio=false）→ 输出=噪声**；语音链升级 book-14 T2b **P0**（默认 TTS 中文语音+音轨替换+字幕逐句对齐；无本地方案则降级静音轨+字幕并如实标注） |
+| 关闭思维链=关闭深度思考？ | 否；model 内部推理保留；见 §20.1 思维链定案 |
+
+### 20.3 本批改动文件
+| 文件 | 操作 |
+|---|---|
+| `runs/agent/ui_app.py` | 修改：工具回填促收尾指令 + 轮末空 final 兜底总结（防「（模型未返回内容）」） |
+| `docs/planbook/book-16-echo-root-cause.md` | 修改：台账 #5/#6 定案 + 新增 §6（四问反思/验收口径/UI 修复/思维链结论） |
+| `docs/planbook/book-14-lora-accel-delivery.md` | 修改：T2b 语音链升级 P0（P0-1 选型/P0-2 音轨替换/P0-3 自动接线 + 严完成标准） |
+| `docs/dev-workflow.md` | 修改：§8 反例补充 + 新增 §12 验收纪律（四条件+报告模板） |
+| `docs/session-summary.md` | 修改：+§20（本批） |
+
+### 20.4 下一步（按计划书顺序）
+1. book-16 台账#5 全链复验：R2 生成轮 END=done 且 text_len>0 且 call_comfyui 真实执行 1 次（真实 UI 链）；
+2. book-15 服务编排（SGLang 内存管理/共存参数）+ book-16 台账#6 SYSTEM_MESSAGE 声音决策规则；
+3. **book-14 T2b P0 语音链**（TTS 引擎选型 → 音轨替换 → 字幕对齐接线；用户四问最高优先）；
+4. book-13 P2-9b 历史会话预览重建 + C3–C5。
+

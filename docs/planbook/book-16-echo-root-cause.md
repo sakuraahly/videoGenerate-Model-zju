@@ -61,9 +61,42 @@
 | 2 | 工具参数 JSON 400 | 已根治（裸 KV 参数解析；run log ok+审计 params 正确） | 完成 | - |
 | 3 | 上传预览跨会话混显 | 已修（预览按 cid 隔离 _gal_by_cid） | 完成（待用户 UI 确认） | - |
 | 4 | 续接空转/自动停 | 已修（空转提前停+征询不续） | 完成 | - |
-| 5 | **模型思维链全文刷屏**（英文 The user is saying/Let me…，无 think 标记）→ 占满对话、REPLY 800 截断 →（模型未返回内容） | **待验**（enable_thinking=false 已被 SGLang 接受（200）；复杂工具场景未验证） | 第一批全链验证 enable_thinking=false；若仍现→ SYSTEM_MESSAGE 加禁止输出推理过程/直接给结论；再兜底展示侧净化 | **P0** |
+| 5 | **模型思维链全文刷屏**（英文 The user is saying/Let me…，无 think 标记）→ 占满对话、REPLY 800 截断 →（模型未返回内容） | **已定案**：`chat_template_kwargs={"enable_thinking": False}`（顶层字段被忽略且有 400 风险）为 tools 模式标准；探针：默认时 content 被英文链污染，关闭后 content=干净中文+有效 `<tool_call>`；内部推理保留；`reasoning_content` 字段存在但为空 | 完成（结论见 §6.4） | P0 |
 | 7 | 工具参数三格式（JSON/裸KV/XML <parameter=..>）与参数变体导致**重复提交**（call_comfyui 连续 6 次相同任务） | **已修**：_parse_tool_args 三格式兼容 + 同参数去重 + **频控**（call_comfyui=1 次/轮，其余各有上限）；run5 验证：真实执行 1 次+频控跳过 4 次 | 完成 | - |
-| 6 | t2v 无 audio feature vs 用户要求人物说话声音 → 模型在 t2v/r2v 间反复纠结不行动 | 待办 | SYSTEM_MESSAGE 补决策规则：声音+字幕需求→ t2v 生成后由后处理混音/字幕（T2b），人物口型/多参考→ r2v（需图）；一句话定案避免纠结 | P1 |
+| 6 | t2v 无 audio feature vs 用户要求人物说话声音 → 模型在 t2v/r2v 间反复纠结不行动；且 **t2v 输出音频为噪声（无音轨）** | **已定策**：SYSTEM_MESSAGE 补决策规则（声音+字幕→t2v+后处理混音/字幕；口型/多参考→r2v）；**默认 TTS 中文语音合成+音轨替换升级为 book-14 T2b P0** | 待实施 | **P0** |
 
 - 补丁（同日）：① qwen 工具参数支持**裸 KV**（`stage=t2v, seconds=5, dry_run=true`——模型实际输出此格式而非 JSON；`_parse_tool_args` 兼容 JSON/KV/围栏，run log 实锤 dry-run 预览未提交）；② 上传预览**按会话隔离**（`_gal_by_cid`，堵“新会话混显上一会话预览”）；③ **空转提前停**（连续两轮输出前缀重复→停+提示）；④ 工具审计 jsonl 为排查提供“调用是否真实发生”证据。
 - **✅ 已实施并全链路验证**：① 自管工具循环（_one_run 重写：≤6 轮、增量解码、超限即断、每轮审计）；② 直连 SGLang 用 **tools= 格式**（关键：只有 tools= 触发 qwen3.8 的 <tool_call><function=..> 标签；functions= 不触发）；③ 新增 runs/agent/toolcall_parse.py；④ 工具结果 user 视角回填（规避 tools 模式 function/tool role 400）；⑤ SYSTEM_MESSAGE 增“工具执行铁律”；⑥ 真实 run_turn 验证：A 问候 done / B 素材链 done（list_references→回填→中文收尾 3883 字）/ C 5 工具连锁 done；无复读、无 146 次循环；单测 152 全绿。
+
+## 6. 用户四问 · 反思与验收口径（2026-09-05 深夜）
+
+### 6.1 四问与处置摘要
+| 用户质问 | 结论 | 处置 |
+|---|---|---|
+| 你们测试究竟是 Qwen 真调工具，还是你替代他调用？ | 此前验证大量使用脚本化 `run_turn`/`_run_tool` 直调，**确实绕过了真实 Gradio send() 事件链**；Qwen 真实调工具的证据在真实链下不足 | 验收纪律固化（§6.2）；本轮起真实 UI 链为准 |
+| 为什么每次说"测试通过"但网页基本没成功过？ | 验收口径过宽：把"脚本返回 done/执行了一次"当作通过，未要求**界面可见非空文本 + 真实产物 + 可辨析语音** | 加严口径；"UI（模型未返回内容）"已修复（§6.3） |
+| 成品语音混乱不可辨析 | **根因：t2v 工作流无音频通道（features.audio=false），无音轨输入→输出音频为随机噪声**，任何"说话"需求都不可达 | T2b 语音链升级 **P0**：默认 TTS 中文语音合成 + 自动音轨替换（写入 book-14） |
+| 关闭思维链=关闭深度思考？能力下降如何解决？ | **不是**。`enable_thinking=false` 是 qwen3 工具模式标准：停的是"把英文推理链注入 content"（污染+占上下文+触发复读），模型内部推理完整保留；本会话用探针实证 | 结论文档化（§6.4）；若需显式推理可后续采集 `reasoning_content` |
+
+### 6.2 验收纪律（写入 dev-workflow.md，本册起强制执行）
+"测试通过"必须同时满足：
+1. **真实链路**：走 Gradio send() 事件链（或等价全链：HTTP→_one_run→SGLang→工具→回填→done），禁止只调函数断言；
+2. **界面可见非空文本**：END=done 且 text_len>0（防止"（模型未返回内容）"类空转）；
+3. **真实产物**：输出文件存在 + 参数可验证（分辨率/时长/帧数/路径，如 608×352/5.17s/124f）；
+4. **语音要求时语音可辨析**：要求"说话/配音"的产物必须听得清中文，非噪声（当前未满足——见 §6.1 语音行，T2b P0 完成前不得宣称语音通过）。
+
+### 6.3 "UI 无内容"（text_len=0）修复记录
+- 现象：R2 生成轮，6 轮工具循环耗完，界面显示"（模型未返回内容）"；审计显示工具确实执行（call_comfyui×1+频控跳过）。
+- 根因：自管循环把"工具执行完成"当作结束条件退出，但模型最后一条回复无总结文本，final='' → UI 空。
+- 修复（ui_app.py，本批）：
+  1. 工具回填追加促收尾指令：『（若上述结果已满足用户需求，请直接给中文总结收尾，不要再调用工具）』——减少"继续重试/再次提交"倾向；
+  2. 轮末兜底：`final==''` 且本轮执行过工具 → 生成状态总结事件（『任务已完成：本轮共调用工具 N 次（…）』），杜绝空内容。
+- 验证判据（下一批真实链）：R2 生成轮 END=done 且 text_len>0 且 call_comfyui 仅真实执行 1 次。
+
+### 6.4 思维链关闭结论（定案）
+- 语法位置：`chat_template_kwargs={"enable_thinking": False}`（顶层 `"enable_thinking": false` 被忽略/纯 400 风险——此前实测）。
+- 探针证据（tools 模式，同请求仅此一处差异）：
+  - 默认：content 开篇"Let me think about how to..."英文链 → 复读/占上下文/REPLY 截断；
+  - `enable_thinking=false`：content=干净中文任务描述 + 有效 `<tool_call>`；`reasoning_content` 字段存在（为空）。
+- 结论：**关闭的是"思维链注入 content"而非模型内部思考**；qwen3 工具模式标准做法；思维链仅作展示/调试输出。Qwen 3.8-27B 无独立 think 模式可用（无 /think 开关接口差异），故不再回退。
+

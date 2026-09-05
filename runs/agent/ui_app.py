@@ -431,6 +431,8 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                     # 且结果以 user 视角注入（规避 function/tool role 校验）
                     cur = cur + [{'role': 'assistant', 'content': (clean_text or text or '')[:6000]},
                                  {'role': 'user', 'content': f'[工具 {fname} 返回]\\n{out}'}]
+                    # book-16：促收尾（模型常继续重试；明确提示完成任务后直接总结）
+                    cur.append({'role': 'user', 'content': '（若上述结果已满足用户需求，请直接给中文总结收尾，不要再调用工具）'})
                     continue
                 continue
             if text:
@@ -450,6 +452,12 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                 if delta:
                     events.put({'kind': 'chunk', 'text': delta})
             break
+        # book-16：工具轮后无总结文本 → 兜底补状态行（防 UI“（模型未返回内容）”）
+        if not final and _tool_count:
+            final = ('任务已完成：本轮共调用工具 %d 次（%s）。结果见“工具执行”状态条；'
+                     '可点“继续”查询结果或换一种说法。' % (sum(_tool_count.values()),
+                        ', '.join('%s×%d' % (k, v) for k, v in _tool_count.items())))
+            events.put({'kind': 'chunk', 'text': final})
         return final
 
     try:
