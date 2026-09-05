@@ -557,7 +557,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                     elif _tool_count.get(fname, 0) >= _TOOL_LIMITS.get(fname, 4):
                         out = f'[频控] {fname} 本轮已执行 {_tool_count.get(fname)} 次，跳过重复调用（结果以第一次为准）'
                         events.put({'kind': 'tool', 'text': f'{fname[:28]}（频控跳过）'})
-                    elif fname in ('call_comfyui', 'batch_submit') and not _p_args.get('dry_run') and _SESSION_GEN_USED.get(str(getattr(__import__('runs.agent.tools', fromlist=['CURRENT_SESSION']).CURRENT_SESSION, '')), 0) >= _SESSION_GEN_LIMIT:
+                    elif fname in ('call_comfyui', 'batch_submit') and not _p_args.get('dry_run') and _SESSION_GEN_USED.get(str(getattr(__import__('runs.agent.tools', fromlist=['CURRENT_SESSION']), 'CURRENT_SESSION', '')), 0) >= _SESSION_GEN_LIMIT:
                         out = f'[限流] 本会话生成任务已达 {_SESSION_GEN_LIMIT} 次上限（book-17 P2.3.4）；请新开会话再提交。'
                         events.put({'kind': 'tool', 'text': f'{fname[:28]}（会话限流）'})
                     else:
