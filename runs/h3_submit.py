@@ -410,7 +410,8 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
     tpath = Path(args.template).resolve() if args.template else \
         h3stage.template_path(pcfg, project_dir, stage)
 
-    # book-06/07 补丁：图生类阶段的"参考图绑定"与"默认资产守卫"（防再生成别人的图/旧资产）
+    # book-06/07 补丁 + book-11 修复：绑图只作用于“任务临时副本”，绝不留入共享模板（防污染）
+    bind_tmp: Optional[Path] = None
     if stage_id in ("i2v", "r2v", "flf2v") and tpath and tpath.name.startswith("video_"):
         from h3 import refimage as _refimg
         if images:
@@ -420,46 +421,63 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
             else:
                 remote_names = [(image_names.get(f'image{i}') or img.name)
                                 for i, img in enumerate(images)]
-                _refimg.bind_images_to_template(stage_id, remote_names)
-                print(f"[提示] 参考图已绑定模板 {tpath.name}: {remote_names}", flush=True)
+                bind_tmp = tpath.with_name(f"{tpath.stem}_bind_{int(time.time() * 1000)}.json")
+                shutil.copy2(tpath, bind_tmp)
+                _refimg.bind_images_to_template(stage_id, remote_names, template=bind_tmp)
+                tpath = bind_tmp  # 后续 build 用副本；共享模板保持干净
+                print(f"[提示] 参考图已绑定模板副本 {tpath.name}: {remote_names}", flush=True)
         else:
             ok, msg = _refimg.check_default_refs(stage_id)
             if not ok:
                 raise h3params.ParamError(f"参考图未指定，且{msg}")
 
-    used_builtin = False
-    token_map = h3stage.text_token_map(gp)
-    template_usable = bool(tpath.name) and tpath.exists()
-    if args.template:
-        # 用户显式指定模板：必须可用（API 或可在线转换的 UI），失败即报错
-        wf = h3stage.build_template_workflow(
-            stage, pcfg, project_dir, token_map, image_names,
-            template_file=tpath, client=client,
-        )
-    elif template_usable:
-        # 阶段默认模板文件存在：API 直接用；UI 格式尝试在线转换；
-        # 转换失败/不可用且本阶段有内置生成器时提示并回退内置
-        try:
+    try:
+        used_builtin = False
+        token_map = h3stage.text_token_map(gp)
+        template_usable = bool(tpath.name) and tpath.exists()
+        if args.template:
+            # 用户显式指定模板：必须可用（API 或可在线转换的 UI），失败即报错
             wf = h3stage.build_template_workflow(
-                stage, pcfg, project_dir, token_map, image_names, client=client)
-        except h3params.ParamError as e:
-            if not stage.get("builtin"):
-                raise
-            print(f"[提示] 阶段 '{stage_id}' 的模板不可用或转换失败（{e}），"
-                  f"回退到内置生成器 {stage.get('builtin')}。",
-                  file=sys.stderr, flush=True)
+                stage, pcfg, project_dir, token_map, image_names,
+                template_file=tpath, client=client,
+            )
+        elif template_usable:
+            # 阶段默认模板文件存在：API 直接用；UI 格式尝试在线转换；
+            # 转换失败/不可用且本阶段有内置生成器时提示并回退内置
+            try:
+                wf = h3stage.build_template_workflow(
+                    stage, pcfg, project_dir, token_map, image_names,
+                    template_file=tpath, client=client)
+            except h3params.ParamError as e:
+                if not stage.get("builtin"):
+                    raise
+                print(f"[提示] 阶段 '{stage_id}' 的模板不可用或转换失败（{e}），"
+                      f"回退到内置生成器 {stage.get('builtin')}。",
+                      file=sys.stderr, flush=True)
+                used_builtin = True
+                wf = h3stage.build_builtin_workflow(stage, gp, images)
+        else:
+            # 模板缺失 -> 尝试内置生成器；无内置时由 build_builtin_workflow 报错
             used_builtin = True
             wf = h3stage.build_builtin_workflow(stage, gp, images)
-    else:
-        # 模板缺失 -> 尝试内置生成器；无内置时由 build_builtin_workflow 报错
-        used_builtin = True
-        wf = h3stage.build_builtin_workflow(stage, gp, images)
 
-    # 关键：把本地提示词自动注入工作流（覆盖模板内嵌 prompt；内置生成器幂等）
-    changed = h3prompts.inject_local_prompts(wf, prompt, negative)
-    if changed:
-        print(f"[提示] 已用本地提示词覆盖工作流内嵌字段（{changed} 处）。", flush=True)
-    return wf, gp, stage_id, used_builtin
+        # 关键：把本地提示词自动注入工作流（覆盖模板内嵌 prompt；内置生成器幂等）
+        changed = h3prompts.inject_local_prompts(wf, prompt, negative)
+        if changed:
+            print(f"[提示] 已用本地提示词覆盖工作流内嵌字段（{changed} 处）。", flush=True)
+        # book-11 bugfix：把解析后的参考图名挂到 args（main 的 submitted 行需要，防 NameError）
+        try:
+            args.resolved_images = [img.name for img in images]
+        except Exception:  # noqa: BLE001
+            pass
+        return wf, gp, stage_id, used_builtin
+    finally:
+        # 绑定副本用完即删（任何退出路径都不遗留、不污染共享模板）
+        if bind_tmp is not None:
+            try:
+                bind_tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def _wait_timeout(args: argparse.Namespace, task_folder: Optional[Path],
@@ -642,7 +660,12 @@ def main(argv: Optional[list] = None) -> int:
         if task_folder:
             jobstate.update_task_record(project_dir, task_folder, {"prompt_id": resume_id})
         print(f"prompt_id: {resume_id}\n", flush=True)
-        imgs = ','.join(i.name for i in (images or [])[:3])
+        _resolved = getattr(args, 'resolved_images', None) or []
+        _src = getattr(args, 'image', None)
+        if not _resolved and _src:
+            _src = _src if isinstance(_src, (list, tuple)) else [x.strip() for x in str(_src).split(',') if x.strip()]
+            _resolved = [Path(str(x)).name for x in _src]
+        imgs = ','.join(_resolved[:3])
         _log_event(f"submitted stage={stage_id} prompt_id={resume_id} "
                    f"imgs={imgs} {_gp_summary(gp)}")
 

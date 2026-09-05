@@ -172,13 +172,16 @@ def check_default_refs(stage: str) -> tuple:
     return True, ""
 
 
-def bind_images_to_template(stage: str, image_names: list) -> str:
+def bind_images_to_template(stage: str, image_names: list, template: Path = None) -> str:
     """把图片名绑定到模板 LoadImage 槽位（book-06/07：h3_submit --image / call_comfyui images）。
 
     i2v/flf2v 按槽位顺序（flf2v: slot0=首帧、slot1=末帧）；r2v 前 N 个槽位并启用。
     image_names 须为已上传到 ComfyUI input 的文件名。返回模板路径。
+
+    book-11 修复：默认绑定【共享模板】（历史行为）；调用方传入 `template` 时绑定该副本，
+    绝不留入共享模板（之前的 in-place 写回会污染模板，导致后续无人引用的素材自动渗入）。
     """
-    tpl = _stage_template(stage)
+    tpl = Path(template) if template else _stage_template(stage)
     data = json.loads(tpl.read_text(encoding="utf-8-sig"))
     nodes = data.get("nodes") or []
     slots = [n for n in nodes if isinstance(n, dict) and n.get("type") == "LoadImage"]

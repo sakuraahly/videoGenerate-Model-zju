@@ -3,6 +3,7 @@ refimage 素材池逻辑单测：三池扫描 / 选择解析 / promote 复制（
 """
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -112,6 +113,19 @@ class TestTemplateSlots(unittest.TestCase):
                                          "ref_images.ref_image_")
         self.assertIsNotNone(tgt)
         self.assertGreaterEqual(len(rows), 8)
+
+    def test_bind_copy_not_touching_shared_template(self):
+        # book-11 修复：绑图传给副本，共享模板字节不变（防污染）
+        tpl = refimage._stage_template("r2v")
+        orig = tpl.read_text(encoding="utf-8-sig")
+        with tempfile.TemporaryDirectory() as td:
+            cp = Path(td) / "r2v_copy.json"
+            shutil.copy2(tpl, cp)
+            refimage.bind_images_to_template("r2v", ["alpha.png", "beta.png", "gamma.png"],
+                                             template=cp)
+            self.assertIn("alpha.png", cp.read_text(encoding="utf-8-sig"))
+            self.assertEqual(tpl.read_text(encoding="utf-8-sig"), orig,
+                             "共享模板不应被绑定副本改动")
 
 
 if __name__ == "__main__":
