@@ -358,8 +358,9 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                     events.put({'kind': 'tool', 'text': fname[:36]})
                     out = _run_tool(fname, fc.get('arguments'))
                     events.put({'kind': 'tool', 'text': f'{fname[:28]} 完成'})
-                    # book-16：下一轮回填用 user 视角（规避 SGLang tools 模式对 function/tool role 的 400 校验）
-                    cur = cur + [{'role': 'assistant', 'content': raw_text or ''},
+                    # book-16：回填用【清洗后文本】(无 <tool_call> 标签，规避 SGLang tools 模式序列校验 400)
+                    # 且结果以 user 视角注入（规避 function/tool role 校验）
+                    cur = cur + [{'role': 'assistant', 'content': (clean_text or text or '')[:6000]},
                                  {'role': 'user', 'content': f'[工具 {fname} 返回]\\n{out}'}]
                     continue
                 continue
@@ -709,6 +710,9 @@ def should_continue(user_text, final_text, prompt_ids) -> bool:
     tail = final_text.rstrip()
     if len(final_text) > 1200 and not tail.endswith(_TERMINAL):
         return True  # 疑似被 max_tokens 截断
+    # book-16：征询式结尾（问号/“即可/吗/尽快说”等）→ 自然停，不续接（防“列素材”误续）
+    if tail.endswith('？') or tail.endswith('?') or '即可' in tail[-20:] or tail.endswith('吗'):
+        return False
     if any(k in (user_text or '') for k in _TASK_KEYWORDS):
         return True
     return False
