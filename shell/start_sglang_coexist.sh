@@ -21,6 +21,7 @@ TP="${SGLANG_TP:-1}"
 CTX_LEN="${SGLANG_CTX_LEN:-8192}"
 CHUNK_SIZE="${SGLANG_CHUNK_SIZE:-8192}"
 MAX_RUN="${SGLANG_MAX_RUN:-}"   # book-13：共享显存下控制 mamba/linear KV 预算（默认不传）
+SPEC="${SGLANG_SPEC:-on}"          # book-16 E1：off=关闭投机解码（复读/假死风险源），默认 on 保持原行为
 
 MODE="coexist"
 for arg in "$@"; do
@@ -73,7 +74,7 @@ exec "$VENV/bin/python" \
     --disable-prefill-cuda-graph \
     --trust-remote-code \
     $( [ -n "$MAX_RUN" ] && echo --max-running-requests \"$MAX_RUN\" ) \
-    $( [ "$PROFILE" = "nvfp4" ] && echo \
+    $( [ "$PROFILE" = "nvfp4" ] && [ "$SPEC" = "on" ] && echo \
         --speculative-algorithm NEXTN \
         --speculative-num-steps 3 \
         --speculative-eagle-topk 1 \

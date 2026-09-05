@@ -28,7 +28,7 @@ MODEL_MAX_CTX_TOKENS = 8192
 
 # 单轮回复 token 上限；同时 = 每次请求预留给 completion 的预算
 # （8192 − 2048 ⇒ 输入部分最多 6144 token，超出即服务端 400）
-REPLY_MAX_TOKENS = 2048
+REPLY_MAX_TOKENS = 800  # book-16 复读根治：2048→800（2048 长回复+超长 system 触发复读/ReadTimeout；实测 256/512 完全正常；不足 800 token 的长输出由工具轮/续接补足）
 
 # nous 工具定义/模板固定开销（不含 SYSTEM_MESSAGE）：实测 5 工具 tool_descs 1207t
 # + FN_CALL_TEMPLATE 93t ≈ 1300t；常量取 1500 覆盖未来新增文档清单/工具导致的增长。

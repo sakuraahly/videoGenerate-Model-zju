@@ -34,7 +34,8 @@ PROJECT_ROOT = Path(os.environ.get(
 ))
 CFG_FILE = PROJECT_ROOT / 'config' / 'llm_mem.json'
 DEFAULT_CFG = {'enabled': True, 'mem_fraction': 0.50, 'context_length': 8192,
-              'max_running_requests': 0}  # 0=不限制（ComfyUI 未满载时）；共享显存局促时设 2~4
+              'max_running_requests': 0,  # 0=不限制（ComfyUI 未满载时）；共享显存局促时设 2~4
+              'speculative': None}  # None=跟随脚本默认(on)；False=关闭投机（book-16 E1）
 HEALTH_URL = 'http://127.0.0.1:8000/v1/models'
 NAPKILL_FINISHED = 'llm_mem_nap_done'  # 供测试/日志识别
 
@@ -114,6 +115,9 @@ def wake(timeout_s: int = 900, progress=None) -> int:
     # book-13：共享显存下限制并发请求数（mamba/linear KV 预算），缺失不传
     if cfg.get('max_running_requests'):
         env['SGLANG_MAX_RUN'] = str(cfg['max_running_requests'])
+    # book-16 E1：投机解码开关（off=关闭；复读/假死风险源）
+    if cfg.get('speculative') is False:
+        env['SGLANG_SPEC'] = 'off'
     subprocess.Popen(
         ['tmux', 'new-session', '-d', '-s', 'sglang',
          f'cd {PROJECT_ROOT} && bash shell/start_sglang_coexist.sh '

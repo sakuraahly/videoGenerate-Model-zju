@@ -36,6 +36,13 @@
 
 每步用**项目程序**：run_turn 驱动 + 事件流统计（chunk 数/总字符/是否 done）+ 会话档存档；结果写回本册。
 
+## 2.5 最终定位（2026-09-05 深夜，抓包+二分探针全链路）
+- **服务端任何单请求组合全部 200 正常**（system 2945/8232/截断、token 256/512/800、penalty、nous、stream、seed）——SGLang 与模型无罪；
+- **qwen_agent 0.0.34 完整链必然复读**（nous 开/关、128→146 次 LLM 重调、每轮 300-800 token 重新生成相同开头）；
+- **真凶：qwen_agent 0.0.34 的 function-call 循环协议与 SGLang 不合**——模型自然文本回复（无 tool_calls）被框架误判为“未完成工具调用”→ 反复重调 LLM → 累计膨胀=肉眼“复读/死循环”（**用户最初的“内容追加导致重复”直觉方向正确**；此前“模型复读/服务端污染”判断回退纠正）。
+- 已落地（本批）：① **增量差分解码**（qwen_agent 流式 yield 为累计体而非增量→取 len 前缀差；防“TheThe user wants”型渲染重复）；② REPLY_MAX_TOKENS 2048→800（256/512 全正常且快）；③ 上传提示含池总数；④ ReadTimeout/_err_hint 分类；⑤ 参考 audit。
+- **根治（拟）**：夺回循环控制——弃用 qwen_agent Assistant.run() 自动工具循环，改 `bot.chat(messages)`（服务端单发，已验证 13s/822 正常）+ **自管工具循环**（解析回复→调工具→追加→再 chat，上限 6 轮、逐轮审计日志、复读即断）；预计改动 ui_app.run_turn + tools 调用面；需回归：工具实际调用（list_references/call_comfyui）端到端。
+
 ## 3. 修复方向（实验后定）
 - 若 A：`start_sglang_coexist.sh` 投机默认关闭或降为 1 步；性能评估（TTFT/tok/s 对照）进 llm-memory-optimization.md。
 - 若 B：LLM_CFG 增加惩罚（可配置 `config/llm.json?`——LLM_CFG 在代码，改为读 config 覆盖项，默认开启去重惩罚）。

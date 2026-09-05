@@ -34,6 +34,9 @@ LLM_CFG = {
     'api_key': 'sk-dummy',
     'generate_cfg': {
         'temperature': 0.2,
+        # book-16 E2（2026-09-05 用户授权）：长中文任务复读压制——去重惩罚
+        'repetition_penalty': 1.05,
+        'frequency_penalty': 0.05,
         'top_p': 0.8,
         # 服务端 ctx=8192：max_tokens 必须 < ctx（曾用 8192 → 任何请求都 400）；
         # 输入侧预算由各入口经 ctx_budget.request_budgets 显式设置

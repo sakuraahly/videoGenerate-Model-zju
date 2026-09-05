@@ -239,6 +239,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                         function_list=TOOL_NAMES)
         final = ''
         acc = 0
+        _last = ['']  # book-16：qwen_agent 0.0.34 流式 yield 的是【累计】而非增量 → 增量差分解码
         for chunk in bot.run(messages=msgs):
             # chunk: List[Message]; 消息级 yield —— book-13 C1：逐批即时送显
             for m in chunk:
@@ -246,14 +247,21 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                 if role == 'assistant':
                     t = _content_text(m.get('content'))
                     if t:
-                        acc += len(t)
+                        if t == _last[0]:
+                            continue  # 与上次完全相同：已渲染过
+                        if t.startswith(_last[0]) and len(t) > len(_last[0]):
+                            delta = t[len(_last[0]):]  # 累计扩展 → 取增量
+                        else:
+                            delta = t  # 新消息（工具轮后新段）
+                        _last[0] = t
+                        acc += len(delta)
                         if acc > MAX_OUTPUT_CHARS:
-                            # 模型异常（复读/死循环）：中止展示，不再等待
                             events.put({'kind': 'error',
                                         'text': '输出异常超限（模型可能复读，已中断展示；请重试或换一种说法）'})
                             return
                         final = t
-                        events.put({'kind': 'chunk', 'text': t})
+                        if delta:
+                            events.put({'kind': 'chunk', 'text': delta})
                 elif role in ('function', 'tool'):
                     name = m.get('name') or m.get('function', {}).get('name') if isinstance(m.get('function'), dict) else m.get('name')
                     name = str(name or '')[:36]
@@ -409,6 +417,22 @@ def _to_path(raw) -> Path:
     return Path(str(raw)).expanduser() if raw else Path('')
 
 
+def _session_pool_count(cid: str) -> int:
+    """本会话素材池条目数（按 log.jsonl 中该 cid 的 sha 去重计数）。"""
+    try:
+        seen = set()
+        for line in UPLOADS_LOG.read_text(encoding='utf-8').splitlines():
+            try:
+                d = json.loads(line)
+            except Exception:  # noqa: BLE001
+                continue
+            if str(d.get('cid') or '') == cid and d.get('sha'):
+                seen.add(d['sha'])
+        return len(seen)
+    except OSError:
+        return 0
+
+
 def ingest_upload(paths, cid='') -> tuple:
     """把界面/上传文件收进素材池（与 upload_watch 同语义）：
 
@@ -494,7 +518,11 @@ def ingest_upload(paths, cid='') -> tuple:
         if added:
             parts.append(f'⏩ {dup} 个重复已跳过')
         else:
+            # book-16：文案含本会话池总数（防“只有 1 个”误解；实际池=历史+本次）
             parts.append(f'⏩ {dup} 个素材已在本会话池中（可直接使用）')
+            _n = _session_pool_count(cid)
+            if _n > 1:
+                parts[-1] += f'——本会话素材池现有 {_n} 项（含此前上传）'
     if invalid_details:
         detail_str = '，'.join(f'{name}（{reason}）' for name, reason in invalid_details)
         parts.append(f'🚫 {len(invalid_details)} 个无效：{detail_str}')
@@ -586,6 +614,8 @@ def _err_hint(t: str) -> str:
         return '已连续失败熔断：请更换素材或稍后再试，勿连续重试'
     if 'TimeoutExpired' in t or '超时' in t:
         return '提交/轮询卡顿：任务可能在后台运行，用"继续"/"取片"确认，勿重复提交'
+    if 'ReadTimeout' in t or 'timed out' in t.lower():
+        return '模型响应超时（可能是异常长/重复输出）：请点"继续"重试，或换更简洁的说法；连续出现请反馈'
     if 'ModelServiceError' in t or 'error code: 400' in t.lower():
         return '接口 400：消息/参数格式错误（详见日志）；自动续接 system 冲突已修复，若重复出现请反馈'
     if 'comfyui' in t.lower() or '8188' in t or 'connection' in t.lower():
