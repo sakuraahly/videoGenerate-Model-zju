@@ -29,7 +29,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 | 1 | **`START-HERE.md`（本文件）** | 总入口：架构速览、阅读索引、路径/红线、参与规范 | 所有新参与模型/Agent |
 | 2 | `README.md` | 功能清单、快速开始、目录结构 | 所有 |
 | 3 | `docs/session-summary.md` | **历史事实源**：逐批次做了什么/当前状态/双端路径（§14 文件夹速查） | 所有（事实以它为准） |
-| 4 | `docs/handoff-2026-09-04.md` | **最新交接**：服务现状、7860 界面能力、下一轮测试清单、待观察项 | 所有（接手下一轮工作前） |
+| 4 | `docs/handoff-2026-09-05-continue.md` | **最新交接（2026-09-05 八审后）**：仓库/服务事实、已完成批次、待做总览（S2-P1a→S3→S8 起始）、铁律/防坑/未决项 | 所有（接手下一轮工作前） |
 | 5 | `docs/reference-2026-09-04.md` | 详细工程参考：配置注册表、引擎/工具/Agent 契约、模板明细、故障字典 | 所有（查参数/契约/排障） |
 | 6 | `skills/h3-video-generation.md` | 生成任务全流程技能卡（§0b 路径速查与 Z 盘红线、§1.3c 上下文预算机制） | Agent/操作者做生成任务 |
 | 7 | `skills/h3-prompt-engineering.md` | 提示词工程规则（结构/中文渲染/音频句等） | 写任何生成提示词前 |
@@ -39,7 +39,8 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 | 10b | `docs/planbook/book-17-model-fabrication-defense.md` | **计划·待批准**：模型伪造工具调用纵深防御（白名单/Schema 前置校验/修复重试/钩子/幂等/审计/人在回路）+ 流程自动化合规（必用 dev.py + spark 项目文件口径）+ LoRA/低参验证策略 + T2b 语音链联动 | 批准后实施负责人 |
 | 10c | `docs/planbook/book-18-quality-prompts-and-clarity.md` | **已实施完成**：质量提示词固化（Q+/Q- 每轮注入+防漂移断言）+ 语音/文字清晰度加强（取舍表已定；听测通过） | 已归档 |
 | 10d | `docs/pending-tasks-implementation.md` | **待做任务·实现规格（当前定稿）**：S1-S13 各任务现状/实现/验证/风险/回滚 + 约束事实表（供外部 AI 审核与实施；审核应答演变见 `docs/pending-tasks-changelog.md`） | 待实施 |
-| 10e | `docs/pending-tasks-changelog.md` | **审核应答与修订历史（§14-§16 及后续轮次）**：仅供追溯，不指导实施 | 存档 |
+| 10e | `docs/pending-tasks-changelog.md` | **审核应答与修订历史（§14-§19 及后续轮次）**：仅供追溯，不指导实施 | 存档 |
+| 10f | `docs/handoff-2026-09-05-L-tasks.md` | **book-14 L1–L5 交接（已完成批次）**：独立执行 Agent 规格与坑速查 | 已归档 |
 | 11 | `docs/dev-workflow.md` / `skills/dev-workflow.md` | **变更与交付工作流**：执行→修改→测试→自测通过→写入文档→双端核对→git 提交（含如何操作） | 所有改动者（改任何文件前必读） |
 | 12 | `docs/prompt-taxonomy.md` | **H3 提示词属性词库**：10 正向 + 9 负向分类（book-06 保留/注入的图像属性词） | 工作流/提示词维护者 |
 | 13 | `docs/code-fact-registry.md` | **代码事实登记表**：路径/端口/常量/工具数/部署形态/模型模板唯一口径（冲突以运行代码为准） | 所有改动者（改前查表） |
