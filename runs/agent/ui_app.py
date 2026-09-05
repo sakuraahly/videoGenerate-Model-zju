@@ -212,6 +212,9 @@ def _http_chat_once(messages: list, tools_schemas: list, timeout: int = 120) -> 
     try:
         with _ur.urlopen(req, timeout=timeout) as r:
             d = _json.loads(r.read().decode())
+    except _ur.HTTPError as e:
+        raw = e.read().decode('utf-8', 'replace')[:500]
+        raise ValueError(f'HTTP {e.code}: {raw}') from e
     except Exception as e:  # noqa: BLE001
         raise ValueError(f'{getattr(e, "code", "?")} {str(e)[:160]}') from e
     try:
