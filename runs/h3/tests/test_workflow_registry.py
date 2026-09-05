@@ -102,5 +102,49 @@ class TestRegistry(unittest.TestCase):
         self.assertIn("stage=test", d)
 
 
+class TestOps(unittest.TestCase):
+    """A5：set_enabled/add_local/swap_template（临时 caps 文件，不动真注册表）。"""
+
+    def _caps(self):
+        import tempfile
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        cfg_dir = Path(td.name) / "config"
+        cfg_dir.mkdir()
+        cap_path = cfg_dir / "capabilities.json"
+        cap_path.write_text(json.dumps({"workflows": [_entry()]}), encoding="utf-8")
+        return cap_path
+
+    def test_set_enabled(self):
+        p = self._caps()
+        ok, m = wr.set_enabled(p, "test", False)
+        self.assertTrue(ok)
+        cap = json.loads(p.read_text(encoding="utf-8-sig"))
+        self.assertFalse(cap["workflows"][0]["enabled"])
+        ok2, m2 = wr.set_enabled(p, "video_test", True)
+        self.assertTrue(ok2)
+        cap = json.loads(p.read_text(encoding="utf-8-sig"))
+        self.assertTrue(cap["workflows"][0]["enabled"])
+
+    def test_add_local(self):
+        p = self._caps()
+        ok, m = wr.add_local(p, "video_new", "workflows/remote_workflows/video_minimax_h3_t2v.json")
+        self.assertTrue(ok)
+        cap = json.loads(p.read_text(encoding="utf-8-sig"))
+        self.assertEqual(len(cap["workflows"]), 2)
+        self.assertEqual(cap["workflows"][1]["stage"], "video_new")
+        ok2, _ = wr.add_local(p, "video_new", "x.json")
+        self.assertFalse(ok2)
+
+    def test_swap_template_records_sha(self):
+        p = self._caps()
+        ok, m = wr.swap_template(p, "test", "workflows/new.json")
+        self.assertTrue(ok)
+        cap = json.loads(p.read_text(encoding="utf-8-sig"))
+        self.assertEqual(cap["workflows"][0]["template"], "workflows/new.json")
+        self.assertEqual(len(cap["workflows"][0].get("template_sha_history") or []), 1)
+        self.assertIn("from", cap["workflows"][0]["template_sha_history"][0])
+
+
 if __name__ == "__main__":
     unittest.main()

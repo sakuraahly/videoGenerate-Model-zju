@@ -505,6 +505,95 @@ def cmd_logs(args):
     return 2
 
 
+def _registry_path():
+    return Path(ROOT / "config" / "capabilities.json")
+
+
+def cmd_workflows(args):
+    """book-12 A5：注册表便捷管理（list/add/disable/enable/validate/swap）。“便捷更换工作流”=改配置+校验。"""
+    try:
+        sys.path.insert(0, str(ROOT / "runs"))
+        from h3 import workflow_registry as wr
+    except Exception as e:  # noqa: BLE001
+        print(f"[FAIL] 无法加载注册表模块: {e}")
+        return 1
+    cap_path = _registry_path()
+    if args.action == "list":
+        try:
+            cap = wr.load_registry(ROOT)
+        except Exception as e:  # noqa: BLE001
+            print(f"[FAIL] 读取注册表失败: {e}")
+            return 1
+        entries = wr.local_entries(cap)
+        print(f"本地工作流 {len(entries)} 个（enabled {sum(1 for e in entries if e.get('enabled', True))}）：")
+        for e in entries:
+            mark = "启用" if e.get("enabled", True) else "禁用"
+            print(f"  [{mark}] {e.get('id')} (stage={e.get('stage')}) -> {e.get('template')}")
+        return 0
+    if args.action == "validate":
+        res = wr.validate_all(ROOT)
+        bad = [r for r in res if not r[1]]
+        for wid, ok, issues in res:
+            print(f"  {'OK ' if ok else 'FAIL'} {wid}" + ("" if ok else " | " + "; ".join(issues[:3])))
+        print(f"[OK] validate {len(res) - len(bad)}/{len(res)} 通过" if not bad
+              else f"[FAIL] validate {len(res) - len(bad)}/{len(res)} 通过，见上")
+        return 0 if not bad else 1
+    if args.action in ("disable", "enable"):
+        ok, msg = wr.set_enabled(cap_path, args.id, args.action == "enable")
+        print(("[OK] " if ok else "[FAIL] ") + msg)
+        return 0 if ok else 1
+    if args.action == "add":
+        ok, msg = wr.add_local(cap_path, args.id, args.template, stage=args.stage,
+                               purpose=args.purpose, format=args.format)
+        print(("[OK] " if ok else "[FAIL] ") + msg)
+        if ok:
+            print("随后：python runs/dev.py workflows validate --all 检查缺字段")
+        return 0 if ok else 1
+    if args.action == "swap":
+        ok, msg = wr.swap_template(cap_path, args.id, args.template)
+        print(("[OK] " if ok else "[FAIL] ") + msg)
+        if ok:
+            res = wr.validate_all(ROOT)
+            bad = [r for r in res if r[0] == args.id and not r[1]]
+            if bad:
+                print("  [WARN] 新模板健康检查: " + "; ".join(bad[0][2][:3]))
+            else:
+                print("  [OK] 新模板 healthy（再跑 validate --all 与 dry-run 提交确认）")
+        return 0 if ok else 1
+    print("未知 workflows 动作: " + args.action)
+    return 2
+
+
+def cmd_queue(args):
+    """book-12 A5/L5：ComfyUI 队列【只读】与归属判定（禁写；删除须归属校验后才可做）。
+    本机为 spark-local 时直跑 queue_probe.py（无 ssh）；Windows 侧则 ssh 到 spark。
+    """
+    if Path(SPARK_REPO).exists():  # spark 本地运行
+        rc, out, err = _run([sys.executable, str(ROOT / "runs" / "h3" / "queue_probe.py")], timeout=30)
+    else:
+        rc, out, err = _ssh(f"cd {SPARK_REPO} && /home/Developer/qwen-agent-venv/bin/python runs/h3/queue_probe.py 2>/dev/null")
+    if rc != 0 or not out.strip():
+        print(f"[FAIL] 队列探测失败（ComfyUI/隧道不可达）: {(err or out).strip()[:120]}")
+        return 1
+    try:
+        d = json.loads(out.strip().splitlines()[-1])
+    except Exception as e:  # noqa: BLE001
+        print(f"[FAIL] 解析队列结果: {e}")
+        return 1
+    if "error" in d:
+        print(f"[FAIL] ComfyUI: {d['error']}")
+        return 1
+    print(f"队列（只读；归属=本机登记>本项目任务>外部/他人；已知任务 {d.get('known_count', 0)} 个）：")
+    for k, label in (("running", "运行中"), ("pending", "排队中")):
+        print(f"  {label} {len(d.get(k) or [])} 项：")
+        for it in d.get(k) or []:
+            print(f"    q#{it['qid']} {it['prompt_id']} [{it['tag']}]")
+    if not any(d.get(k) for k in ("running", "pending")):
+        print("  （空）")
+    print("[OK] queue status（只读；删除/取消未实现——共享服务器须归属校验，见 book-14 红线）")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="dev 工具盒：check/sync/commit/docs/test/logs")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -527,6 +616,14 @@ def main(argv=None):
     lg.add_argument("--mode", choices=["rotate", "prune"], default="rotate",
                     help="agent-log: rotate(轮转当前+清旧) 或 prune(仅清旧)")
     lg.add_argument("--days", type=int, default=360, help="agent-log 保留天数（默认 360）")
+    wf_sub = sub.add_parser("workflows", help="工作流注册表管理（book-12 A5）")
+    wf_sub.add_argument("action", choices=["list", "validate", "disable", "enable", "add", "swap"])
+    wf_sub.add_argument("--id", default="", help="disable/enable/swap 的目标（stage/id）")
+    wf_sub.add_argument("--stage", default="", help="add 时的 stage 键（默认=id）")
+    wf_sub.add_argument("--template", default="", help="add/swap 的模板相对路径")
+    wf_sub.add_argument("--purpose", default="", help="add 的用途说明")
+    wf_sub.add_argument("--format", default="ui", help="add 的模板格式 ui/api")
+    sub.add_parser("queue", help="ComfyUI 队列只读探测+归属判定（book-12 A5/L5；禁写）")
     args = ap.parse_args(argv)
 
     if args.cmd == "check":
@@ -543,6 +640,10 @@ def main(argv=None):
         return cmd_test(args)
     if args.cmd == "logs":
         return cmd_logs(args)
+    if args.cmd == "workflows":
+        return cmd_workflows(args)
+    if args.cmd == "queue":
+        return cmd_queue(args)
     return 2
 
 

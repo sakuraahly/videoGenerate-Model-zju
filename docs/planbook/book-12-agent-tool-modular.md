@@ -115,7 +115,10 @@
 - **A 阶段完成 ⑤**：tools.py CallComfyUI/BatchSubmit 的 stage/resolution enum 与描述改为**注册表派生**（`_derive_tool_enums` 纯函数 + `_apply_registry_derived_schema`；enabled 过滤；异常回退旧值；spark 实测 ENUM_DERIVE_OK）。
 - **A 阶段完成 ⑥（修订边界）**：pipeline.json 是**机器配置**（两端各自维护，dev.py EXCLUDE），故不做自动合并——新增 `consistency_check.check_registry_vs_pipeline`：注册表启用工作流未在 pipeline 登记引擎参数 → ISSUES；pipeline 多出阶段 → NOTES（占位阶段除外）。实测问题 0。
 - **A 阶段完成 ⑦（步骤3 动态认知）**：`capabilities.agent_digest`（注册表 enable+参数范围+特性）+ `compose_system_message`（替换 SYSTEM_MESSAGE 硬编码工作流段为注册表段，读取失败保留原文）+ `--registry-doc` 自动生成 `docs/agent-reading/05-workflows-registry.md`（ReadDoc 自动可见）；scheduler/ui_app 统一 `get_system_message()`（含预算计算同源）；单测 5 例（127 全绿）。
-- **待办**：⑧ 步骤4 `dev.py workflows`（list/add/disable/enable/validate/swap）+ 合并 `queue status`；⑨ 步骤5 黄金路径回归 + book-12 验收演示。
+- **A 阶段完成 ⑧⑨（步骤4/5）**：`dev.py workflows`（list/validate/disable/enable/add/swap——swap 含 sha 留痕可回滚）+ `dev.py queue`（只读+归属判定：本机登记>本项目任务>外部/他人；禁写；spark 本地/Windows ssh 双模式）；workflow_registry 增加 set_enabled/add_local/swap_template（3 单测，130 全绿）。
+- **验收演示（2026-09-05 实况）**：① 禁用即刻拒：`disable t2v` → `h3_submit --stage t2v` 报「工作流 video_t2v 已禁用」→ `enable` 恢复；② 黄金路径回归：submit(875df439, flf2v+两图 360p/5s) → success → `outputs/video_12.mp4`(284KB) → **GOLDEN_OK**（绑定副本/参数注入/注册表校验全链无回归）。
+
+## 状态：book-12 完成 ✅（步骤1-5；Agent 认知动态化 + 便捷更换工作流 + 灵动适配〔per_segment/features 位随注册表声明，消费方逐步接线〕）
 
 ---
 

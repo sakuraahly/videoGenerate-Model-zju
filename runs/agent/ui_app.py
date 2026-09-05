@@ -763,8 +763,9 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             hist_dd = gr.Dropdown(label='历史会话', choices=_choices(), scale=4)
             load_btn = gr.Button('加载所选历史会话')
             del_btn = gr.Button('删除所选历史会话')
-            ref_btn = gr.Button('刷新')
+            ref_btn = gr.Button('刷新历史列表')
             new_btn = gr.Button('＋新建会话', variant='primary')
+        gr.Markdown('_「刷新历史列表」仅更新左侧历史会话下拉；不影响正在进行的任务。_')
         status_html = gr.HTML(IDLE_HTML)
         with gr.Row():
             stop_btn = gr.Button('⏹ 停止当前任务', variant='stop', size='sm')

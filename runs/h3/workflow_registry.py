@@ -148,6 +148,83 @@ def validate_all(project_dir: Path) -> list:
     return out
 
 
+def _load_capfile(cap_path: Path) -> dict:
+    if not cap_path.exists():
+        raise FileNotFoundError(f"缺少能力注册表: {cap_path}")
+    import json as _json
+    return _json.loads(cap_path.read_text(encoding="utf-8-sig"))
+
+
+def _save(cap_path: Path, cap: dict) -> None:
+    import json as _json
+    if not cap_path.parent.exists():
+        cap_path.parent.mkdir(parents=True, exist_ok=True)
+    cap_path.write_text(_json.dumps(cap, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+
+
+def set_enabled(cap_path: Path, key: str, enabled: bool) -> tuple:
+    """启用/禁用某个 local 工作流（按 stage/id/slot 识别）。返回 (ok, 说明)。"""
+    cap = _load_capfile(cap_path)
+    hit = next((w for w in local_entries(cap) if _match(w, key)), None)
+    if hit is None:
+        return False, f"未找到工作流: {key}"
+    hit["enabled"] = bool(enabled)
+    _save(cap_path, cap)
+    return True, f"{hit['id']} 已{'启用' if enabled else '禁用'}"
+
+
+def add_local(cap_path: Path, wid: str, template: str, **kw) -> tuple:
+    """新增一个 local 工作流条目（最小声明；随后用 validate 补齐字段）。
+    返回 (ok, 说明)。
+    """
+    cap = _load_capfile(cap_path)
+    if any(w.get("id") == wid for w in cap.get("workflows") or []):
+        return False, f"id 已存在: {wid}"
+    entry = {
+        "id": wid, "engine": "local", "stage": str(kw.get("stage") or wid),
+        "purpose": str(kw.get("purpose") or "待填: 用途说明"),
+        "needs_images": str(kw.get("needs_images") or "unknown"),
+        "slot": wid, "enabled": True,
+        "template": template, "format": kw.get("format") or "ui",
+        "slots": {"images": [], "videos": [], "audios": []},
+        "prompt_inject": {},
+        "inject_spec": {},
+        "params": {"resolutions": kw.get("resolutions") or ["360p", "480p", "540p", "720p", "768p"],
+                    "seconds": {"min": 5, "max": 15}, "fps": 24, "steps": 20, "seed": "12345"},
+        "features": {"reference_videos": False, "per_segment": False, "audio": False,
+                     "negative_support": True},
+    }
+    cap.setdefault("workflows", []).append(entry)
+    _save(cap_path, cap)
+    return True, f"已登记 {wid} (stage={entry['stage']})；请补全 slots/inject_spec 并 validate"
+
+
+def swap_template(cap_path: Path, key: str, new_template: str, record_sha: bool = True) -> tuple:
+    """更换模板路径（sha 留痕可回滚）。返回 (ok, 说明)。"""
+    import hashlib as _hl
+    import datetime as _dt
+    cap = _load_capfile(cap_path)
+    hit = next((w for w in local_entries(cap) if _match(w, key)), None)
+    if hit is None:
+        return False, f"未找到工作流: {key}"
+    old = str(hit.get("template") or "")
+    old_path = cap_path.parent / old
+    hit["template"] = new_template
+    if record_sha:
+        hist = list(hit.get("template_sha_history") or [])
+        sha = ""
+        try:
+            sha = _hl.sha256((cap_path.parent / new_template).read_bytes()).hexdigest()[:16]
+        except OSError:
+            pass
+        hist.append({"ts": _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                     "from": old, "to": new_template, "sha": sha})
+        hit["template_sha_history"] = hist
+    _save(cap_path, cap)
+    return True, f"{hit['id']}: {old} -> {new_template}（sha 留痕）"
+
+
 def digest_entries(cap: dict) -> str:
     """把「当前可用工作流+参数范围+特性」压缩成一段文本（给 agent 动态认知）。"""
     lines = []

@@ -94,3 +94,13 @@
 - `ingest_upload` 的去重与归属：按内容 sha（16 位）全局去重；重复上传仍写一行（`dup:true`+`cid`）供会话归属；同名不同图=两个不同 sha=两行、两归档、两镜像。
 - 旧镜像（无 sha8 前缀、原名）仍被 `stage._resolve_input_image` 递归命中，不需迁移；新上传一律新命名。
 - 上传预览（Gradio Gallery）**累积展示本会话全部预览**（book-11 修复：后上传不再覆盖先上传的预览），切换/新建会话时清空。
+
+---
+
+## 9. 会话保留策略（book-14 L1，2026-09-05）
+
+- 策略配置：`config/session_retention.json`（**全项目统一、入库 tracked，非机器配置**，不进 dev.py EXCLUDE_FILES）：`{"enabled": true, "days": 90, "dry_run": true}`；缺失/损坏回退内置默认（90 天）。
+- 会话存档路径：`logs/agent_chats/<cid>.jsonl`（对话）+ `<cid>.meta.json`（`run_log`/`ts`/`n_msgs`，见 `ui_app.save_chat`）；随 `logs/` gitignore，仅本机/运行时存在。
+- 判定基准：文件 mtime 与 `meta.ts`（格式 `%Y-%m-%d %H:%M:%S`）的**较新者**（取 max）；超过 `days` 才算超期——只要有一个信号说明"最近动过"就不删（宁可漏删不可误删）。
+- 删除边界（红线）：**只删聊天档** `<cid>.jsonl` 与 `<cid>.meta.json`；`thumbs/<sha>.jpg` 按内容 sha 命名、无法关联 cid → **一律不删**；严禁触碰 `uploads/`、`workflows/`、`outputs/`、`logs/run_*.log`（运行期产物）。
+- 命令：`python runs/agent/session_cleanup.py status`（统计总数/超期/保留）｜`clean`（默认 dry-run，打印将删清单）｜`clean --yes`（真正删除）｜`clean --days N`（覆盖保留天数）。返回 `(统计字典, exit_code)`，纯手动 CLI，不接生成流程。
