@@ -64,6 +64,9 @@
 | 5 | **模型思维链全文刷屏**（英文 The user is saying/Let me…，无 think 标记）→ 占满对话、REPLY 800 截断 →（模型未返回内容） | **已定案**：`chat_template_kwargs={"enable_thinking": False}`（顶层字段被忽略且有 400 风险）为 tools 模式标准；探针：默认时 content 被英文链污染，关闭后 content=干净中文+有效 `<tool_call>`；内部推理保留；`reasoning_content` 字段存在但为空 | 完成（结论见 §6.4） | P0 |
 | 7 | 工具参数三格式（JSON/裸KV/XML <parameter=..>）与参数变体导致**重复提交**（call_comfyui 连续 6 次相同任务） | **已修**：_parse_tool_args 三格式兼容 + 同参数去重 + **频控**（call_comfyui=1 次/轮，其余各有上限）；run5 验证：真实执行 1 次+频控跳过 4 次 | 完成 | - |
 | 6 | t2v 无 audio feature vs 用户要求人物说话声音 → 模型在 t2v/r2v 间反复纠结不行动；且 **t2v 输出音频为噪声（无音轨）** | **已定策**：SYSTEM_MESSAGE 补决策规则（声音+字幕→t2v+后处理混音/字幕；口型/多参考→r2v）；**默认 TTS 中文语音合成+音轨替换升级为 book-14 T2b P0** | 待实施 | **P0** |
+| 8 | 工具参数类型错（seconds/seed 字符串、布尔字符串化）→ 校验拒收，模型随后**虚构提交成功+假 prompt_id** | **已修**：`_coerce_fields`（int+bool）须在参数校验**前**（顺序曾写反连败）；`_run_tool` 按 schema 通用 int/bool/number 强转 | 完成（真实链 2 次 ok=true+真实 prompt_id） | - |
+| 9 | audit `ok` 假绿（工具异常也标 ok=true） | **已修**：异常路径显式 ok=false；正常路径保留关键字判定 | 完成 | - |
+| 10 | 模型幻觉“TASK_SUBMITTED/已提交成功”（无 job 目录/last_job/id 格式不符为证） | **已修**：SYSTEM_MESSAGE 诚实铁律（只有工具输出出现 `TASK_SUBMITTED: <id>` 才可声称）；真实链复验：模型如实报告失败并二选一征询，未再编造 | 完成 | - |
 
 - 补丁（同日）：① qwen 工具参数支持**裸 KV**（`stage=t2v, seconds=5, dry_run=true`——模型实际输出此格式而非 JSON；`_parse_tool_args` 兼容 JSON/KV/围栏，run log 实锤 dry-run 预览未提交）；② 上传预览**按会话隔离**（`_gal_by_cid`，堵“新会话混显上一会话预览”）；③ **空转提前停**（连续两轮输出前缀重复→停+提示）；④ 工具审计 jsonl 为排查提供“调用是否真实发生”证据。
 - **✅ 已实施并全链路验证**：① 自管工具循环（_one_run 重写：≤6 轮、增量解码、超限即断、每轮审计）；② 直连 SGLang 用 **tools= 格式**（关键：只有 tools= 触发 qwen3.8 的 <tool_call><function=..> 标签；functions= 不触发）；③ 新增 runs/agent/toolcall_parse.py；④ 工具结果 user 视角回填（规避 tools 模式 function/tool role 400）；⑤ SYSTEM_MESSAGE 增“工具执行铁律”；⑥ 真实 run_turn 验证：A 问候 done / B 素材链 done（list_references→回填→中文收尾 3883 字）/ C 5 工具连锁 done；无复读、无 146 次循环；单测 152 全绿。
@@ -97,7 +100,13 @@
 1. **done 文本误追加占位**：真实链 t0（你好）——模型回复已流式入 msgs，但 send() 收尾的 `elif final_text and not endswith(...)` 分支失败后落入 `else`，追加 "(模型未返回内容)" 并推送占位 note → 用户在界面看到“真回复+占位”或纯占位。**修复**：`final_text` 非空即视为完成（endswith 命中则仅记 ✅ note，未命中才追加），占位仅保留给真正空回复。
 2. **自动续接注入 content=None 的 user 消息**：真实链 list（含“素材”任务关键词）→ should_continue=True → attempt1 的 run_turn(user_text=None) 仍追加 `{'role':'user','content':None}` → SGLang tools 模式 validation 400（`role must be one of ...`；3 个 validation errors）。**修复**：run_turn 仅当 user_text 非空才追加 user 消息（续接历史已含 [系统自动续接] 消息）。
 3. **调试增强**：`_http_chat_once` HTTPError 携带 SGLang 响应体（500 字符）——400 可诊断（本轮即借此定位）。
-- **验证记录**：t0 通过（done/66 字/✅）；list 通过（done/212 字/✅/list_references 真实执行×2（频控上限 2））；R2 生成链待队列空闲后执行（外部任务在跑，未触碰）。
+- **验证记录（真实链，Gradio HTTP send 端点）**：
+  - t0（你好）：done / 66 字 / ✅；
+  - list（素材）：done / 212 字 / ✅ / list_references 真实执行 ×2（频控上限 2）；
+  - gen（t2v 720p/5s）：`call_comfyui` **ok=true + 真实 prompt_id=9dcb5b1e-98c2-4245-a947-6d4b902cb68c**（run log：submitted/submitted_only + task-watch queued→running 监控）；
+  - 中途发现并修复：① seconds 字符串→校验拒收（`_coerce_fields` 强转须在 `_verify_json_format_args` **之前**——首次顺序写反两连败）；② wait_until_done/force_new/dry_run 布尔字符串化（`_run_tool` 按 schema 通用 int/bool/number 强转）；③ 模型虚构“提交成功”（诚实规则：SYSTEM_MESSAGE 禁止虚构 TASK_SUBMITTED/prompt_id——修复后模型如实报告失败并请求用户选择，不再编造）；④ audit `ok` 对工具异常曾假绿（出错路径显式 ok=false）。
+  - **断点守卫**遇上一次未完成任务 → 提交被拦截并如实告知（模型给出续传/强制新开二选一）——符合预期行为，非缺陷。
+  - **产物**：video_16.mp4（1280×736/24fps/124 帧/5.167s/AAC）；注：t2v 音频为模型生成环境/氛围音，**说话类语音仍待 T2b P0 TTS**（book-14）。
 
 ### 6.4 思维链关闭结论（定案）
 - 语法位置：`chat_template_kwargs={"enable_thinking": False}`（顶层 `"enable_thinking": false` 被忽略/纯 400 风险——此前实测）。
