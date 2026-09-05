@@ -275,6 +275,17 @@ _SESSION_SUBMITS: dict = {}  # book-14 T2b v2#4：会话级同任务指纹→{fi
 _SESSION_SUBMIT_WINDOW = 1800  # 秒
 
 
+def _submit_fp(fname, args) -> str:
+    """同任务指纹：stage/res/seconds/images + 提示词归一化前 300 字符（防措辞微变绕过去重）。"""
+    import re as _re2
+    parts = [str(fname)]
+    for k in ('stage', 'resolution', 'seconds', 'images'):
+        parts.append(str((args or {}).get(k, '')))
+    p = _re2.sub(r'[^\w\u4e00-\u9fff]', '', str((args or {}).get('prompt', '')))[:300]
+    parts.append(p)
+    return '|'.join(parts)[:520]
+
+
 # ---------------------------------------------------------------- book-17 P2.2 硬约束
 def _tool_schema(name):
     """白名单 + 工具实例 schema。返回 (ok, schema)。未注册/非法名 → ok=False。"""
@@ -566,9 +577,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                         # book-14 T2b v2#4：会话级同任务去重（30 分钟内同指纹 → 复用，不重复提交）
                         _fp = ''
                         if fname in ('call_comfyui', 'batch_submit') and not _p_args.get('dry_run'):
-                            _fp = fname + '|' + '|'.join(str(_p_args.get(k, ''))
-                                                         for k in ('stage', 'resolution', 'seconds', 'prompt', 'images'))
-                            _fp = _fp[:400]
+                            _fp = _submit_fp(fname, _p_args)
                             try:
                                 from runs.agent import tools as _t
                                 _sg = str(getattr(_t, 'CURRENT_SESSION', ''))
