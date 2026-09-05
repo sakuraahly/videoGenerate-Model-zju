@@ -162,7 +162,26 @@ def workflow_to_ui(workflow: dict) -> dict:
     若想获得与远程节点定义完全一致的 widget 顺序，可在 ComfyUI 界面中
     载入本文件后按提示手动核对（不影响连线的读取）。
     """
-    node_by_id: Dict[int, dict] = {int(k): v for k, v in workflow.items()}
+    # 新bug修复：apply_lora 注入字符串 id（如 lora_14）→ 旧实现 int(k) 抛错（UI 仅 API）。
+    # 统一映射为确定性 int：数值 id 原样；字符串 id 排在数值后顺延分配。
+    _mapping: dict = {}
+    _used: set = set()
+    for k in workflow:
+        try:
+            _used.add(int(k))
+        except (TypeError, ValueError):
+            pass
+    _next = (max(_used) + 1) if _used else 1
+    for k in workflow:
+        try:
+            _mapping[k] = int(k)
+        except (TypeError, ValueError):
+            while _next in _used:
+                _next += 1
+            _mapping[k] = _next
+            _used.add(_next)
+            _next += 1
+    node_by_id: Dict[int, dict] = {_mapping[k]: v for k, v in workflow.items()}
     node_ids = sorted(node_by_id)
 
     # 第一次遍历：收集所有连接并确定每个源节点的输出槽位数
@@ -173,7 +192,7 @@ def workflow_to_ui(workflow: dict) -> dict:
         for iname, val in node_by_id[tid].get("inputs", {}).items():
             if isinstance(val, list) and len(val) == 2 and isinstance(val[0], str):
                 try:
-                    oid = int(val[0])
+                    oid = _mapping[val[0]]
                     oslot = int(val[1])
                 except (TypeError, ValueError):
                     continue
@@ -274,11 +293,15 @@ def save_workflow_ui(workflow: dict, filepath: Path) -> Optional[Path]:
         print(f"UI 工作流已保存: {filepath}")
         return filepath
     except Exception as e:  # noqa: BLE001 - UI 转换失败不应阻断提交
-        print(
-            f"警告：UI 工作流转换失败（{e}），仅保存 API 格式。",
-            file=__import__("sys").stderr,
-            flush=True,
-        )
+        _msg = f"警告：UI 工作流转换失败（{e}），仅保存 API 格式。"
+        print(_msg, file=__import__("sys").stderr, flush=True)
+        # 新bug：失败必须留痕（logutil），避免“有 api 无 ui”不可溯源
+        try:
+            from h3 import logutil
+            logutil.ensure_run_log(Path(__file__).resolve().parents[2], "workflow")
+            logutil.log_event("workflow", f"ui_convert_failed err={type(e).__name__}: {e}")
+        except Exception:  # noqa: BLE001
+            pass
         return None
 
 
