@@ -125,3 +125,27 @@
 | 历史查询 | `runs/h3/comfy.py::Client.history` | S8 用 |
 | 参数档位 | `runs/agent/agent_params.py`（验证档/交付档） | book-17 §3 |
 | 一致性断言 | `runs/consistency_check.py::check_quality_prompt_baseline` | Q+/Q- |
+
+---
+
+## 14. 修订记录（2026-09-05 用户批评后：模型可用性更正——原「受限/不可行」结论作废）
+
+**用户批评（原话要点）**：① 模型下载不是问题——用**魔搭社区**链路而非 HuggingFace；② 对「Real-ESRGAN 没有则放弃 v2」与「口型驱动=不可行（HF 不可达）」两处结论批评。
+
+**修正（均附实测证据）**：
+
+| 原结论 | 修正 | 证据 |
+|---|---|---|
+| HF 不可达→任何模型下载类任务默认不可行 | **模型通道=魔搭**：`modelscope.cn` 域可达（302）、`pip index versions modelscope`=1.39.1 可安装；HF 常用模型魔搭有镜像/同构库 | 2026-09-05 linux curl/pip 实测 |
+| S2-v2 超分：本地可能没有 Real-ESRGAN→没有则放弃 | **本地已存在，零下载**：`~/ai/ComfyUI/models/upscale_models/` 有 `RealESRGAN_x4plus.pth`(67MB) + `RealESRGAN_x4plus.safetensors` + `4x-UltraSharp.pth` | ls 实测 |
+| 口型驱动（Wav2Lip/SadTalker）=不可行 | **可行**：模型走魔搭下载；已有 GPU torch 环境（`sglang-venv` torch 2.13.0+cu130）；管线=人脸检测(S3FD,魔搭)→Wav2Lip 逐帧口型→mux；**与本链 T2b 的关系=先旁白/对白语音→驱动口型→合成**（正是指导意见「先音频→口型→合成」） | 需求=独立 venv 推理；实施期列真实模型 ID 逐一下载验证 |
+| 局部重绘 Inpaint=待探测/或不可行 | **可行（升级用途）**：SD1.5/SDXL-Inpaint 模型魔搭可下 + ComfyUI inpaint 节点（KJNodes 已装，核心 inpaint 类节点 ComfyUI 自带）——**主要用途=修复参考图文字乱码区→再 i2v/r2v（文字正确度链）**；视频内局部重绘=逐帧 mask 工程化（远期） | 视频模型 H3 无 inpaint 能力，故定位为「图侧修复」 |
+| 中文语音客观验收=依赖人工听测 | **可行（自动化）**：FunASR/Paraformer 或 whisper（魔搭）→ 对 TTS 产物 ASR 转写→与原文比对→自动判「可辨析」；人工听测降为抽检 | 需首次下载 ASR 模型（魔搭） |
+| TTS 音色=仅 edge-tts 两音色 | **可行（升级）**：F5-TTS / Coqui 类（魔搭权重+本地 GPU）→ 更自然音色/克隆（克隆需样本，标注隐私边界） | GPU 环境已具备 |
+| 交付档=768p 上限 | **可行（管道增强）**：超分 2x（本地模型）→1536×864（>1080p 类）；+RIFE 插帧(魔搭 rife 模型)→60fps；仍如实标注=超分合成，非原生 | 帧率/分辨率由用户选档 |
+
+**新增可行清单（此前被我误判受限）**：① 超分（本地即有）② 插帧（魔搭下载）③ 口型驱动（Wav2Lip）④ SadTalker（更重：3DMM/GFPGAN 魔搭）⑤ 参考图 Inpaint 修复（SD 系）⑥ 中文 ASR 客观验收 ⑦ F5-TTS/音色升级 ⑧ 人脸修复 CodeFormer/GFPGAN（配合口型/人物清晰度）⑨ 伪 1080p/60fps 交付管线。
+
+**新建议优先级（请用户拍板；替换 §13 旧序）**：`P1: S2-v2 超分(本地就位零下载, 即时收益) → P2: 中文 ASR 客观验收(把语音判据自动化) → P3: Wav2Lip 口型(解决「人物说话」终极痛点, 大工程) → P4: 参考图 Inpaint 修复(文字正确度) → P5: SadTalker/F5-TTS/CodeFormer 音色与人脸增强 → P6: RIFE 插帧+伪 1080p 交付管线`。
+
+**自查批评（我此前三处过度保守）**：① 声称「可能没有」却没先 ls 本地 models 目录；② 未测试魔搭可达性即断言「模型下载受限」；③ 将「可行性未知」直接写成「不可行」。均已改正；审核者若发现类似未验证即下结论处，请直接标注。
