@@ -30,10 +30,10 @@
 
 ### 🟥 P0（下一批优先：解锁用户价值/回归风险）
 1. ~~端到端黄金路径闭环~~ **✅ 已完成（2026-09-04）**：`tests/golden_path.py` 引擎级闭环——提交(87dccd14) → `/queue` 断言 LoadImage=已绑定参考图（非旧资产）→ 取片 `outputs/video_11.mp4`(521KB) → GOLDEN_OK；**剩余人工项：画面一致性确认**（详见 book-09 §6b）。
-2. **book-08 风格册开工**：SYSTEM_MESSAGE/agent-reading 收紧「只问必要问题」清单+反例（分辨率/时长/seed/镜头/是否OK 一律不问；内容不明才问、一次只问一个）；补 `docs/style-guide.md`（好/坏回复对照）；用**真实对话任务**（用户提供的关键片段）做回归：是否多问/是否完成/是否中文。
+2. **~~book-08 风格册~~ ✅ 已完成（随 book-08）**：`docs/style-guide.md` 已建、必要问题清单已收紧（分辨率/时长/seed/镜头/是否OK 一律不问）——见 book-08 记录（用户提供的关键片段）做回归：是否多问/是否完成/是否中文。
 3. ~~消息级分批渲染~~ **✅ 已完成（2026-09-05，C1）**：run_turn 消息级 chunk 即时送显（assistant 文本+工具名状态条）；send 只追加不替换（同条合并、done 去重）；spark 实测事件流 phase → chunk×70 → done；SMOKE_OK。：qwen_agent 为**消息级** yield（已调研）→ 重构 `run_turn`/`send`：把 agent 中间文本/工具结果**逐批 yield** 到对话（而非最终一次性）；用户提交后即可看到"正在…/已提交/进度"，无需等整轮。
-5. **模板默认数值≠请求参数（用户实测 2026-09-05，已修复待回归）**：请求 720p/24fps/15s，产出**864×480/24fps/5.17s**（模板 ResolutionSelector=0.4MP、时长表达式=5s 的默认值，UI→API 转换后未被覆写）。根因修复：`stage.apply_generation_params`（按 token_map 覆写 MiniMaxH3* width/height/length、BasicScheduler steps、CreateVideo fps）+ 单测 3 例（117 全绿）。**剩余回归**：真实提交→ffprobe 断言产出参数；并加「产出参数回执」到取片流程（见 P0.6）。
-6. **产出参数校验/诊断工具（"agent 没有合适的工具"落地）**：① 取片/完成回执带 ffprobe 实测（width/height/fps/duration/nb_frames）与请求参数对照；② 提交前「模板默认 vs 请求」校验开关（默认值≠请求时告警，防再翻车）；③ 供 agent 查询的 `verify_video` 类工具（book-09 延伸；book-12 步骤4 联动）。
+5. **~~模板默认数值≠请求参数~~ ✅ 完成（2026-09-05 回归通过）**：请求 720p/15s → dry-run 工作流断言 **1280×736 / 15.0s→362 帧@24fps**（模板 0.4MP/5s 默认已被覆写）；回归证据：`h3_submit --stage t2v --resolution 720p --seconds 15 --dry-run`。根因修复见原条目：`stage.apply_generation_params`（按 token_map 覆写 MiniMaxH3* width/height/length、BasicScheduler steps、CreateVideo fps）+ 单测 3 例（117 全绿）。**剩余回归**：真实提交→ffprobe 断言产出参数；并加「产出参数回执」到取片流程（见 P0.6）。
+6. **~~产出参数校验/诊断工具~~ ✅ 完成（2026-09-05）**：① 取片/完成回执新增 **`PROBE:`** 行（width/height/fps/frames/duration 实测，无条件输出）；② 模板默认 vs 请求校验（`_probe_diff`+`verify_mismatch/verify_ok` 事件，gp 可用时）；③ 供 agent 查询的 `verify_video` 类工具（book-09 延伸；book-12 步骤4 联动）。
 8. **~~输出异常保护~~ ✅ 已完成**（`_dup_text` 连续重复块丢弃+`MAX_OUTPUT_CHARS=30000`+中断展示；见 book-16 §6.3 系列修复，含三级防护与增量解码）限。（已实现+2 单测，150 全绿）
 9. ~~队列共享~~ 见 7。
 7（原）**⚠️ 队列共享：删除/取消必须归属校验（2026-09-05 实测教训）**：ComfyUI 是**多用户共享服务器**，`/queue` 可见所有人的任务——队列中的任务**未必是当前用户/我的**。规则（红线）：① `h3_submit --submit-only` 已把 prompt_id 写入 `last_job.json`/任务目录 job.json，**只允许操作/查询本会话登记过的 prompt_id**；② `/queue/delete`、取消、清理等接口目前 405/500 且不可用——**不要在工具/脚本中裸调队列删除**；③ 记录为工具需求：`dev.py queue status`（只读，含归属判定：本会话/未知/他人）与 `queue cancel <id>`（先校验归属+确认，未登记即拒绝）；④ 处置经验：等待期间看到队列任务可能属于他人，勿惊讶、勿删除。
@@ -43,15 +43,15 @@
 5. **idea2prompts --segments N**：自动产出 N 段转场提示词（写入 `video_flf2v.segment_<i>.positive.txt`），再交给 batch `--prompts-file`；与 book-06 §5 步骤 2 一致。
 6. **book-11 日志体系落地**：logutil 唯一化（h3_submit/h3_batch/llm_mem/sync_auto/task_watch 收敛）；事件模型（用户/决策/工具含参数/提交含参数/进度/产物）；防垃圾（轮转/上限/时区统一）；`dev.py logs`（view/link/clean/check）。
 7. **book-12 注册表化**：`config/capabilities.json` 补 template/slots/prompt_inject/params/features/enabled；`runs/h3/workflow_registry.py`；工具描述与 SYSTEM_MESSAGE 动态化（digest）；`dev.py workflows`（list/add/disable/enable/validate/swap）→「便捷更换工作流」。
-8. **参考图使用审计**：`use`/`bind_images`/`h3_submit` 把 {cid, stage, slot, image, prompt_id} 写入运行日志（与 book-11 联动）——本次事故教训：只能从 job.json 反查。
+8. **~~参考图使用审计~~ ✅ 覆盖确认（2026-09-05）**：audit jsonl 已含 params{session(cid), stage, images}+prompt_id；run log 含 submitted 事件 imgs/分辨率；与 book-11 联动——如需 slot 级明细再评估。
 9. **"素材绑定"路径统一（架构重构，见 §3.1）**。
 
 ### 🟨 P2（甜点/低优先）
-9b. **加载历史会话后素材预览空白/提示无上传（2026-09-05 用户实测，低优先）**：_load 时 gallery 不按该会话重建（当前以 list_references 为准）。改进：加载历史会话按该 cid 的 log.jsonl sha 重建预览 + 明确提示。
+9b. **~~加载历史会话素材预览空白~~ ✅ 完成（2026-09-05）**：`_previews_for_cid` 按 uploads/log.jsonl 按 cid 重建缩略图（sha→thumbs）；真实链 `_load` 验证：会话 20260905_005543_ee20 → **已重建 2 项素材预览**（gallery 返回 2 图）。
 10. 参考视频支持（LoadVideo+ref_videos 接线）——维持"甜点/低优先"。（→ 见 book-14 T8「参考视频/音频原生支持」，已迁移登记）
-11. 时区显示统一（线索/日志时间：北京 vs UTC 差 8h；随 book-11 统一）。
-12. `turn_state._active_batch` 消费或清理（现为死隔离；接 cid 或删除）。
-13. seed 策略：h3_submit 默认 seed 12345 硬编码 → 默认随机/可指定。
+11. **~~时区显示统一~~ ✅ 完成（2026-09-05）**：logutil `_ts()` 固定北京时间（spark 系统 UTC+0 → 日志与用户差 8h），`_tz()` 统一标注 UTC+8。
+12. **~~turn_state._active_batch 清理~~ ✅ 完成（2026-09-05）**：无消费者死隔离已删除；`begin_turn` 保底空实现（提交路径用 `_pending_batch_id`）。
+13. **~~seed 策略~~ ✅ 完成（2026-09-05）**：params DEFAULTS seed=12345 → **"auto"**（每次随机）；显式 `--seed` 可指定复现。
 14. 上传预览"可判定性"：gallery 缩略图标注所属会话/是否仍可用（配合 book-05/11）。
 
 ---
