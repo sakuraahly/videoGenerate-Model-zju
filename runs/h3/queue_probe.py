@@ -65,21 +65,31 @@ def cancel_owned_task(prompt_id: str, reason: str = "") -> dict:
     pid = str(prompt_id)
     target = None
     if pid in running:
-        payload = {"interrupt": True}
+        # 实测（ComfyUI 0.34.3）：/queue {"interrupt":true} 被接受但惰性；POST /interrupt 才是真中断
         target = "运行中→中断"
+        req = urllib.request.Request(COMFY + "/interrupt", data=b"", method="POST")
+        _send = req
     elif pid in pending:
-        payload = {"delete": [pid]}
         target = "排队中→移除"
+        _send = urllib.request.Request(COMFY + "/queue",
+                                       data=json.dumps({"delete": [pid]}).encode(),
+                                       headers={"Content-Type": "application/json"}, method="POST")
     else:
         return {"ok": False,
                 "msg": f"任务不在队列（可能已完成或尚未入队，{who}）；请用 run_script 查询状态。"}
-    req = urllib.request.Request(COMFY + "/queue", data=json.dumps(payload).encode(),
-                                 headers={"Content-Type": "application/json"}, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with urllib.request.urlopen(_send, timeout=10) as r:
             body = (r.read() or b"").decode("utf-8", "replace").strip()
         resp = json.loads(body) if body else {"done": target}
-        return {"ok": True, "msg": f"已取消（{who}；{target}）。{reason}", "resp": resp}
+        # 取消成功 → 清理本机断点（若登记的就是该任务），防残留断点阻塞下次提交
+        try:
+            rj = ROOT / "last_job.json"
+            if rj.exists() and str(json.loads(rj.read_text(encoding="utf-8")).get("prompt_id") or "") == pid:
+                rj.write_text(json.dumps({"schema": 1, "prompt_id": "", "remote_path": "",
+                                          "created_at": "", "updated_at": ""}), encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass
+        return {"ok": True, "msg": f"已取消（{who}；{target}，断点已清）。{reason}", "resp": resp}
     except urllib.error.HTTPError as e:
         return {"ok": False, "msg": f"取消失败 HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:200]}"}
     except Exception as e:  # noqa: BLE001
