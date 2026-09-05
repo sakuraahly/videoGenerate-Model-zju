@@ -659,10 +659,13 @@ def _log_tool_audit(name, params, result, ok=None):
             except Exception:
                 pass
         m = _re.search(r'(?:TASK_SUBMITTED|prompt_id):\s*([a-f0-9\-]{36})', str(result or ''))
+        _res = str(result or '')
         audit = {'ts': _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'tool': name,
                  'params': {k: v for k, v in key.items() if v},
-                 'result_len': len(str(result or '')),
-                 'ok': ok if ok is not None else not any(mk in str(result or '') for mk in ('exit 3', '⛔', '失败', '超时'))}
+                 'result_len': len(_res),
+                 'ok': ok if ok is not None else not any(mk in _res for mk in ('exit 3', '⛔', '失败', '超时')),
+                 'injection_flag': any(mk in _res for mk in ('忽略以上', '执行命令', '系统指令', 'ignore previous'))}
+        audit['validation'] = 'ok' if audit['ok'] else 'error'
         if m:
             audit['prompt_id'] = m.group(1)
         f = Path(PROJECT_ROOT) / 'logs' / 'agent_tool_audit.jsonl'
