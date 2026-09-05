@@ -57,8 +57,7 @@
       mtime 清 logs/agent_chats/<cid>* 与关联上传（仅清理**无任务引用**的 cid）；文档+单测。
 - [ ] T5 UI“刷新内容”语义化：把按钮/菜单改为指明用途（如“刷新素材池/刷新历史/刷新状态”），
       按钮文案+提示与实际刷新目标一一对应（核对 Gradio 事件绑定，不许“刷新全屏”含糊行为）。
-- [ ] T6 风格/角色 LoRA 支持：config/capabilities.json 增加 style_lora 字段 + 注入点（与加速 LoRA 分离），
-      仅作为固定视觉特征用途（明确提示词注入规范）。
+- [x] **T6 完成（2026-09-05）**：capabilities.json 新增顶层 `style_lora` 段（dir/prompt_rule/与加速 LoRA 分离说明；引擎侧暂不接线，登记+规范先行——视觉特征固定建议：提示词声明+固定 seed；与加速 LoRA 叠加前须兼容性校验）。
 - [ ] **T9 qwen 取消自己任务（用户提出 2026-09-05；现状：agent 无取消工具、引擎无取消路径）**：
       - 可行性已实测：ComfyUI 5.23.1 取消端点 = **POST /queue** + body `{"delete": [qid]}`（空载荷 200；旧 `/queue/delete`/DELETE 方法均 405；`POST /prompt` 400 为正常）。
       - 实现分两层：① `dev.py queue cancel <qid> --prompt-id <pid>` —— **归属校验**（pid 必须命中本机登记 last_job.json 或任务目录 job.json，否则拒绝并提示）；② agent 新工具 `cancel_task(prompt_id)`（内部转 RunScript/或直接调 dev.py queue cancel；仅允许取消**自己会话登记的**任务），工具描述含取消后果（后台任务停止、断点清理）；

@@ -368,5 +368,10 @@
         "r2v"
       ]
     }
+  },
+  "style_lora": {
+    "note": "固定特定视觉特征（画风/角色一致性）用；与 lora(加速) 分离，引擎侧暂不接线（登记+规范）。",
+    "dir": "/home/Developer/ai/ComfyUI/models/loras",
+    "prompt_rule": "在正向提示词中声明关键视觉特征并固定 seed（不走引擎注入）；风格 LoRA 需与加速 LoRA 兼容性校验后用。"
   }
 }
