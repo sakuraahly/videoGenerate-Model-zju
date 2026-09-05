@@ -95,43 +95,89 @@ def nap() -> int:
     return 0
 
 
+# ---------------- book-15 §3.2 内存编排（planner）：ComfyUI 让位 + 自适应降额 ----------------
+COMFY_URL = 'http://127.0.0.1:8188'
+
+# 自适应降额表（内存内覆盖，不写机器配置文件——book-15 红线）
+_ADAPT = [
+    {'mem_fraction': 0.25, 'max_running_requests': 4},
+    {'mem_fraction': 0.20, 'max_running_requests': 3},
+    {'mem_fraction': 0.15, 'max_running_requests': 2},
+]
+
+
+def comfy_queue_idle() -> bool:
+    """只读探测 ComfyUI 队列：running+pending 均为空才算空闲（安全再 /free）。"""
+    try:
+        with urllib.request.urlopen(COMFY_URL + '/queue', timeout=5) as r:
+            d = json.loads(r.read().decode())
+        return not (d.get('queue_running') or d.get('queue_pending'))
+    except Exception:
+        return False  # 不可达视为忙（稳妥：不 /free）
+
+
+def free_comfy() -> bool:
+    """POST /free（approved 运行时行为）：卸载 ComfyUI 模型让位给 LLM。仅队列空闲时调用。"""
+    body = json.dumps({'unload_models': True, 'unload_lowvram': True, 'unload_cuda': True}).encode()
+    req = urllib.request.Request(COMFY_URL + '/free', data=body,
+                                 headers={'Content-Type': 'application/json'}, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            _log('planner_free ok status=' + str(r.status))
+            return True
+    except Exception as e:
+        _log('planner_free fail: ' + type(e).__name__ + ': ' + str(e)[:120])
+        return False
+
+
+def planner_prep() -> None:
+    """ensure_llm_up 前置：队列空闲才 /free（防干扰正在生成的视频；幂等）。"""
+    if comfy_queue_idle():
+        free_comfy()
+    else:
+        _log('planner_skip_free (comfy queue not idle)')
+
+
 def wake(timeout_s: int = 900, progress=None) -> int:
-    """拉起 SGLang（coexist 降额配置）并等待就绪。"""
+    """拉起 SGLang（coexist 降额配置）并等待就绪；失败按 _ADAPT 表自适应重试（内存内）。"""
     if is_up(2):
         _log('SGLang 已在运行，跳过 wake')
         return 0
     cfg = load_cfg()
     start_script = PROJECT_ROOT / 'shell' / 'start_sglang_coexist.sh'
     if not start_script.exists():
-        _log(f'错误：找不到 {start_script}')
+        _log('错误：找不到 ' + str(start_script))
         return 3
-    _log(f'wake: 启动 SGLang（mem={cfg["mem_fraction"]} ctx={cfg["context_length"]}）……')
-    _tmux_kill('sglang')
-    env = dict(os.environ)
-    env['PATH'] = (str(Path.home() / 'Qwen3.8-27B' / 'sglang-venv' / 'bin')
-                   + os.pathsep + env.get('PATH', ''))
-    env['SGLANG_MEM'] = str(cfg['mem_fraction'])
-    env['SGLANG_CTX_LEN'] = str(cfg['context_length'])
-    # book-13：共享显存下限制并发请求数（mamba/linear KV 预算），缺失不传
-    if cfg.get('max_running_requests'):
-        env['SGLANG_MAX_RUN'] = str(cfg['max_running_requests'])
-    # book-16 E1：投机解码开关（off=关闭；复读/假死风险源）
-    if cfg.get('speculative') is False:
-        env['SGLANG_SPEC'] = 'off'
-    subprocess.Popen(
-        ['tmux', 'new-session', '-d', '-s', 'sglang',
-         f'cd {PROJECT_ROOT} && bash shell/start_sglang_coexist.sh '
-         '2>&1 | tee ~/sglang.log'],
-        env=env)
-    t0 = time.time()
-    while time.time() - t0 < timeout_s:
-        if is_up(3):
-            _log(f'wake 完成（{int(time.time() - t0)}s）')
-            return 0
-        if progress:
-            progress(int(time.time() - t0))
-        time.sleep(5)
-    _log('wake 超时：SGLang 未就绪，请看 ~/sglang.log')
+    attempts = 0
+    while attempts < len(_ADAPT):
+        over = _ADAPT[attempts]
+        _log('wake: 启动 SGLang（mem=' + str(over['mem_fraction']) + ' max_run='
+             + str(over['max_running_requests']) + '）……')
+        _tmux_kill('sglang')
+        env = dict(os.environ)
+        env['PATH'] = (str(Path.home() / 'Qwen3.8-27B' / 'sglang-venv' / 'bin')
+                       + os.pathsep + env.get('PATH', ''))
+        env['SGLANG_MEM'] = str(over['mem_fraction'])
+        env['SGLANG_CTX_LEN'] = str(cfg.get('context_length', 8192))
+        env['SGLANG_MAX_RUN'] = str(over['max_running_requests'])
+        if cfg.get('speculative') is False:
+            env['SGLANG_SPEC'] = 'off'
+        subprocess.Popen(
+            ['tmux', 'new-session', '-d', '-s', 'sglang',
+             'cd ' + str(PROJECT_ROOT) + ' && bash shell/start_sglang_coexist.sh '
+             '2>&1 | tee ~/sglang.log'],
+            env=env)
+        t0 = time.time()
+        while time.time() - t0 < min(240, timeout_s):
+            if is_up(3):
+                _log('wake 完成（' + str(int(time.time() - t0)) + 's）档位=' + str(attempts))
+                return 0
+            if progress:
+                progress(int(time.time() - t0))
+            time.sleep(5)
+        _log('wake 第 ' + str(attempts + 1) + ' 档超时，降额重试')
+        attempts += 1
+    _log('wake 超时：全部档位未就绪，请看 ~/sglang.log')
     return 2
 
 
@@ -165,10 +211,14 @@ def maybe_nap_after(text: str) -> bool:
 
 
 def ensure_llm_up(timeout_s: int = 900, progress=None) -> bool:
-    """对话开始前保证模型可用：SGLang 未在跑则自动 wake。"""
+    """book-15：对话开始前保证模型可用——未在跑→planner 前置（队列空闲 /free 让位）→ wake（自适应档）。"""
     if is_up(2):
         return True
     _log('检测到 SGLang 未运行，自动 wake……')
+    try:
+        planner_prep()
+    except Exception:  # noqa: BLE001
+        pass
     return wake(timeout_s=timeout_s, progress=progress) == 0
 
 

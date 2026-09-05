@@ -569,6 +569,29 @@ def cmd_workflows(args):
     return 2
 
 
+def cmd_services(args):
+    """book-15 L7：spark 侧 svc_main.py 动作（通过 ssh/本地调用）。"""
+    action = getattr(args, "action", "status")
+    if Path(SPARK_REPO).exists():
+        rc, out, err = _run([sys.executable, str(ROOT / "runs" / "agent" / "svc_main.py"), action],
+                            timeout=900 if action != "status" else 60)
+    else:
+        rc, out, err = _ssh(f"cd {SPARK_REPO} && /home/Developer/qwen-agent-venv/bin/python "
+                            f"runs/agent/svc_main.py {action} 2>/dev/null",
+                            timeout=900 if action != "status" else 60)
+    body = (out or err or "").strip()
+    if action == "status":
+        try:
+            d = json.loads(body.splitlines()[-1])
+            print(json.dumps(d, ensure_ascii=False, indent=1))
+        except Exception:
+            print(body[-600:] or "[FAIL] 无输出")
+            return 1
+        return 0
+    print(body[-600:] or "[FAIL] 无输出")
+    return 0 if rc == 0 else 1
+
+
 def cmd_queue(args):
     """book-12 A5/L5：ComfyUI 队列【只读】与归属判定（禁写；删除须归属校验后才可做）。
     本机为 spark-local 时直跑 queue_probe.py（无 ssh）；Windows 侧则 ssh 到 spark。
@@ -651,6 +674,9 @@ def main(argv=None):
     q.add_argument("action", nargs="?", choices=["status", "cancel"], default="status",
                    help="status=只读展示 running/pending + 归属判定（默认）；cancel=取消（须 --prompt-id 且归属本机）")
     q.add_argument("--prompt-id", default="", help="cancel: 本机登记的 prompt_id（未命中一律拒绝）")
+    sv = sub.add_parser("services", help="服务编排：status/restart-llm/restart-agent/selfcheck（book-15）")
+    sv.add_argument("action", choices=["status", "restart-llm", "restart-agent", "selfcheck"],
+                    default="status")
     pp = sub.add_parser("postprocess", help="视频质量增强链（book-14 T2；spark 侧执行）")
     pp.add_argument("input", help="视频路径（相对 outputs/ 或 spark 绝对路径）")
     pp.add_argument("--scale", type=float, default=2.0)
@@ -679,6 +705,8 @@ def main(argv=None):
         return cmd_logs(args)
     if args.cmd == "workflows":
         return cmd_workflows(args)
+    if args.cmd == "services":
+        return cmd_services(args)
     if args.cmd == "queue":
         return cmd_queue(args)
     if args.cmd == "postprocess":
