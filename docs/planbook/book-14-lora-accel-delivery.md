@@ -45,7 +45,7 @@
 
 ### P0（用户价值，正文案）
 - [x] T1 候选加速（**引擎侧完成 2026-09-05**）：capabilities.json 顶层 `lora` 注册（3 文件/steps/适用阶段）；`h3stage.apply_lora`（LoraLoaderModelOnly 注入+model 引用替换+steps 4/8 覆写+防自环）；`h3_submit --lora`（choices+日志同步）；tools.py CallComfyUI 新增 `lora` 参数（注册表派生枚举，agent 重启后可见）；单测 138 全绿；spark dry-run 双验证（r2v+ref2v_4step / t2v+fl2v_4step → LoraLoader+steps=4）。
-      **剩余（真机对比验证）**：同一提示词 4 步 vs 20 步各提交一次（360p/5s），记录耗时+ffprobe 输出参数进证据区（共享队列，安排空闲时段执行）。
+      **真机对比（2026-09-05 完成，全程项目程序）**：r2v 360p/5s/seed42 同提示词：A=ref2v_4step（bb4387d9）**72s** vs B=none 20 步（0727000d）**163s** → **≈2.26× 加速**；两产物 ffprobe 完全一致（608×352/24fps/5.17s/124 帧）；修复 lora_name 须带 `MiniMax_H3/` 前缀（ComfyUI /object_info 枚举确认，原 400 提交拒绝已修）；B2 守卫补 resume 参数恢复（下次完成自动 verify 对冲）。
 - [ ] T2 质量增强链（新管线 runs/h3/postprocess.py，接入取片）：超分（Real-ESRGAN 类）/插帧（RIFE）/降噪/调色、
       字幕与声音（TTS 语音清晰；字幕字体不乱码——必须校验字体渲染，中文字体嵌入）；
       dev.py postprocess 子命令 + 单测（输入输出参数断言 + ffprobe）。
