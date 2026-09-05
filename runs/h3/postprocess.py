@@ -143,32 +143,39 @@ def render_subtitle(input_path: Path, out: Path, srt: Path, fontsize: int = 0,
     return info
 
 
-def mix_tracks(input_video: Path, out: Path, main: Path, bed: Path = None,
-                main_db: float = 0.0, bed_db: float = -12.0) -> dict:
-    """二轮审阅新增：双轨混音——main（如 TTS 旁白，loudnorm 后）为主轨，bed（参考音频）降 bed_db 做底轨。
-    通过 amix 归一音量叠加；仅用 single 时走 mix_audio。失败抛 ValueError。"""
-    if not main.is_file():
-        raise ValueError(f"主音轨不存在: {main}")
+def mix_tracks(input_video, out, main, bed=None,
+                main_db=0.0, bed_db=-12.0):
+    """三审修订：双轨混音——main 主轨（TTS 旁白）、bed 底轨（默认 -12dB）。
+    volume 必须带 dB 后缀（裸数字=线性倍率：0.0=静音、-12.0=反转+放大削波——实测证实）；
+    amix 加 normalize=0 保住 dB 相对配比（后续 loudnorm 统一整体响度）。失败抛 ValueError。"""
+    if not Path(main).is_file():
+        raise ValueError("主音轨不存在: " + str(main))
+    if bed is not None and not Path(bed).is_file():
+        raise ValueError("底轨音频不存在: " + str(bed))
+    dur = _dur_or(probe(str(input_video)))
     inputs = ["-i", str(input_video), "-i", str(main)]
     if bed is not None:
         inputs += ["-i", str(bed)]
-    filters = (
-        f"[1:a]volume={main_db}[m0];"
-        + (f"[2:a]volume={bed_db}[m1];[m0][m1]amix=inputs=2:duration=longest:dropout_transition=0,"
-           f"loudnorm=I=-14:TP=-1.0:LRA=11[outa]" if bed is not None
-           else f"[m0]apad,atrim=0:{_dur_or(probe(str(input_video)))},loudnorm=I=-14:TP=-1.0:LRA=11? [outa]".replace("? ", ""))
-    )
+        filters = (f"[1:a]volume={main_db}dB[m0];[2:a]volume={bed_db}dB[m1];"
+                   f"[m0][m1]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,"
+                   f"loudnorm=I=-14:TP=-1.0:LRA=11[outa]")
+    else:
+        filters = f"[1:a]volume={main_db}dB,apad,loudnorm=I=-14:TP=-1.0:LRA=11[outa]"
     cmd = ["ffmpeg", "-y"] + inputs + ["-map", "0:v", "-map", "[outa]", "-c:v", "copy",
-           "-filter_complex", filters, "-c:a", "aac", "-b:a", "192k", "-t", _dur_or(probe(str(input_video))), str(out)]
+           "-filter_complex", filters, "-c:a", "aac", "-b:a", "192k",
+           "-t", dur, str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
     if r.returncode != 0 or not Path(out).is_file():
         raise ValueError("双轨混音失败: " + (r.stderr or "")[-300:])
     return probe(str(out))
 
 
-def _dur_or(info: dict) -> str:
-    return str(info.get("duration", 0.0))
-
+def _dur_or(info):
+    """三审修订：duration 缺失直接抛错（0.0 会造成零长产物静默成功）。"""
+    d = info.get("duration")
+    if not d:
+        raise ValueError("probe 未返回 duration（疑似输入损坏）")
+    return str(float(d))
 
 def mix_audio(input_path: Path, out: Path, audio: Path) -> dict:
     """单轨替换（非混流！二轮审阅更正 docstring）：以指定音频**替换**音轨（-shortest；失败抛 ValueError）。
@@ -180,18 +187,23 @@ def mix_audio(input_path: Path, out: Path, audio: Path) -> dict:
            "-c:a", "aac", "-b:a", "192k", "-shortest", str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
     if r.returncode != 0:
-        raise ValueError("音频混流失败: " + (r.stderr or "")[-300:])
+        raise ValueError("音频替换失败: " + (r.stderr or "")[-300:])
     info = probe(str(out))
     return info
 
 
 def run_full(input_path: Path, out: Path, srt: Path = None, audio: Path = None,
-             scale: float = 2.0, denoise: float = 1.0, sharpen: float = 0.4) -> Path:
-    """T2b 完整链（二轮审阅修订）：**单次编码**（增强+字幕并入同一 -vf）→ 音轨替换（copy）。
-    消除旧三连 process+render_subtitle(two CRF18) 的代际损失。任一步失败即抛（不产出半成品）。"""
+             scale: float = 2.0, denoise: float = 1.0, sharpen: float = 0.4,
+             bed_audio: Path = None) -> Path:
+    """T2b 完整链（二轮/三轮审阅修订）：**单次编码**（增强+字幕并入同一 -vf）→ 音轨。
+    audio=单轨替换（mix_audio）；audio+bed_audio=双轨混音（mix_tracks：主轨+底轨-12dB）。
+    mix_tracks 由此接线（非死代码）。"""
     mid = out.with_name(out.stem + "_enh" + out.suffix)
     process(input_path, mid, scale=scale, denoise=denoise, sharpen=sharpen, srt=srt)
-    if audio:
+    if bed_audio is not None:
+        mix_tracks(mid, out, audio or bed_audio, bed=bed_audio)
+        mid.unlink(missing_ok=True)
+    elif audio:
         mix_audio(mid, out, audio)
         mid.unlink(missing_ok=True)
     else:

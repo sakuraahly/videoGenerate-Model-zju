@@ -177,7 +177,7 @@ def replace_audio_only(input_video: Path, audio: Path, out: Path, dur: float = 0
     tmp = out.with_name(out.stem + "_aud" + out.suffix)
     cmd = ["ffmpeg", "-y", "-i", str(input_video), "-i", str(audio),
            "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-           "-filter:a", "apad,loudnorm=I=-14:TP=-1.0:LRA=11", "-c:a", "aac", "-b:a", "192k"]
+           "-filter:a", "apad,afftdn=nf=-25,loudnorm=I=-14:TP=-1.0:LRA=11", "-c:a", "aac", "-b:a", "192k"]
     if dur and dur > 0:
         cmd += ["-t", f"{dur:.3f}"]
     cmd += [str(tmp)]
