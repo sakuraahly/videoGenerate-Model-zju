@@ -272,9 +272,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    choices=sorted(h3workflow.RESOLUTION_PRESETS),
                    help="Use a resolution preset (overrides file value)")
     p.add_argument("--tts-voice", type=str, default="zh-CN-XiaoxiaoNeural",
-                help="六审预接通（S6）：TTS 音色（zh-CN-XiaoxiaoNeural 女声 / zh-CN-YunxiNeural 男声）")
+                choices=["xiaoxiao", "yunxi", "zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural"],
+                help="七审（S6）：TTS 音色——短名 xiaoxiao(女)/yunxi(男) 或全名；均归一为全名后传给 edge-tts")
     p.add_argument("--tts-text", type=str, default="",
                 help="中文台词/旁白文本：完成后将该文本合成中文语音并替换视频音轨（T2b edge-tts）")
+
     p.add_argument("--lora", type=str, default="none",
                    choices=["none", "fl2v_4step", "ref2v_4step", "ref2v_8step"],
                    help="book-12 B1 加速 LoRA: none(默认)/fl2v_4step(t2v·i2v·flf2v)/ref2v_4step|ref2v_8step(r2v); steps 自动 4/8")
@@ -590,6 +592,10 @@ def _collect_outputs(entry: dict) -> List[dict]:
 
 def main(argv: Optional[list] = None) -> int:
     args = build_arg_parser().parse_args(argv)
+    # 七审：短名/全名归一（S6 映射层：LLM/CLI 用短名 xiaoxiao|yunxi，此处归一为全名）
+    _V_ALIASES = {"xiaoxiao": "zh-CN-XiaoxiaoNeural", "yunxi": "zh-CN-YunxiNeural"}
+    args.tts_voice = _V_ALIASES.get(str(getattr(args, "tts_voice", "") or "").lower(),
+                                    getattr(args, "tts_voice", "") or "zh-CN-XiaoxiaoNeural")
     project_dir = h3params.project_root_from_file(Path(__file__))
     env = h3params.load_environment(project_dir)
 
@@ -898,10 +904,11 @@ def main(argv: Optional[list] = None) -> int:
                             _log_event(f"tts_done file={_dst.name} voice={_voice} "
                                        f"speech={_prep['speech_dur']:.2f}s srt=yes merged_encode=1")
                         else:
-                            _res = _tts.attach_speech_and_subtitle(_tts_src, _tts_txt)
+                            # 七审：else（非合并）路径同样传 voice + 日志实际值（此前漏修——P1a 前此为唯一路径）
+                            _res = _tts.attach_speech_and_subtitle(_tts_src, _tts_txt, voice=_voice)
                             print(f"TTS_OUT: outputs/{_res['path'].name} speech_s={_res['speech_dur']:.2f} "
                                   f"srt={'yes' if _res.get('srt') else 'no'}", flush=True)
-                            _log_event(f"tts_done file={_res['path'].name} voice={_tts.DEFAULT_VOICE} "
+                            _log_event(f"tts_done file={_res['path'].name} voice={_voice} "
                                        f"speech={_res['speech_dur']:.2f}s srt={bool(_res.get('srt'))}")
                     else:
                         _log_event("tts_skip (no local output)")
