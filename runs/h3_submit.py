@@ -131,6 +131,7 @@ def _finalize_local_outputs(project_dir, remote_paths, gp=None) -> None:
             dst = outputs_dir / f"{stem}_{i}{suffix}"
         try:
             shutil.copy2(src, dst)
+            local_files.append(dst)
             print(f"LOCAL_OUTPUT: outputs/{dst.name}", flush=True)
             _log_event(f"local_output file={dst.name} bytes={dst.stat().st_size}")
             # book-13 P0#6：完成回执带 ffprobe 实测（PROBE 行，无条件）；book-12 B2/T3：产物参数回归守卫（gp 可用时）
@@ -157,6 +158,7 @@ def _finalize_local_outputs(project_dir, remote_paths, gp=None) -> None:
                 _log_event(f"verify_skip file={dst.name} err={type(_e).__name__}")
         except OSError as e:
             _log_event(f"local_output_failed file={dst.name} err={e}")
+    return local_files
 
 
 def _err(msg: str) -> None:
@@ -859,7 +861,7 @@ def main(argv: Optional[list] = None) -> int:
         # 直跑（CLI/agent，无外层下载器）：spark-local → 产物直接保存到 outputs/；
         # win-remote → 保持 scp 提示（由外层/人工经隧道下载）。
         if _site(project_dir) == "spark-local":
-            _finalize_local_outputs(project_dir, all_remote, gp=gp)
+            _local_out = _finalize_local_outputs(project_dir, all_remote, gp=gp)
             # book-14 T2b：中文语音替换（--tts-text 或任务记录 tts_text；失败不阻断主产物）
             try:
                 _tts_txt = (getattr(args, "tts_text", "") or "").strip()
@@ -867,13 +869,22 @@ def main(argv: Optional[list] = None) -> int:
                     _tj = jobstate.read_json(jobstate.task_job_path(project_dir, task_folder)) or {}
                     _tts_txt = str(_tj.get("tts_text") or "").strip()
                 if _tts_txt:
-                    _tts_outs = sorted(Path(project_dir, "outputs").glob("video_*.mp4"),
-                                       key=lambda p: p.stat().st_mtime, reverse=True)
-                    if _tts_outs:
+                    # book-14 T2b v2#1：只用“本次”finalize 产物（返回值），不再全目录 glob-mtime
+                    _tts_src = _local_out[0] if _local_out else None
+                    if _tts_src is not None and _tts_src.is_file():
                         from h3 import tts as _tts
-                        _tts.replace_with_speech_text(_tts_outs[0], _tts_txt)
-                        print(f"TTS_OUT: outputs/{_tts_outs[0].name}", flush=True)
-                        _log_event(f"tts_done file={_tts_outs[0].name} voice={_tts.DEFAULT_VOICE}")
+                        _req_secs = float(getattr(gp, "seconds", 0) or 0)
+                        _src_dur = _tts.probe_duration(_tts_src)
+                        # v2#2：时长守卫——源视频被截断则重新从远端取原始文件
+                        if _req_secs and _src_dur < _req_secs * 0.8:
+                            _log_event(f"tts_guard source_truncated file={_tts_src.name} dur={_src_dur:.2f}s")
+                            raise ValueError(f"源视频被截断({_src_dur:.2f}s)")
+                        _res = _tts.attach_speech_and_subtitle(_tts_src, _tts_txt)
+                        # v2#5：验收客观化回执
+                        print(f"TTS_OUT: outputs/{_res['path'].name} speech_s={_res['speech_dur']:.2f} "
+                              f"srt={'yes' if _res.get('srt') else 'no'}", flush=True)
+                        _log_event(f"tts_done file={_res['path'].name} voice={_tts.DEFAULT_VOICE} "
+                                   f"speech={_res['speech_dur']:.2f}s srt={bool(_res.get('srt'))}")
                     else:
                         _log_event("tts_skip (no local output)")
             except Exception as _te:  # noqa: BLE001

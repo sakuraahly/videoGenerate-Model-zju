@@ -131,6 +131,48 @@ def build_track(parts: list, total: float, out: Path, tmp: Path) -> Path:
     return out
 
 
+def _srt_time(sec: float) -> str:
+    ms = int(round(sec * 1000))
+    h, rem = divmod(ms, 3600_000)
+    m, rem = divmod(rem, 60_000)
+    s, ms = divmod(rem, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
+                               voice: str = DEFAULT_VOICE, srt_path: Path = None) -> dict:
+    """book-14 T2b v2#3：合成中文语音 → 整句 SRT(0→语音时长) → 烧录字幕 → 替换音轨(apad 保时长)。
+    返回 {'path', 'speech_dur', 'srt'}；全部失败即抛（不产半成品）。"""
+    from h3.postprocess import render_subtitle
+    input_video = Path(input_video)
+    dest = Path(out) if out else input_video
+    speech = Path(tempfile.mkstemp(suffix=".mp3")[1])
+    with_sub = dest.with_name(dest.stem + "_sub" + dest.suffix)
+    tmp_out = dest.with_name(dest.stem + "_v2" + dest.suffix)
+    try:
+        dur = probe_duration(input_video)
+        spd = synthesize(text, speech, voice=voice)
+        srt = Path(srt_path) if srt_path else dest.with_name(dest.stem + ".srt")
+        srt.write_text(f"1\n00:00:00,000 --> {_srt_time(spd)}\n{text}\n", encoding="utf-8")
+        render_subtitle(input_video, with_sub, srt)
+        cmd = ["ffmpeg", "-y", "-i", str(with_sub), "-i", str(speech),
+               "-map", "0:v", "-map", "1:a", "-c:v", "copy",
+               "-filter:a", "apad", "-c:a", "aac", "-b:a", "192k"]
+        if dur and dur > 0:
+            cmd += ["-t", f"{dur:.3f}"]
+        cmd += [str(tmp_out)]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+        if r.returncode != 0 or not tmp_out.is_file():
+            raise ValueError("TTS 音轨替换失败: " + (r.stderr or "")[-300:])
+        tmp_out.replace(dest)
+        with_sub.unlink(missing_ok=True)
+        return {"path": dest, "speech_dur": spd, "srt": srt}
+    finally:
+        speech.unlink(missing_ok=True)
+        tmp_out.unlink(missing_ok=True)
+        with_sub.unlink(missing_ok=True)
+
+
 def replace_with_speech_text(input_video: Path, text: str, out: Path = None,
                              voice: str = DEFAULT_VOICE) -> Path:
     """整段文本 → 中文语音 → 替换视频音轨（语音 apad 至视频时长，保留完整画面；

@@ -271,6 +271,8 @@ _TOOL_LIMITS = {'call_comfyui': 1, 'batch_submit': 1, 'list_references': 2,
                 'run_script': 3, 'read_doc': 2, 'modify_workflow': 1}  # book-16 频控
 _SESSION_GEN_LIMIT = 10  # book-17 P2.3.4：每会话生成类任务上限（待批准项E=10）
 _SESSION_GEN_USED: dict = {}  # key=会话 cid（CURRENT_SESSION）
+_SESSION_SUBMITS: dict = {}  # book-14 T2b v2#4：会话级同任务指纹→{fingerprint:{pid,ts}}；30 分钟内复用
+_SESSION_SUBMIT_WINDOW = 1800  # 秒
 
 
 # ---------------------------------------------------------------- book-17 P2.2 硬约束
@@ -561,6 +563,27 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                         out = f'[限流] 本会话生成任务已达 {_SESSION_GEN_LIMIT} 次上限（book-17 P2.3.4）；请新开会话再提交。'
                         events.put({'kind': 'tool', 'text': f'{fname[:28]}（会话限流）'})
                     else:
+                        # book-14 T2b v2#4：会话级同任务去重（30 分钟内同指纹 → 复用，不重复提交）
+                        _fp = ''
+                        if fname in ('call_comfyui', 'batch_submit') and not _p_args.get('dry_run'):
+                            _fp = fname + '|' + '|'.join(str(_p_args.get(k, ''))
+                                                         for k in ('stage', 'resolution', 'seconds', 'prompt', 'images'))
+                            _fp = _fp[:400]
+                            try:
+                                from runs.agent import tools as _t
+                                _sg = str(getattr(_t, 'CURRENT_SESSION', ''))
+                            except Exception:  # noqa: BLE001
+                                _sg = ''
+                            import time as _time
+                            _rec = _SESSION_SUBMITS.get(_sg, {}).get(_fp)
+                            if _rec and (_time.time() - _rec['ts']) < _SESSION_SUBMIT_WINDOW:
+                                out = (f"[复用] 本会话 30 分钟内已提交同任务（prompt_id={_rec['pid'] or '?'}），"
+                                       "未重复提交；可用 run_script(h3_submit.py) 查询/续传取回。")
+                                events.put({'kind': 'tool', 'text': f'{fname[:28]}（同任务复用，未新提交）'})
+                                cur = cur + [{'role': 'assistant', 'content': (clean_text or text or '')[:6000]},
+                                             {'role': 'user', 'content': f'[工具 {fname} 返回]\n{out}'}]
+                                cur.append({'role': 'user', 'content': '（任务已在队列中，直接查询取回即可，不要再提交）'})
+                                continue
                         _tool_count[fname] = _tool_count.get(fname, 0) + 1
                         out = _run_tool(fname, fc.get('arguments'))
                         _tool_call_cache[tkey] = out
@@ -577,6 +600,9 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                                     from runs.agent import tools as _t
                                     _sg = str(getattr(_t, 'CURRENT_SESSION', ''))
                                     _SESSION_GEN_USED[_sg] = _SESSION_GEN_USED.get(_sg, 0) + 1
+                                    import time as _time
+                                    _pids = extract_prompt_ids(out) or ['']
+                                    _SESSION_SUBMITS.setdefault(_sg, {})[_fp] = {'pid': _pids[0], 'ts': _time.time()}
                             except Exception:  # noqa: BLE001
                                 pass
                         events.put({'kind': 'tool', 'text': f'{fname[:28]} 完成'})
