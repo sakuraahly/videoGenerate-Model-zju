@@ -1045,12 +1045,14 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 msg = f'[执行出错] {final_text}\n建议：{_hint}'
                 msgs.append({'role': 'assistant', 'content': msg})
                 note = f'本轮执行出错：{_hint}'
-            elif final_text and not (msgs and msgs[-1].get('role') == 'assistant'
-                                       and str(msgs[-1].get('content', '')).rstrip()
-                                       .endswith(final_text.rstrip()[-60:])):
-                # book-13 C1：流式已追加时不再重复
+            elif final_text:
+                # book-16：done 文本即流式已展示文本 → 不得再走 else 占位（防“（模型未返回内容）”误追加）
                 final_status = IDLE_HTML
-                msgs.append({'role': 'assistant', 'content': final_text})
+                if not (msgs and msgs[-1].get('role') == 'assistant'
+                        and str(msgs[-1].get('content', '')).rstrip()
+                        .endswith(final_text.rstrip()[-60:])):
+                    # book-13 C1：流式未含该文本（工具轮兜底/非流式）→ 追加
+                    msgs.append({'role': 'assistant', 'content': final_text})
                 try:
                     _ctx_n = sum(ctx_budget.count_tokens(str(m.get('content', ''))) for m in msgs)
                 except Exception:  # noqa: BLE001
