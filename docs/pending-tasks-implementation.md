@@ -1,4 +1,4 @@
-﻿# 待做任务·具体实现规格（供外部 AI 审核）
+# 待做任务·具体实现规格（供外部 AI 审核）
 
 > 文档性质：把「甜点/待做任务」的具体实现方案（含现状复用、文件级步骤、验证方法、风险取舍）写清，供**另一位 AI 审核**；审核者只需审本文件+抽查引用代码（所有路径相对项目根 `D:/MY_CODING_PROGRAM/videoGenerate-Model-zju`，spark 同构 `~/videoGenerate-Model-zju`）。
 > 版本：2026-09-05 · 关联计划书：book-13 §6（S1-S14 总览）、book-14、book-15、book-18。
@@ -10,7 +10,8 @@
 
 | 约束 | 事实 | 影响 |
 |---|---|---|
-| 外网 | pypi.org=200；huggingface/github/translate=000（不可达）；speech.platform.bing.com 可达（edge-tts 可用）；cdn.jsdelivr=301 | **任何需下载模型/数据的任务默认不可行**（S13 口型驱动=不可行；Inpaint 若需新模型=不可行，除非已有本地资产） |
+| 模型下载 | **魔搭 ModelScope 可达（2026-09-05 实测：modelscope.cn 302/域通；modelscope pip 1.39.1 可装）**；edge-tts（bing 端点）可用；HF/GitHub/translate=000（不可达但非必需——模型一律走魔搭） | **凡需下载模型的任务均可行**（真实模型 ID 须逐一下载验证） |
+| 本地既有资产（实测） | `upscale_models/`：**RealESRGAN_x4plus.pth(+safetensors) + 4x-UltraSharp.pth**（已就位）；`sglang-venv`=torch 2.13.0+cu130（GPU torch 环境已有）；KJNodes 等 custom_nodes 已装 | S2 超分=零下载；口型/ASR/TTS=可本地 GPU 推理 |
 | GPU | 共享队列（归属校验才可取消/删除；新任务走提交即返回）；ComfyUI=systemd 且**禁止人工重启**（崩溃自愈由 systemd 承担；运行时只允许队列空闲时 POST /free） | 一切真机验证须队列空闲等待；任务数受控 |
 | 模板红线 | spark 同事模板 `~/ai/ComfyUI/user/default/workflows/` **永不修改**；只改本地镜像 `workflows/remote_workflows/` 与本地扩展 | S7 的 Ref2VA 模板只能本地镜像/本地扩展 |
 | 已可用组件 | `h3.postprocess.process`（lanczos 2x + hqdn3d + unsharp，ffprobe 断言）；`render_subtitle`（libass + Noto CJK，字号/描边/安全区可参数化）；`h3.tts`（edge-tts：合成/逐句/音轨替换/字幕一步到位/loudnorm -14）；`queue_probe`（队列只读/归属/条件取消）；`svc_main`（services 观测动作）；`supervisor`（自愈守护）；`llm_mem`（planner/wake 自适应）；`comfy.history(prompt_id)`（O(1) 单任务历史） | 多数任务=接线/组合，非新建 |
@@ -34,7 +35,7 @@
 **现状**：T2 链已存在且真机验证过（video_12：608×352→1216×704/720p、5.17s/124f，ffprobe 断言）。`h3_submit --postprocess fast` 现有完成钩子；**但 agent（call_comfyui）当前不传 `--postprocess`**。
 **实现（文件级）**：
 1. `runs/agent/tools.py`：CallComfyUI 提交参数追加 `--postprocess fast`（在 `--submit-only` 之后追加；dry_run 不带）；
-2. `runs/h3_submit.py` 完成钩子**顺序重构**：`finalize(原片) → run_fast(原片→_pp) → tts.attach_speech_and_subtitle(_pp, tts_text) → PROBE/TTS_OUT`（**先增强后字幕/语音**——否则字幕被放大产生软边、语音在 608 源上烧录后增强音轨 copy 不受影响但画面字幕模糊）；有 `tts_text` 且无 `postprocess` 时仍走原路径；
+2. `runs/h3_submit.py` 完成钩子（**三审定稿=合并单次编码**，与 h3_submit.py:884-895 一致）：`finalize(原片) → [fast 且 tts 并存时] tts.prepare_speech(text)→ srt_+speech → postprocess.process(原片, _pp, srt=...)  ← 增强+字幕同 -vf 单次编码 → tts.replace_audio_only(_pp, speech)（视频 copy）→ PROBE/TTS_OUT`；仅有 tts 时走 attach_speech_and_subtitle（单次烧录编码+音轨 copy）；仅 fast 时走 run_fast。**不再存在双次 CRF18 路径**；
 3. 增强滤镜链（现有 `process()`，纯 ffmpeg，无 GPU）：`scale=iw*2:ih*2:flags=lanczos` → `hqdn3d=1.0` → `unsharp=5:5:0.4`（各向异性 lanczos 放大；降噪=时域去低步伪影；锐化恢复边缘；参数均可 `--postprocess fast` 固定）。
 **超分方案的取舍说明**：v1 用 lanczos（平滑、零依赖、秒级）；**真实超分模型（Real-ESRGAN x4plus）**：ComfyUI 输出目录历史中存在 `UpscaleModelLoader(RealESRGAN_x4plus.pth)` 节点（同事模板在用）→ **本机 ComfyUI 已可能持有该模型文件**（实施期核实 `~/ai/ComfyUI/models/upscale_models/`）——若存在：v2 可加 `--esrgan` 走 ComfyUI 独立请求（BatchProcess? 或者本地推理需 ComfyUI API 工作流：LoadImage+ImageUpscaleWithModel+SaveImage）；**若无该模型文件：放弃 v2，保留 lanczos**（外网受限无法下载）。
 **验证**：真实链 gen 一次（4 步 360p）：产物=1216×704、时长/帧数不变、字幕抽帧清晰、音轨 AAC 且时长=视频；`PROBE` 断言宽高。
@@ -69,7 +70,7 @@
 - **7a 探测登记**：节点/模板存在性 → 结果写入 capabilities.json 新 stage `video_ref2v`（slots=videos up to 3 / audios up to 3 / images up to 9）与 code-fact-registry；若本地无模板→**从 spark 模板库复制镜像**（不改同事原件，仅本地镜像，遵守红线）；
 - **7b 引擎接线（审核修订：`bind_images_to_template` 实际在 `runs/h3/refimage.py:175`，非 stage.py；`bind_refs_to_template` 为新建函数，与它同文件并列）**：增 `bind_refs_to_template(stage, images, videos, audios)`（复用其图像路径 + 扩展 LoadVideo/LoadAudio 注入，节点 key 探测期确定；**并发安全：在任务目录副本上操作，参照 h3_batch 的 batch_lock 模式**）；`h3_submit --videos/--audios`；`capabilities` 注册 params；
 - **7c 工具/提示词**：`tools.py call_comfyui` 增 `videos/audios`（枚举 id）；SYSTEM_MESSAGE 加 `<Video N>/<Audio N>` 提示词规范（N 与槽位序号一一对应）与使用边界（视频=动作参考/音频=氛围参考；不一致会导致编辑层重音轨，见下）；
-**取舍（审核采纳混音方案）**：参考音频 + T2b 旁白并存时**不做二选一**——推荐 `TTS 旁白为主轨（loudnorm -14）+ 参考音频降 12dB 做底轨混音`（ffmpeg amix+volume；`postprocess.mix_audio` 已有外部音轨混流，需扩展为双轨音量配比）；仅当用户明确「以参考音频为准」时才旁白降级。
+**取舍（审核采纳混音方案；三审定稿）**：参考音频 + T2b 旁白并存时**不做二选一**——`TTS 旁白为主轨（loudnorm -14）+ 参考音频降 12dB 做底轨混音`；**实施载体=`postprocess.mix_tracks`（已建并已接线：run_full 增 bed_audio 参数调用；注意 volume 需 **dB 后缀**、amix normalize=0——均已在三审修复并带测试）**（勿再扩展 mix_audio——它是单轨替换）；仅当用户明确「以参考音频为准」时才旁白降级。
 **验证**：dry-run 断言 LoadVideo/LoadAudio 图注入；真实链一次（提交 r2v+1 视频参考）产物 ffprobe 正常；**若 7a 探测失败（无节点/无模板）→ S7 标记为『不可行（环境缺能力）』并如实归档**，不做任何臆造接线。工作量：大（7a 小 / 7b 中 / 7c 小）。
 ## 8. S8 批量状态轮询优化（消除子进程开销；**非真 O(1)**——ComfyUI 无批量接口，实为 O(N) 但无逐段子进程/30s 开销）
 
@@ -92,7 +93,7 @@
 **设计（语义请审核）**：新增 `refimage list --scope-shared`（=本会话 + 用户最近 7 天内『显式授权』的会话——授权=UI 新增『允许本会话访问这些会话』多选下拉，写入 `logs/agent_chats/<cid>.meta.json` `shared_from:[]`）；`list_references` 默认仍仅本会话；用户文本含『用第 X 会话的素材』时工具校验授权否则报错（复用现有『素材边界』模板）。
 **实现**：`refimage.py`（scope-shared 分支）+ `ui_app`（授权多选，小型 `gr.CheckboxGroup`）+ `tools.py list_references` 透传。**风险**：权限语义（默认不授权、显式点名、可撤销）必须先在 planbook 定稿；实现排在 S9 之后。工作量：中。
 
-## 11. S11（不建议近期项）——规格留空
+## 11b. S11（不建议近期项）——规格留空
 
 S11=§3.2 图片解析收敛（assets.py 重构）：价值/风险比低，登记观察；不提供实施规格（详见 book-13 总览）。
 
@@ -101,9 +102,9 @@ S11=§3.2 图片解析收敛（assets.py 重构）：价值/风险比低，登�
 | 项 | 方案 | 可行性判定（本环境） |
 |---|---|---|
 | 口型驱动（Wav2Lip/SadTalker） | 独立 venv + 模型文件推理 + 音轨→口型管线 | **⚠ 已被 §14/§16 取代：可行**（魔搭通道 + 本地 GPU torch；先冒烟后全链） |
-| 局部重绘 Inpaint | ComfyUI `InpaintModelConditioning`+`VAEEncodeForInpaint`+SAM mask（需 SAM/Inpaint 节点与模型） | **待探测**：若 `~/ai/ComfyUI/custom_nodes` 含 ComfyUI-Inpaint 类节点且模型存在→可行（`/object_info` 枚举）；否则不可行 |
+| 局部重绘 Inpaint | ComfyUI `InpaintModelConditioning`+`VAEEncodeForInpaint`（KJNodes 等已装；模型 SD1.5/SDXL-Inpaint 走魔搭） | **⚠ 已被 §14/§16 取代：可行**（图侧修复参考图乱码区；视频内逐帧重绘=远期） |
 | 标题/图表后期装配 | ffmpeg `drawtext` + Noto CJK（黑体/描边/安全区已有同参数）；数据图表=SVG 渲染→ffmpeg overlay（纯本地） | **可行**（无需新模型；工作量中） |
-| 1080p 输出 | 模型上限 768p；增强链 2x 可得 **1216×704（≈720p）**；如需 1080p 类：`--scale 2.84` 到 1728×1000? **建议口径**：交付档=768p 原生或 2x 增强，**不宣称 1080p 原生**；`--scale` 自定义允许用户自选 | 可行（如实标注：超分非原生） |
+| 1080p-级输出 | **⚠ 已被 §14/§16 取代（口径修正）**：ESRGAN 为 **4x** 模型——608×352 源→2432×1408（≈2K）；768p 源→3072×1728；按目标分辨率做 lanczos 下采样即可得 1080p/2K 档；仍如实标注=超分合成非原生 | 可行（需视觉抽检：4x 伪影/插值叠加） |
 | 齿音处理 | ffmpeg `afftdn` 已加；齿音=谱减（`highpass`+`deesser` 类无内建） | 低价值，维持暂缓 |
 
 ## 13. 请审核者重点评审（**“五大”实为六条；各疑点结论见 §15/§16，本节保留原问供比对**）
@@ -223,7 +224,7 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 1. ComfyUI `/object_info`：ImageUpscaleWithModel / SaveImage / Min v（v2 超分工作流 schema）；
 2. 魔搭模型真实 ID：RIFE、SD1.5/SDXL-Inpaint、Wav2Lip(含 S3FD)、FunASR/Paraformer、F5-TTS（下一条=下载时长与大小登记）；
 3. Ref2VA 节点/模板（spark `/object_info` + 同事模板目录——未确认前 S7 只做 7a 探测）；
-4. 混音扩展 `mix_audio` 双轨音量配比参数（amix 权重语义）。
+4. ~~混音扩展 mix_audio 双轨音量配比~~（**已由三审完成并回填**：mix_tracks 新建+接线+dB 修正+spark 测试通过）；**新增**：ESRGAN 批处理并行的**单卡并发路数与显存上限实测**（目标 3-6min 为待验证目标，非承诺）。
 
 **审核闭环**：以上即对审阅意见的完整应答；如审核方复轮，仅需针对 §15.1 未接受项说明理由。
 ---
@@ -235,12 +236,12 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 1. S2 不二次转码声明与自身方案矛盾（双次 CRF18）——**已重构为合并单次编码并实测**（process 支持 srt 并入同 -vf；run_full 同步；钩子 fast+tts 并存走合并链）：离线实测 video_31 合并链 **2.4s** 出 1216×704/5.167s；
 2. render_subtitle 默认绝对 20px 使先增强后字幕字号静默变小——**默认改比例字号**（0.07xH；实测 704p 字幕≈49px 帧目检清晰）；
 3. mix_audio 实为替换非混流（§7 前提错误）——**docstring 更正为单轨替换 + 新增 mix_tracks 双轨混音**（旁白主轨 -14 + 底轨 -12dB amix）；
-4. ESRGAN 视频超分成本低估一个数量级——**实测单帧 ~11.8s（1216 到 2432，双模型同），串行 124 帧约 24min**；采纳 **P1a/P1b 拆分**：P1a=lanczos fast 默认；P1b=--esrgan 交付档可选 + 先做批处理并行优化（目标 3-6min，未优化前禁默认）；
+4. ESRGAN 视频超分成本低估一个数量级——**三审实测更正口径：源帧 1216×704 → 实际输出 4864×2816（4x 模型，非 2432）；单帧 ~11.8s；串行 124 帧约 24min**；采纳 **P1a/P1b 拆分**：P1a=lanczos fast 默认；P1b=--esrgan 交付档可选 + 先做批处理并行优化（**目标 3-6min=待验证目标，非承诺**——加速来源=单请求多上采样分支，需实测并发路数与显存上限（新增 §15.5 项））;
 5. §0/§12/§13 与 §14 矛盾——已就地标注（§12 行改注、§13 说明、§12 标题注）；次要项（附录补 run_fast/run_full、S11 缺号补注、§15.2 序号说明、§15.3 次数回填）全部落地。
 
 **实测新增事实（登记）**：ComfyUI 超分节点 schema：`UpscaleModelLoader` 输入键=**model_name**（非 upscale_model）；`ImageUpscaleWithModel`=upscale_model；LoadImage 需 input/ 根目录（user_uploads 子目录不能被直接解析）。
 
-**审核问题“需要我直接落补丁吗？”**——已由本项目落地提交（commit 8c971f7/84f7b69 + 1c4c4d7/d2d4c95），证据=上述实测。
+**审核问题“需要我直接落补丁吗？”**——已由本项目落地提交（**Windows 侧哈希：8c971f7/1c4c4d7/fecbcee（三审修复）**；spark 侧对应 84f7b69/d2d4c95/7f5da21；三审修复 fecbcee=dB 后缀+normalize=0+afftdn 补回+run_full 接线+测试），证据=上述实测。**三审新增实测**（spark）：volume 语义=`0.0→-91dB 静音 / -12.0→0dB 削波 / -12dB→-33.1dB 衰减`（审核判断证实）；mix_tracks 真实测试通过（dB 相对差≈12 assert）；afftdn 已补回 replace_audio_only（attach 与合并路径一致）。
 
 **仍未决/待实施前置（如实）**：① ESRGAN 批处理并行优化（S2-P1b 第一步）；② §15.5 其余项（魔搭模型真实 ID、Ref2VA 探测、amix 权重语义）按确认一项动工一项；③ S2 正式实施（钩子默认 fast 接线）：前置=合并链已就绪（✓）+ 队列空闲窗口 + 回滚开关 --postprocess none（已有）——待第一批整体拍板。
 
