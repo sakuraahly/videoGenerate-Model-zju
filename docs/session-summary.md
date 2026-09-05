@@ -853,7 +853,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 ### 20.14 book-18 完成（2026-09-05，按册序）
 - **质量提示词固化**：prompts/ Q+（masterpiece/best quality/ultra detailed…）与 Q-（blurred scene/motion blur/…+文字防乱码补词）单源；`consistency_check` 新增「Q+/Q- 基线断言」（缺失即 FAIL）；spark dry-run 注入断言通过；SYSTEM 规则「质量词不得删除」。
 - **清晰度加强（取舍后）**：SYSTEM 台词规范（短句/常用字/标点）+ `--rate=-8%`（修复 argparse 负号旗标 bug）+ 单句重试 + `afftdn,loudnorm(I=-14)` + 字幕规范参数化（字号/描边/安全区）+ 内嵌文字规则（参考图驱动优先）。
-- **验收**：video_31（5.167s 完整/旁白 1.46s/字幕 SRT 0→1.464s/帧目检清晰/实测 I=-12.4 LUFS）——**用户听测留待确认**；W2 文字链沿用通过。
+- **验收**：video_31（5.167s 完整/旁白 1.46s/字幕 SRT 0→1.464s/帧目检清晰/实测 I=-12.4 LUFS）——**✅ 用户听测通过（2026-09-05 确认 video_31）**；W2 文字链沿用通过。
 - 远期候选登记 book-13 #15（口型驱动/Inpaint/标题装配/1080p/齿音=不承诺）；所有计划书（01→18）执行完毕，待归档/历史维护。
 
 ### 20.13 book-16 归档闭环（2026-09-05，按册序）

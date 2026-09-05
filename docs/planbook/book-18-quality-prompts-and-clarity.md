@@ -1,7 +1,7 @@
 # 阶段 16 — 质量提示词固化 + 语音/文字清晰度与正确度加强（book-18）
 
 > 状态：**✅ 实施完成（2026-09-05，用户批准 A-D）**。§1 Q+/Q- 单源固化+consistency_check 质量词断言；§2 语法：台词规范（SYSTEM）+ 脚本规范器（_sanitize_script）+ `--rate=-8%`（等号语法，argparse 修复）+ 单句重试 + `afftdn+loudnorm(I=-14)`；§3 字幕规范参数化（字号=0.07×高、白字黑描边 Outline=2、MarginV=0.08×高）；SYSTEM 规则：台词规范/内嵌文字参考图优先/质量词不得删除。
-> 验收：`dev.py test` 质量词断言通过（Q+：masterpiece/best quality/ultra detailed；Q-：blurred scene/motion blur）+ spark dry-run 注入断言（t2v 工作流 prompt/negative 均含新词）+ **语音链真实链视频_31**（608×352/5.167s/124f；旁白「再见了。」1.46s@-8%；loudnorm 后实测 **I=-12.4 LUFS**（目标 -14，含静音段统计，登记）；SRT 0→1.464s；帧目检字幕安全区白字黑描边清晰）+ W2 文字场景沿用（video_25 已过）。**用户听测留待验收**（音轨可辨析性最终判据）。
+> 验收：`dev.py test` 质量词断言通过（Q+：masterpiece/best quality/ultra detailed；Q-：blurred scene/motion blur）+ spark dry-run 注入断言（t2v 工作流 prompt/negative 均含新词）+ **语音链真实链视频_31**（608×352/5.167s/124f；旁白「再见了。」1.46s@-8%；loudnorm 后实测 **I=-12.4 LUFS**（目标 -14，含静音段统计，登记）；SRT 0→1.464s；帧目检字幕安全区白字黑描边清晰）+ W2 文字场景沿用（video_25 已过）。**✅ 听测通过（2026-09-05 用户确认）**——book-14 语音判据§12·第4条达成。
 > 关联：book-14（T2b 语音链/T2 后期链已落地）、book-17（验收口径§6.5）、book-06（提示词体系/槽位注入）、book-16（台账/归档）
 ---
 
