@@ -47,7 +47,7 @@
 ### P0（用户价值，正文案）
 - [x] T1 候选加速（**引擎侧完成 2026-09-05**）：capabilities.json 顶层 `lora` 注册（3 文件/steps/适用阶段）；`h3stage.apply_lora`（LoraLoaderModelOnly 注入+model 引用替换+steps 4/8 覆写+防自环）；`h3_submit --lora`（choices+日志同步）；tools.py CallComfyUI 新增 `lora` 参数（注册表派生枚举，agent 重启后可见）；单测 138 全绿；spark dry-run 双验证（r2v+ref2v_4step / t2v+fl2v_4step → LoraLoader+steps=4）。
       **真机对比（2026-09-05 完成，全程项目程序）**：r2v 360p/5s/seed42 同提示词：A=ref2v_4step（bb4387d9）**72s** vs B=none 20 步（0727000d）**163s** → **≈2.26× 加速**；两产物 ffprobe 完全一致（608×352/24fps/5.17s/124 帧）；修复 lora_name 须带 `MiniMax_H3/` 前缀（ComfyUI /object_info 枚举确认，原 400 提交拒绝已修）；B2 守卫补 resume 参数恢复（下次完成自动 verify 对冲）。
-      **⚠️ 用户实测反馈（2026-09-05）：4 步加速版画面瑕疵比 20 步正常流程多**（速度换质量代价，已实证）。策略：候选/构景筛选用 4 步；确认出片/正式交付用 ref2v_8step(v1.0) 或禁用加速(20 步)；T2 质量链（超分/降噪/插帧）对低步瑕疵有补偿；T7 自检把“低步瑕疵”列为重点项；工具 `lora` 默认 none，agent 默认 none、仅用户同意后用于候选筛选。
+      **⚠️ 用户实测反馈（2026-09-05）：4 步加速版画面瑕疵比 20 步正常流程多**（速度换质量代价，已实证）。策略：候选/构景筛选用 4 步；确认出片/正式交付用 ref2v_8step(v1.0) 或禁用加速(20 步)；T2 质量链（超分/降噪/插帧）对低步瑕疵有补偿；T7 自检把“低步瑕疵”列为重点项。**⚠️ 2026-09-05 用户指令更新（见 book-17 §3.1，待批准）**：LoRA **必须用上**——验证/普通档默认 `fl2v_4step/ref2v_4step + 360p/5s`；交付/精品档 `ref2v_8step 768p 或 none 20 步`；工具 `lora` 默认值由 none 改为验证档 4 步（不再“仅用户同意才用”）。
 - [x] **T2 v1 完成（2026-09-05，ffmpeg 管线）**：`runs/h3/postprocess.py`（probe/process/run_fast；2x lanczos 超分 + hqdn3d 降噪 + unsharp 锐化 + 可选调色滤镜串 + `--interp` 插帧[默认关]；**ffprobe 断言输出分辨率/时长漂移**，失败非 0 不打折）；`h3_submit --postprocess none|fast`（spark-local 完成后自动增强，失败不阻断主产物）；`dev.py postprocess`（Windows 侧一键调 spark 执行）；真机集成：video_12.mp4(608×352) → **1200 路 1216×704**/5.17s/124 帧 ✓。
 - [x] **T2b v1 完成（2026-09-05）**：字幕烧录（`render_subtitle`：libass subtitles 滤镜 + Noto Sans CJK SC 字体、`validate_srt` 先验、输出分辨率不变断言）+ 音频混流（`mix_audio`：-shortest + AAC 192k）+ `run_full` 完整链（增强→字幕→音频，失败即抛不产半成品）；`dev.py postprocess --subtitle/--audio/--font-size` 透传；真机集成：video_12 → **video_12_full.mp4 1216×704 + AAC 5s + 中文 SRT 烧录**，抽帧目检中文无乱码 ✓；单测 148 全绿。
 - [ ] **T2b 语音链升级（2026-09-05 升级 **P0**；来源=用户四问「成品语音混乱不可辨析」）**：
@@ -58,6 +58,7 @@
         3. **P0-3 自动接线**：字幕 SRT 已存在 → 用 SRT 文本逐句合成语音并对齐（最贴合“说话”）；`h3_submit --postprocess full` 默认带语音，无台词视频→静音轨替代噪声轨；SYSTEM_MESSAGE 决策规则同步（book-16 台账#6）。
       - **完成标准（严）**：真实 UI 出片 → 音轨为**可辨析中文语音**（非噪声）、与字幕逐句对齐；ffprobe 含 AAC 音轨且时长≈视频。
       - **取消条件**：spark 若无可行的本地 TTS → 降级“静音轨+字幕”并如实文档化（**不得宣称语音通过**）。
+      - **⚠️ 2026-09-05 用户指令**：当前仍为氛围音（未达语音判据）→ 本子项为**批准后第一优先**；与 book-17 §4 联动（无台词视频“保留环境音 vs 静音轨”听测决策 + 低参验证档联动 W1/W3 痛点测试）。
 - [ ] **T2b 剩余子项（降级为 P1）**：② 真实超分模型（Real-ESRGAN）与 RIFE 插帧（ComfyUI 节点）接入（v1 为低依赖 ffmpeg 兜底；对 4 步加速瑕疵有补偿价值，接在 P0 语音后）。
 - [ ] T3 参数注入回归守卫（book-12 已修）：consistency_check 增加「模板默认值 vs 注册表 params」核对
       （防止再做"默认 480p/5s"模板翻车）。
