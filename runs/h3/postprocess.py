@@ -105,9 +105,14 @@ def render_subtitle(input_path: Path, out: Path, srt: Path, fontsize: int = 20,
     """用 libass 烧录 SRT 到视频（中文字体；失败抛 ValueError）。"""
     check_cjk_font()
     validate_srt(srt)
+    # book-18 §3：字幕规范参数化（黑体/白字黑描边/安全区 MarginV；字号随分辨率等比）
+    if fontsize <= 0:
+        info0 = probe(str(input_path))
+        fontsize = max(16, int(round(info0.get('height', 352)) * 0.07))
+    margin_v = max(16, int(round(float(probe(str(input_path)).get('height', 352)) * 0.08)))
     force_style = f"FontName={style_name},FontSize={fontsize}," \
                   f"PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000," \
-                  f"BorderStyle=1,Outline=1,Shadow=0,MarginV=28"
+                  f"BorderStyle=1,Outline=2,Shadow=0,MarginV={margin_v}"
     # SRT 路径转义（冒号/反斜杠）
     sub_path = str(srt.resolve()).replace("\\", "/").replace("`", "")
     vf = f"subtitles='{sub_path}':force_style='{force_style}'"

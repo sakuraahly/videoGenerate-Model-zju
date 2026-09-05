@@ -195,11 +195,33 @@ def check_runtime_facts():
         NOTES.append("runtime_check 有 SKIP 项（本机无 qwen_agent 属预期；spark 上应全量[OK]）")
 
 
+def check_quality_prompt_baseline():
+    """book-18 §1.2：Q+/Q- 质量词存在性断言（防漂移）。缺失即问题。"""
+    root = Path(__file__).resolve().parents[1]
+    need_pos = ["masterpiece quality", "best quality", "ultra detailed"]
+    need_neg = ["blurred scene", "motion blur"]
+    try:
+        pos = (root / "prompts" / "positive_prompts.txt").read_text(encoding="utf-8-sig")
+        neg = (root / "prompts" / "negative_prompts.txt").read_text(encoding="utf-8-sig")
+    except OSError as e:
+        ISSUES.append(f"质量词文件读取失败: {e}")
+        return
+    for phrase in need_pos:
+        if phrase not in pos:
+            ISSUES.append(f"正向质量词缺失: {phrase!r}（book-18 Q+ 防漂移断言）")
+    for phrase in need_neg:
+        if phrase not in neg:
+            ISSUES.append(f"负向质量词缺失: {phrase!r}（book-18 Q- 防漂移断言）")
+    if not ISSUES:
+        print("  [OK] Q+/Q- 质量词基线存在")
+
+
 def main() -> int:
     for fn in (check_manifest, check_pipeline, check_registry_vs_pipeline,
            check_capabilities_vs_manifest,
                check_templates_images, check_prompt_multi_injection,
-               check_leftovers_and_git, check_runtime_facts):
+               check_leftovers_and_git, check_runtime_facts,
+               check_quality_prompt_baseline):
         try:
             fn()
         except Exception as e:  # noqa: BLE001

@@ -40,7 +40,17 @@ def _edge_tts_cmd() -> list:
     raise ValueError("edge-tts 不可用（未安装或不在 PATH；请 pip install edge-tts 到运行解释器）")
 
 
-def synthesize(text: str, out: Path, voice: str = DEFAULT_VOICE, rate: str = "+0%") -> float:
+def _sanitize_script(text: str) -> str:
+    """book-18：台词脚本规范——无标点句尾不加；长度提示（不截断，仅告警用）。"""
+    t = str(text or "").strip()
+    if not t:
+        return ""
+    # 常见瑕疵：全角空格/多余空白
+    t = " ".join(t.replace(chr(12288), " ").split())
+    return t
+
+
+def synthesize(text: str, out: Path, voice: str = DEFAULT_VOICE, rate: str = "-8%") -> float:
     """edge-tts 合成中文语音到 out（mp3/wav）；返回时长秒；失败抛 ValueError。"""
     text = str(text or "").strip()
     if not text:
@@ -95,10 +105,15 @@ def build_srt_speech(srt: Path, out: Path, voice: str = DEFAULT_VOICE, tmpdir: P
     prev_end = 0.0
     for i, (start, end, text) in enumerate(sorted(segs), 1):
         wav = tmp / f"line_{i:03d}.mp3"
+        # book-18：单句失败重试 1 次（逐句产出，不整段重来）
         try:
             d = synthesize(text, wav, voice=voice)
-        except Exception as e:
-            raise ValueError(f"第 {i} 句台词合成失败: {e}") from e
+        except Exception as e:  # noqa: BLE001
+            _log_note = None
+            try:
+                d = synthesize(text, wav, voice=voice)
+            except Exception as e2:  # noqa: BLE001
+                raise ValueError(f"第 {i} 句台词两次合成失败: {e2}") from e2
         parts.append((max(start, prev_end), d, wav))
         prev_end = max(start, prev_end) + d
     total = max((p[0] + p[1] for p in parts), default=0.0)
@@ -157,7 +172,7 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
         render_subtitle(input_video, with_sub, srt)
         cmd = ["ffmpeg", "-y", "-i", str(with_sub), "-i", str(speech),
                "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-               "-filter:a", "apad", "-c:a", "aac", "-b:a", "192k"]
+               "-filter:a", "apad,afftdn=nf=-25,loudnorm=I=-14:TP=-1.0:LRA=11", "-c:a", "aac", "-b:a", "192k"]
         if dur and dur > 0:
             cmd += ["-t", f"{dur:.3f}"]
         cmd += [str(tmp_out)]
