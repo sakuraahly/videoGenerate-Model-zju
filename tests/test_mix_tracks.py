@@ -24,7 +24,9 @@ class TestMixTracksOutput(unittest.TestCase):
         r = subprocess.run([FFMPEG, "-i", str(path), "-af", filt + ",volumedetect", "-f", "null", "-"],
                            capture_output=True, text=True)
         m = re.search(r"mean_volume: ([0-9.\-]+)", r.stderr or "")
-        return float(m.group(1)) if m else 0.0
+        if not m:
+            raise AssertionError("volumedetect 输出缺失：" + (r.stderr or "")[-160:])
+        return float(m.group(1))
 
     def test_main_not_silent_and_bed_db_ratio(self):
         with tempfile.TemporaryDirectory() as dd:

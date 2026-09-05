@@ -257,10 +257,17 @@ class ComfyClient:
         return self.request("GET", f"/history/{prompt_id}")
 
     def queue(self) -> Tuple[int, int]:
-        """返回 (running, pending)。"""
+        """返回 (running, pending) 计数。"""
         q = self.request("GET", "/queue")
         running = len(q.get("queue_running", []) or [])
         pending = len(q.get("queue_pending", []) or [])
+        return running, pending
+
+    def queue_pids(self) -> Tuple[set, set]:
+        """五审新增（S8 用）：返回 (running_pids, pending_pids) 集合——queue() 只给计数无法定位具体 pid。"""
+        q = self.request("GET", "/queue")
+        running = {str(it[1]) for it in q.get("queue_running", []) or []}
+        pending = {str(it[1]) for it in q.get("queue_pending", []) or []}
         return running, pending
 
     # ------------------------------------------------------------ 轮询等待
