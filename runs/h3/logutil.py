@@ -29,7 +29,9 @@ ENV_NAME = "H3_LOG_FILE"
 
 
 def _ts() -> str:
-    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # book-13 P2#11：日志统一按北京时间显示（spark 系统为 UTC，避免日志与用户时区差 8h）
+    beijing = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
+    return beijing.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _append(path: str, text: str) -> None:
@@ -47,11 +49,8 @@ def _append(path: str, text: str) -> None:
 
 
 def _tz() -> str:
-    """本地时区标注（book-11：日志行无法区分北京/UTC 的防混淆）"""
-    import datetime as _dt
-    off = _dt.datetime.now().astimezone().utcoffset() or _dt.timedelta()
-    hours = off.total_seconds() // 3600
-    return f"UTC{int(hours):+d}"
+    """时区标注：统一北京时间 UTC+8（book-13 P2#11；原实现取本地偏移，spark=UTC 造成 8h 差）"""
+    return "UTC+8"
 
 
 def ensure_run_log(project_dir, tool: str) -> str:

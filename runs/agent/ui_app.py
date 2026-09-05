@@ -884,6 +884,39 @@ def ingest_upload(paths, cid='') -> tuple:
 
 
 
+def _previews_for_cid(cid: str) -> list:
+    """book-13 P2#9b：按上传归档日志重建某会话的图片预览列表（加载历史会话时用）。"""
+    try:
+        import json as _j
+        out: list = []
+        seen: set = set()
+        with open(UPLOADS_LOG, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = _j.loads(line)
+                except Exception:  # noqa: BLE001
+                    continue
+                if str(rec.get('cid') or '') != str(cid) or rec.get('kind') != 'image':
+                    continue
+                sha = str(rec.get('sha') or '')
+                if not sha or sha in seen:
+                    continue
+                seen.add(sha)
+                thumb = THUMBS_DIR / f'{sha}.jpg'
+                if thumb.is_file():
+                    out.append(str(thumb))
+                    continue
+                arch = str(rec.get('archived') or '')
+                if arch and Path(arch).is_file():
+                    out.append(arch)
+        return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
 # ---------------------------------------------------------------- 程序级状态源
 def llm_state_text() -> str:
     try:
@@ -1293,10 +1326,12 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 return [], IDLE_HTML, '请先选择历史会话。', gr.update(), '', [], gr.update(value=[]), UP_IDLE
             _current_cid = sel
             msgs = load_chat(sel)
+            _prevs = _previews_for_cid(sel)  # book-13 P2#9b：按会话重建预览
+            _gal_by_cid[sel] = _prevs
             return (fmt_msgs(msgs), IDLE_HTML,
-                    f'已加载会话 {sel}（{len(msgs) // 2} 轮），可直接继续提问。\n（上传预览已清空；本会话素材以 list_references 为准）',
+                    f'已加载会话 {sel}（{len(msgs) // 2} 轮），已重建 {len(_prevs)} 项素材预览。\n（本会话全部素材以 list_references 为准）',
                     gr.update(), sel, msgs,
-                    gr.update(value=[]), UP_IDLE)
+                    gr.update(value=_prevs), UP_IDLE)
 
         def _new():
             global _current_cid, _pending_batch_id

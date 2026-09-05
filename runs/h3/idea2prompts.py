@@ -186,6 +186,68 @@ def build_messages(idea: str, slot: str, blueprints: dict,
             {"role": "user", "content": user_prompt}]
 
 
+def parse_segments_json(text: str) -> list:
+    """book-13 P1#5：解析分段 JSON {"segments": [{"positive":..}, ...]}；退回单段整体。"""
+    try:
+        d = _extract_json_object(text)
+        segs = d.get("segments") if isinstance(d, dict) else None
+        if not isinstance(segs, list) or not segs:
+            return [{"positive": str(text).strip(), "negative": ""}]
+        out = []
+        for s in segs:
+            if isinstance(s, dict) and str(s.get("positive") or "").strip():
+                out.append({"positive": str(s.get("positive")).strip(),
+                            "negative": str(s.get("negative") or "").strip()})
+        return out or [{"positive": str(text).strip(), "negative": ""}]
+    except Exception:  # noqa: BLE001
+        return [{"positive": str(text).strip(), "negative": ""}]
+
+
+def _write_segments(project_dir, idea, slot, blueprints, m, cfg, n, dry_run) -> int:
+    """book-13 P1#5：N 段转场提示词 → prompts/workflows/video_flf2v.segment_<i>.positive/negative.txt。"""
+    from h3 import h3prompts
+    from h3 import logutil as _log
+    try:
+        if not cfg.get("enabled"):
+            raise ParamError("AI(enabled=false)：分段生成需启用 config/llm.json（同单段规则）")
+        msgs = build_segment_messages(idea, slot, blueprints, m, n)
+        raw = chat_once(cfg, msgs)
+        segs = parse_segments_json(raw)
+        if len(segs) != n:
+            print(f"      [警告] 模型返回 {len(segs)} 段（期望 {n}），以后者为准", file=sys.stderr)
+        out_root = Path(project_dir) / "prompts" / "workflows"
+        out_root.mkdir(parents=True, exist_ok=True)
+        for i, s in enumerate(segs, 1):
+            # 直接写正/负两文件（write_slot_texts 无分段文件名参数）
+            (out_root / f"video_{slot}.segment_{i}.positive.txt").write_text(
+                s["positive"], encoding="utf-8")
+            (out_root / f"video_{slot}.segment_{i}.negative.txt").write_text(
+                s["negative"] or "", encoding="utf-8")
+            print(f"      ok segment_{i} positive={len(s['positive'])}ch")
+            _log.log_event("idea2prompts", _log.fmt(
+                event="segment_written", slot=slot, idx=i,
+                positive_chars=len(s["positive"])))
+        return 1
+    except Exception as e:
+        _log_err(e)
+        return 0
+
+
+
+def build_segment_messages(idea: str, slot: str, blueprints: dict, m, n: int) -> list:
+    """构造分段提示词请求：要求 N 段（转场）各自独立的 positive/negative。"""
+    bp = blueprints.get(slot) or {}
+    bp_str = json.dumps(bp, ensure_ascii=False)[:800]
+    seg = ("请把下列创意拆分为 " + str(n)
+           + " 个连续转场镜头段，每段独立给出英文 positive 提示词（视觉/镜头/光影/逻辑承接）"
+           + " 与 negative；输出 JSON：{\"segments\": [{\"positive\": \"...\", \"negative\": \"...\"}, ...]}\n"
+           + "创意：" + idea)
+    seg += "\n蓝图(供参考槽位语义): " + bp_str
+    return [{"role": "system",
+             "content": "你是视频转场提示词设计师，只输出严格 JSON，不要多余说明。"},
+            {"role": "user", "content": seg}]
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="单一创意 → 各工作流提示词")
     ap.add_argument("--idea", type=str, default=None)
@@ -193,6 +255,8 @@ def main(argv=None) -> int:
     ap.add_argument("--workflow", type=str, default="", help="只生成某槽位（如 video_r2v）")
     ap.add_argument("--list", action="store_true", help="列出槽位")
     ap.add_argument("--dry-run", action="store_true", help="只打印消息/计划，不发请求不写文件")
+    ap.add_argument("--segments", type=int, default=0,
+                help="book-13 P1#5：flf2v 转场生成 N 段分段提示词（写 video_flf2v.segment_<i>.positive.txt）")
     ap.add_argument("--force", action="store_true", help="AI 关闭时也允许纯文本占位写入（测试用）")
     args = ap.parse_args(argv)
 
@@ -212,6 +276,7 @@ def main(argv=None) -> int:
     blueprints = load_blueprints(project_dir)
     m = h3prompts.load_manifest(project_dir)
     slots = [args.workflow] if args.workflow else slot_list(project_dir)
+    segments = max(0, args.segments)
 
     # 运行日志：AI 桥每次调用都留痕（PS 编排注入 H3_LOG_FILE 则汇入会话日志，
     # 否则自举 logs/run_<ts>_<ms>.log），杜绝“AI 桥调用无日志”盲区。
@@ -224,6 +289,10 @@ def main(argv=None) -> int:
     print(f"[idea2prompts] 创意: {idea[:120]}{'...' if len(idea) > 120 else ''}")
     ok_slots = 0
     for slot in slots:
+        if segments and slot == "flf2v":
+            ok_slots += _write_segments(project_dir, idea, slot, blueprints, m, cfg,
+                                        segments, args.dry_run)
+            continue
         msgs = build_messages(idea, slot, blueprints, m)
         print(f"  - {slot}")
         if args.dry_run:

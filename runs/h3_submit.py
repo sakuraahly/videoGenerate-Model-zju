@@ -133,14 +133,18 @@ def _finalize_local_outputs(project_dir, remote_paths, gp=None) -> None:
             shutil.copy2(src, dst)
             print(f"LOCAL_OUTPUT: outputs/{dst.name}", flush=True)
             _log_event(f"local_output file={dst.name} bytes={dst.stat().st_size}")
-            # book-12 B2/T3：产物参数回归守卫（仅实际请求信息可用时）
-            if gp is not None and getattr(gp, 'width', None):
-                import subprocess as _sp
-                try:
-                    pr = _sp.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
-                                  "-show_entries", "stream=width,height,r_frame_rate,nb_frames,duration",
-                                  "-of", "default=noprint_wrappers=1", str(dst)],
-                                 capture_output=True, text=True, timeout=30)
+            # book-13 P0#6：完成回执带 ffprobe 实测（PROBE 行，无条件）；book-12 B2/T3：产物参数回归守卫（gp 可用时）
+            import subprocess as _sp
+            try:
+                pr = _sp.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+                              "-show_entries", "stream=width,height,r_frame_rate,nb_frames,duration",
+                              "-of", "default=noprint_wrappers=1", str(dst)],
+                             capture_output=True, text=True, timeout=30)
+                _pp = dict((ln.split('=', 1) for ln in pr.stdout.splitlines() if '=' in ln))
+                print(f"PROBE: {dst.name} width={_pp.get('width')} height={_pp.get('height')} "
+                      f"fps={_pp.get('r_frame_rate')} frames={_pp.get('nb_frames')} duration={_pp.get('duration')}",
+                      flush=True)
+                if gp is not None and getattr(gp, 'width', None):
                     issue = _probe_diff(pr.stdout, gp.width, gp.height,
                                         getattr(gp, 'length', None), getattr(gp, 'seconds', None))
                     if issue:
@@ -149,8 +153,8 @@ def _finalize_local_outputs(project_dir, remote_paths, gp=None) -> None:
                               file=sys.stderr, flush=True)
                     else:
                         _log_event(f"verify_ok file={dst.name} w={gp.width} h={gp.height}")
-                except Exception as _e:  # noqa: BLE001
-                    _log_event(f"verify_skip file={dst.name} err={type(_e).__name__}")
+            except Exception as _e:  # noqa: BLE001
+                _log_event(f"verify_skip file={dst.name} err={type(_e).__name__}")
         except OSError as e:
             _log_event(f"local_output_failed file={dst.name} err={e}")
 

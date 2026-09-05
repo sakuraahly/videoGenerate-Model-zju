@@ -54,7 +54,7 @@ LAYOUT = {
 DEFAULTS = {
     "resolution": "480p",
     "seconds": 5.0,
-    "seed": 12345,       # 固定种子可复现；配置成 auto 则每次随机
+    "seed": "auto",       # book-13 P2#13：默认自动随机（可复现请显式 --seed）；旧值 12345 → auto
     "steps": workflow.DEFAULT_STEPS,
     "fps": workflow.DEFAULT_FPS,
     "timeout": 3600,     # 轮询总超时（秒）

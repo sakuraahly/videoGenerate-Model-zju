@@ -13,16 +13,12 @@ import threading
 _lock = threading.Lock()
 _retry_counts: dict[str, int] = {}
 _recoverable_counts: dict[str, int] = {}
-_active_batch: str | None = None
-
 MAX_DETERMINISTIC_RETRIES = 3
 MAX_RECOVERABLE_RETRIES = 5
 
 
 def begin_turn(batch_id: str | None = None):
-    global _active_batch
-    with _lock:
-        _active_batch = batch_id
+    pass  # book-13 P2#12：_active_batch 系无消费者死隔离，已删除（提交路径用 _pending_batch_id）
 
 
 def bump_retry(key: str, recoverable: bool = False) -> int:
@@ -47,11 +43,6 @@ def reset_deterministic_only(key: str):
     """可恢复失败时仅重置不可恢复计数（保留可恢复计数）。"""
     with _lock:
         _retry_counts.pop(key, None)
-
-
-def get_active_batch() -> str | None:
-    with _lock:
-        return _active_batch
 
 
 def reset_all_on_upload():
