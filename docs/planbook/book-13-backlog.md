@@ -34,7 +34,9 @@
 3. ~~消息级分批渲染~~ **✅ 已完成（2026-09-05，C1）**：run_turn 消息级 chunk 即时送显（assistant 文本+工具名状态条）；send 只追加不替换（同条合并、done 去重）；spark 实测事件流 phase → chunk×70 → done；SMOKE_OK。：qwen_agent 为**消息级** yield（已调研）→ 重构 `run_turn`/`send`：把 agent 中间文本/工具结果**逐批 yield** 到对话（而非最终一次性）；用户提交后即可看到"正在…/已提交/进度"，无需等整轮。
 5. **模板默认数值≠请求参数（用户实测 2026-09-05，已修复待回归）**：请求 720p/24fps/15s，产出**864×480/24fps/5.17s**（模板 ResolutionSelector=0.4MP、时长表达式=5s 的默认值，UI→API 转换后未被覆写）。根因修复：`stage.apply_generation_params`（按 token_map 覆写 MiniMaxH3* width/height/length、BasicScheduler steps、CreateVideo fps）+ 单测 3 例（117 全绿）。**剩余回归**：真实提交→ffprobe 断言产出参数；并加「产出参数回执」到取片流程（见 P0.6）。
 6. **产出参数校验/诊断工具（"agent 没有合适的工具"落地）**：① 取片/完成回执带 ffprobe 实测（width/height/fps/duration/nb_frames）与请求参数对照；② 提交前「模板默认 vs 请求」校验开关（默认值≠请求时告警，防再翻车）；③ 供 agent 查询的 `verify_video` 类工具（book-09 延伸；book-12 步骤4 联动）。
-7. **⚠️ 队列共享：删除/取消必须归属校验（2026-09-05 实测教训）**：ComfyUI 是**多用户共享服务器**，`/queue` 可见所有人的任务——队列中的任务**未必是当前用户/我的**。规则（红线）：① `h3_submit --submit-only` 已把 prompt_id 写入 `last_job.json`/任务目录 job.json，**只允许操作/查询本会话登记过的 prompt_id**；② `/queue/delete`、取消、清理等接口目前 405/500 且不可用——**不要在工具/脚本中裸调队列删除**；③ 记录为工具需求：`dev.py queue status`（只读，含归属判定：本会话/未知/他人）与 `queue cancel <id>`（先校验归属+确认，未登记即拒绝）；④ 处置经验：等待期间看到队列任务可能属于他人，勿惊讶、勿删除。
+8. **输出异常保护（2026-09-05：DSH 复读事故移植）**：agent 增加三层防护——① `_dup_text` 连续重复块丢弃（>8 次自动停止展示本并提示）；② 单轮累计输出上限 `MAX_OUTPUT_CHARS=30000`（超出中断展示）；③ 保留原有上下文截断/自动续接上限。（已实现+2 单测，150 全绿）
+9. ~~队列共享~~ 见 7。
+7（原）**⚠️ 队列共享：删除/取消必须归属校验（2026-09-05 实测教训）**：ComfyUI 是**多用户共享服务器**，`/queue` 可见所有人的任务——队列中的任务**未必是当前用户/我的**。规则（红线）：① `h3_submit --submit-only` 已把 prompt_id 写入 `last_job.json`/任务目录 job.json，**只允许操作/查询本会话登记过的 prompt_id**；② `/queue/delete`、取消、清理等接口目前 405/500 且不可用——**不要在工具/脚本中裸调队列删除**；③ 记录为工具需求：`dev.py queue status`（只读，含归属判定：本会话/未知/他人）与 `queue cancel <id>`（先校验归属+确认，未登记即拒绝）；④ 处置经验：等待期间看到队列任务可能属于他人，勿惊讶、勿删除。
 4. ~~任务监控反馈增强~~ **✅ 完成（2026-09-05，C2）**：task_watch 状态含「已耗时 X 分 X 秒」+ 诚实区间提示（queued=排队中/running=1-20 分钟区间/failed 指引）；首次 update 明示「已后台执行，可继续查询/取片」；超 30 分钟提示（共享队列/H3 首载，非卡死）；2 单测（145 全绿）。
 
 ### 🟧 P1（明确收益）

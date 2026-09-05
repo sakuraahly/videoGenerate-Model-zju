@@ -232,6 +232,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
         bot = Assistant(llm=llm, system_message=system_message,
                         function_list=TOOL_NAMES)
         final = ''
+        acc = 0
         for chunk in bot.run(messages=msgs):
             # chunk: List[Message]; 消息级 yield —— book-13 C1：逐批即时送显
             for m in chunk:
@@ -239,6 +240,12 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                 if role == 'assistant':
                     t = _content_text(m.get('content'))
                     if t:
+                        acc += len(t)
+                        if acc > MAX_OUTPUT_CHARS:
+                            # 模型异常（复读/死循环）：中止展示，不再等待
+                            events.put({'kind': 'error',
+                                        'text': '输出异常超限（模型可能复读，已中断展示；请重试或换一种说法）'})
+                            return
                         final = t
                         events.put({'kind': 'chunk', 'text': t})
                 elif role in ('function', 'tool'):
@@ -268,6 +275,22 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                             'text': f'[上下文过载] {type(e2).__name__}: {e2}'})
                 return
         events.put({'kind': 'error', 'text': f'{type(e).__name__}: {e}'})
+
+
+def _dup_text(text: str, last_text: str) -> bool:
+    """book-13 防复读：新块与已有内容尾部高度重复（前 60 字符一致或完全相同）→ 丢弃。"""
+    t = (text or "").strip()
+    if not t:
+        return False
+    tail = (last_text or "").strip()
+    if not tail:
+        return False
+    if t in tail or tail.endswith(t[:60]):
+        return True
+    return False
+
+
+MAX_OUTPUT_CHARS = 30000  # 单轮累计 assistant 输出上限（模型复读/异常保护）
 
 
 def _content_text(content) -> str:
@@ -617,6 +640,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             final_text = ''
             phase = 'ok'
             aborted = False
+            _dup_streak = 0  # book-13 防复读：连续重复块计数
 
             try:
                 for attempt in range(MAX_AUTO_CONTINUE + 1):
@@ -656,15 +680,26 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                             first = False
                         elif kind == 'chunk':
                             # book-13 C1：消息级分批渲染——立即追加，不等待整轮
+                            # book-13 防复读：连续重复块丢弃并计数，超阈值中止本轮展示
                             text = item.get('text', '')
                             if text:
-                                if msgs and msgs[-1].get('role') == 'assistant':
-                                    msgs[-1]['content'] = str(msgs[-1].get('content', '')) + text
+                                if _dup_text(text, str(msgs[-1].get('content', '')) if msgs and msgs[-1].get('role') == 'assistant' else ''):
+                                    _dup_streak += 1
+                                    if _dup_streak > 8:
+                                        phase = 'error'
+                                        final_text = '输出异常（检测到持续重复），已自动停止展示；请重试或换一种说法。'
+                                        yield shown, ERROR_HTML, '⚠️ 模型输出重复，已自动停止', noop, cid, msgs, (clear_box if first else noop)
+                                        first = False
+                                        break
                                 else:
-                                    msgs.append({'role': 'assistant', 'content': text})
-                                shown = fmt_msgs(msgs)
-                                yield shown, BUSY_HTML('生成中（内容已输出）...'), '', noop, cid, msgs, (clear_box if first else noop)
-                                first = False
+                                    _dup_streak = 0
+                                    if msgs and msgs[-1].get('role') == 'assistant':
+                                        msgs[-1]['content'] = str(msgs[-1].get('content', '')) + text
+                                    else:
+                                        msgs.append({'role': 'assistant', 'content': text})
+                                    shown = fmt_msgs(msgs)
+                                    yield shown, BUSY_HTML('生成中（内容已输出）...'), '', noop, cid, msgs, (clear_box if first else noop)
+                                    first = False
                             continue
                         elif kind == 'tool':
                             yield shown, BUSY_HTML('工具调用中...'), f'🔧 工具：{item.get("text", "")}', noop, cid, msgs, (clear_box if first else noop)
