@@ -822,7 +822,7 @@ def ingest_upload(paths, cid='') -> tuple:
     """把界面/上传文件收进素材池（与 upload_watch 同语义）：
 
     - 任意类型 → 归档 uploads/YYYYMMDD/<sha8>_<原名>（sha 去重）+ log.jsonl 流水；
-    - 图片额外镜像到 ComfyUI input/user_uploads/<原名>（LoadImage/refimage 立即可见）。
+    - 图片额外镜像到 ComfyUI input/user_uploads/<原名>（refimage 立即可见——它主动递归扫 user_uploads；LoadImage 不可见——仅认 input/ 根目录文件，须经 /upload/image 上传后由 API 返回名绑定）。
     - 图片类先经 mediacheck 校验，无效图片跳过归档和镜像。
     返回 (给用户的中文摘要, 图片预览路径列表, 无效文件详情列表, batch_id)。
     """

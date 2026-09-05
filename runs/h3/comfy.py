@@ -222,7 +222,7 @@ class ComfyClient:
                 except Exception:  # noqa: BLE001
                     pass
                 raise ComfyRejected(
-                    f"图片上传被拒绝 (HTTP {e.code})", status=e.code, body=body_text
+                    f"上传被拒绝 (HTTP {e.code})", status=e.code, body=body_text
                 ) from e
             except (urllib.error.URLError, ConnectionError, socket.timeout, OSError) as e:
                 last_err = e

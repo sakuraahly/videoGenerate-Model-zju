@@ -850,6 +850,13 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.22 十二审闭环：S1 专项（两处前提性错误）+ §7b 上传链确证（2026-09-05）
+- **S1 前提更正 x2（均高）**：① _known_shas（ui_app.py:755-774）是 log.jsonl 的 sha 集合（"曾上传过"），非存在性判定→_asset_available 必须做文件系统存在性检查（_known_shas 仅候选集）；② 可用性判据只在本地——提交链=本地源 upload_image（h3_submit.py:468→comfy.py /upload/image subfolder="" → input/ 根 → API 返回名 bind :486）；input/user_uploads 镜像仅服务 refimage 列举（refimage.py:105 递归扫）；ui_app.py:825 "LoadImage 立即可见"注释错误（LoadImage 仅认 input/ 根目录）→ 判据="本地可重新上传即可用"，spark 镜像不作判据。
+- **S1 补第三改动点**：ui_app.py:1411-1417（_thumbs 裸字符串+回退 str(src)）元组化+回退路径 caption 兜底；gallery 4 写点中 :1376 无需改。
+- **S1 标注 spark-only**（gradio+_comfy_input_dir 本机路径，Windows 不可开发/验证；只改码不验证、sync 后 spark 验证）；风险/工作量 低/小→中-小/小-中（撤销原标注——十二审元观察：审阅覆盖度由注意力驱动）。
+- **§7b 上传定稿**：直接复用 ComfyClient.upload_image（四证据：:52 字段名/:53 octet-stream/:42 type=input/:58 subfolder 空→input/ 根）；§7a 复核清单加 curl .mp4 上传验证服务端类型校验（唯一未验证项）。
+- **本轮代码小修（2 处，无逻辑）**：ui_app.py:825 注释修正（refimage 可见/LoadImage 不可见）+ comfy.py:225 文案中性化（"上传被拒绝"；grep 测试无断言）。
+- **后续覆盖计划登记**：下轮 S12 token 生命周期 → S13 → changelog 本身（按十二审建议）。
 ### 20.21 十一审闭环：S7 接口约定层复核（2026-09-05）
 - **更正接受**：十审“UI 输入行合成现有代码没有”判断作废——grow_slots（refimage.py:497-526）已实现（目标行追加+_clone_loadimage 占位克隆，COMFY_AUTOGROW_V3）；A 的真实缺口=参数化（四处硬编码：前缀 :511/类型 :520/:551/源输出槽 :551/:554/占位克隆 :522）+ 两条新增（last_node_id 不更新→workflow.py:255 算法未被复用、无副本参数→按 template 必填原则改造）；A 成本下调为“中”，主案 B 不变。
 - **§7c 双通道硬约束**（最实质风险）：tag（提示词文本）与槽位（--videos/--audios 列表顺序）独立通道，顺序错位=产物正常+判据全过但参考关系错（静默错配）——定稿：槽位由列表顺序唯一决定；tools.py 拼装时校验 tag 序号集合==列表索引集合（{1..len}），不一致报错拒提交；SYSTEM_MESSAGE 明示一一对应；一级验证判据④升级为一致性守卫。

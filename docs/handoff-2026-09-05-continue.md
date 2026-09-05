@@ -2,7 +2,7 @@
 
 > 用途：**让新 Agent 无缝接手规划任务**（不依赖原会话上下文）。本档自包含；
 > 与 `docs/handoff-2026-09-05-L-tasks.md`（book-14 L1–L5，已完成）互不覆盖。
-> 现状时间点：**十轮外部审核闭环**（八轮=代码修复+真机验收；九审/十审=S7 规格专项修订——纯文档，权威见 changelog §20/§21 与 pending-tasks-implementation §7 十审定稿）；仓库双端干净。
+> 现状时间点：**十二轮外部审核闭环**（八轮=代码修复+真机验收；九/十/十一审=S7 规格专项修订；十二审=S1 专项+§7b 上传链确证——权威见 changelog §20-§23 与 pending-tasks-implementation §1/§7 十二审定稿）；仓库双端干净。
 >
 > 一句话现状：规划书 `docs/pending-tasks-implementation.md`（S1–S13 + P2–P6）经 **10 轮审核**定稿（十审=S7 计数修正 + 主案改 API 层注入（apply_lora 同型）/GetVideoComponents 链/登记补全/两级验证判据），
 > 唯二被审出的**代码回归**（TTS 钩子两处 UnboundLocalError、workflow UI 存档缺失）已修复；
@@ -124,6 +124,7 @@ python runs/dev.py logs view -N / check / clean [--yes]
 | ESRGAN | 两模型均 **4x**：608×352→2432×1408；测试帧 1216×704→**4864×2816**；单帧 ~11.8s；串行 124 帧≈24min；P1b 目标 3-6min=待验证非承诺；**单卡并发路数/显存上限未测** |
 | ComfyUI schema | `UpscaleModelLoader` 输入键=`model_name`；`ImageUpscaleWithModel`=`upscale_model`；LoadImage 需 `input/` 根目录（user_uploads 子目录不被解析）；`/queue` item[1]=prompt_id；运行中取消=`POST /interrupt`（本 build `/queue {"interrupt":true}` 无效）；pending 取消=`/queue {"delete":[pid]}`；`/history/{pid}` 未知=运行中均返回 `{}`（须靠队列判别） |
 | Ref2VA 链（十审定稿） | `LoadVideo`=io.Combo(file+video_upload 标记)→VIDEO；`LoadAudio`=io.Combo(audio+audio_upload)→AUDIO；`MiniMaxH3ReferenceToVideo` 四 AUTOGROW 槽：ref_images（**模板 8 行**/上限 9，IMAGE）/ref_videos（**模板 1 行**/上限 3，**IMAGE=24fps 帧序列**）/ref_video_audios（模板 1 行/上限 3，AUDIO 与同号视频配对）/ref_audios（模板 1 行/上限 3，AUDIO）；**LoadVideo/LoadAudio 的 UI widgets_values=[文件名,image] 双值**——uiapi 通用路径会抛 UiUnsupported（设计 B 主案下注入在 API 层、转换器遇不到，属已知边界）；拆帧链=LoadVideo→GetVideoComponents（VIDEO→images IMAGE+audio AUDIO+fps）；UI 行合成先例=grow_slots（refimage.py:497-526）；模板簿记 last_node_id=140/last_link_id=282/nodes=29/links=25 |
+| 上传链（十二审定稿） | `/upload/image` 端点：字段名 name="image"（与类型无关，:52）/Content-Type: application/octet-stream（:53）/type=input（:42）/subfolder 非空才追加→默认落 input/ 根目录（:58）；**ComfyClient.upload_image 可直接复用于视频/音频**（唯一未验证项=服务端是否校验扩展名/MIME——S7 7a 复核清单已加 curl .mp4 验证）；提交链=本地源文件上传→API 返回名 bind，input/user_uploads 镜像仅服务 refimage 列举（LoadImage 不认子目录，六审实测；ui_app.py:825 注释已修正） |
 | ffmpeg | volume dB 语义：`0.0`=-91dB 静音、`-12.0`=0dB 削波、`-12dB`=正确衰减；amix 需 `normalize=0`；`-shortest` 会截断（用 apad+`-t duration`）；音轨替换用 tmp+rename（原地写会 EIO） |
 | argparse | `--rate -8%` 会被当旗标 → 必须 `--rate=-8%`；`--tts-voice` choices=[xiaoxiao,yunxi,两全名] |
 | TTS | edge-tts 经 CLI 子进程调用（`_edge_tts_cmd` 三路探测 qwen-agent-venv）；**偶发 NoAudioReceived 网络抖动**（会以 `tts_error err=ValueError` 落日志，主产物不受影响——这不是代码缺陷，重试即好） |
