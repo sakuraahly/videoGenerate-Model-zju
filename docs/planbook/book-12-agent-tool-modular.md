@@ -1,6 +1,6 @@
 # 阶段 10 — Agent 工具自动化/模块化/通用化 + 灵动多工作流适配（为便捷更换工作流做准备）
 
-> 状态：实施中（步骤1 完成） | 目标：让「某个工作流怎么用、用什么模板/槽位/提示词注入点/参数上限、是否支持参考视频/逐段转场」全部由**单一声明式注册表**驱动；新增/替换/禁用工作流=改配置+校验，**不改工具代码、不改系统提示词**；agent 工具层做到「灵动的多工作流适配」 |
+> 状态：实施中（步骤1 完成；步骤2 进行中——含参数注入修复） | 目标：让「某个工作流怎么用、用什么模板/槽位/提示词注入点/参数上限、是否支持参考视频/逐段转场」全部由**单一声明式注册表**驱动；新增/替换/禁用工作流=改配置+校验，**不改工具代码、不改系统提示词**；agent 工具层做到「灵动的多工作流适配」 |
 > 主负责人：后端/Agent | 依赖：book-06(提示词注入)、book-07(引擎契约/批量)、book-01(基座校验) | 对后端影响：高 | 优先级：🟠 中
 
 ---
@@ -108,8 +108,10 @@
 - 单测 `runs/h3/tests/test_workflow_registry.py` 10 用例（真实模板健康 4/4、禁用/未知/云引擎拒绝、槽位不足探测等）；全量 113 用例全绿。
 - 注：步骤1 未接入消费方（tools/refimage/prompts）——agent 无需重启，仍走旧路径（金丝雀：行为不变）。
 
-### 下一步（步骤2）
-- h3_submit `--stage` 校验走注册表 → refimage 槽位/模板 → prompts 注入点 → tools.py 枚举+描述 → stage.py/pipeline 合并；每步保持旧行为（全部已注册工作流 dry-run 通过）。
+### 步骤2 进行中（2026-09-05）
+- **实测缺陷（用户报告）**：请求 720p/24fps/15s，产出 864×480/24fps/5.17s —— UI→API 在线转换保留模板默认值（ResolutionSelector 0.4MP=480p、时长表达式 5s），gp 参数从未写入转换后的节点（`substitute_api_workflow` 只替换字符串 token）。
+- **修复**：`stage.apply_generation_params`（按 token_map 覆写 MiniMaxH3* width/height/length、BasicScheduler steps、CreateVideo fps）+ 3 个单测（全量 117 全绿）。
+- **待办**：① 真实提交→ffprobe 回归；② `--stage` 校验走注册表；③ refimage 槽位/模板按注册表；④ prompts 注入点按注册表；⑤ tools.py 枚举+描述注册表派生；⑥ stage.py/pipeline 合并；⑦ 步骤3 动态认知（digest 注入 SYSTEM_MESSAGE + 05-workflows-registry.md）。
 
 ---
 

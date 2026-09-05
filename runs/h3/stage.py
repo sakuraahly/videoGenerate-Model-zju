@@ -216,6 +216,50 @@ def require_api_template_file(tpath: Path) -> None:
     raise ParamError(f"模板 {tpath} 不是有效的扁平 API 工作流。")
 
 
+def apply_generation_params(wf: dict, token_map: Dict[str, str]) -> int:
+    """book-12 修复：UI→API 在线转换后的模板把参数以「模板默认值」带入
+    （实测：ResolutionSelector 0.4MP=480p、时长表达式 5s —— 与请求 720p/15s 不符）。
+    这里按请求参数强制覆写生成节点：MiniMaxH3* 的 width/height/length、
+    BasicScheduler 的 steps、CreateVideo 的 fps。返回覆写节点数（0=无匹配，不报错）。
+    """
+    def num(key: str):
+        try:
+            return int(float(token_map.get(key, "")))
+        except Exception:  # noqa: BLE001
+            return None
+
+    width, height = num("width"), num("height")
+    length = num("length")
+    steps = num("steps")
+    fps = num("fps")
+    count = 0
+    for n in wf.values():
+        if not isinstance(n, dict):
+            continue
+        ct = str(n.get("class_type") or "")
+        ins = n.get("inputs") or {}
+        if ct.startswith("MiniMaxH3"):
+            changed = False
+            for k, v in (("width", width), ("height", height), ("length", length)):
+                if v is not None and k in ins and ins[k] != v:
+                    ins[k] = v
+                    changed = True
+            if changed:
+                count += 1
+        elif ct == "BasicScheduler" and steps is not None and "steps" in ins and ins["steps"] != steps:
+            ins["steps"] = steps
+            count += 1
+        elif ct == "CreateVideo" and fps is not None and "fps" in ins:
+            try:
+                cur = float(ins["fps"])
+            except (TypeError, ValueError):
+                cur = None
+            if cur is not None and cur != fps:
+                ins["fps"] = fps
+                count += 1
+    return count
+
+
 def load_api_or_ui_template(
     tpath: Path, client: Optional["comfy.ComfyClient"] = None,
 ) -> dict:
@@ -280,7 +324,13 @@ def build_template_workflow(
             f"或在 config/pipeline.json 中配置 template。"
         )
     wf = load_api_or_ui_template(tpath, client=client)
-    return substitute_api_workflow(wf, token_map, image_names)
+    wf = substitute_api_workflow(wf, token_map, image_names)
+    # book-12 修复：转换结果按请求参数覆写（模板默认值≠请求参数的历史 bug）
+    n_over = apply_generation_params(wf, token_map)
+    if n_over:
+        print(f"[提示] 已按请求参数覆写生成节点（{n_over} 处）：width/height/length/steps/fps ''"
+              f"（修复模板默认 480p/5s 与请求 720p/15s 不一致）", flush=True)
+    return wf
 
 
 def build_builtin_workflow(stage: dict, gp: Any, images: List[Path]) -> dict:
