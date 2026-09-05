@@ -177,6 +177,49 @@ def read_stage_texts(
     return positive, negative
 
 
+def apply_lora(wf: dict, lora_id: str, lora_map: dict) -> int:
+    """book-12 B1：把加速 LoRA 注入 API 工作流。
+
+    - 找 UNETLoader 节点（video 模型卸载源）；
+    - 插入 LoraLoaderModelOnly（model-only，避免 clip 依赖）；
+    - 所有引用 [unid,0] 的 model 输入改接 [lora_id,0]；
+    - BasicScheduler.steps 覆写为 lora_map['steps'][lora_id]（默认 4）。
+    返回改动节点数；无 UNETLoader/未知 lora 时返回 0（不报错）。
+    """
+    if not lora_id or lora_id == "none":
+        return 0
+    files = (lora_map or {}).get("files") or {}
+    fname = files.get(lora_id)
+    if not fname:
+        return 0
+    steps = int((lora_map.get("steps") or {}).get(lora_id, 4))
+    unet_ids = [nid for nid, n in wf.items()
+                if isinstance(n, dict) and n.get("class_type") == "UNETLoader"]
+    if not unet_ids:
+        return 0
+    unid = unet_ids[0]
+    new_id = "lora_" + str(len(wf))
+    wf[new_id] = {"class_type": "LoraLoaderModelOnly",
+                  "inputs": {"model": [unid, 0], "lora_name": fname,
+                             "strength_model": 1.0}}
+    changed = 0
+    for nid, n in wf.items():
+        if nid == new_id or not isinstance(n, dict):
+            continue  # LoraLoader 自身保持 [unid, 0]，防自环
+        ins = n.get("inputs") or {}
+        for k, v in list(ins.items()):
+            if isinstance(v, list) and len(v) == 2 and v[0] == unid:
+                ins[k] = [new_id, 0]
+                changed += 1
+    for n in wf.values():
+        if isinstance(n, dict) and n.get("class_type") == "BasicScheduler":
+            ins = n.get("inputs") or {}
+            if ins.get("steps") != steps:
+                ins["steps"] = steps
+                changed += 1
+    return changed
+
+
 def text_token_map(gp: Any) -> Dict[str, str]:
     """把生成参数转为占位符映射（不含图片 token）。"""
     return {

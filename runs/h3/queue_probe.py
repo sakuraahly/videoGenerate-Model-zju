@@ -5,7 +5,7 @@
 删除/取消必须先按归属校验（见 book-14 红线），未实现=禁止。
 
 输出 JSON：
-  {"running": [{"qid","prompt_id","tag"}], "pending": [...],
+  {"running": [{"qid","prompt_id","nodes","tag"}], "pending": [...],
    "known_count": N, "last_known": bool}
 tag: 本机登记（last_job.json 命中）| 本项目任务（workflows/*/job.json 命中）| 外部/他人
 """
@@ -54,7 +54,9 @@ def collect() -> dict:
                 tag = "本项目任务"
             else:
                 tag = "外部/他人"
-            rows[kind].append({"qid": it[0], "prompt_id": pid[:16], "tag": tag})
+            rows[kind].append({"qid": it[0], "prompt_id": pid[:16],
+                               "nodes": (len(it[2]) if len(it) > 2 and isinstance(it[2], dict) else None),
+                               "tag": tag})
     return {"running": rows["running"], "pending": rows["pending"],
             "known_count": len(known), "last_known": bool(last)}
 

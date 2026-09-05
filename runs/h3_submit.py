@@ -222,6 +222,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--resolution", type=str, default=None,
                    choices=sorted(h3workflow.RESOLUTION_PRESETS),
                    help="Use a resolution preset (overrides file value)")
+    p.add_argument("--lora", type=str, default="none",
+                   choices=["none", "fl2v_4step", "ref2v_4step", "ref2v_8step"],
+                   help="book-12 B1 加速 LoRA: none(默认)/fl2v_4step(t2v·i2v·flf2v)/ref2v_4step|ref2v_8step(r2v); steps 自动 4/8")
     p.add_argument("--width", type=int, default=None)
     p.add_argument("--height", type=int, default=None)
     p.add_argument("--seconds", type=float, default=None)
@@ -474,6 +477,18 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
         changed = h3prompts.inject_local_prompts(wf, prompt, negative, spec=_p_spec)
         if changed:
             print(f"[提示] 已用本地提示词覆盖工作流内嵌字段（{changed} 处）。", flush=True)
+        # book-12 B1：加速 LoRA 注入（LoraLoaderModelOnly + steps 4/8 覆写 + 日志同步）
+        if getattr(args, 'lora', '') and args.lora != 'none':
+            _lmap = {}
+            try:
+                _cap = json.loads(Path(project_dir, 'config', 'capabilities.json').read_text(encoding='utf-8-sig'))
+                _lmap = _cap.get('lora') or {}
+            except Exception:  # noqa: BLE001
+                pass
+            _n = h3stage.apply_lora(wf, args.lora, _lmap)
+            _lsteps = int((_lmap.get('steps') or {}).get(args.lora, 4))
+            gp.steps = _lsteps  # 日志/审计与真实提交一致
+            print(f"[提示] 加速 LoRA {args.lora}（steps={_lsteps}）已注入工作流（{_n} 处改造）", flush=True)
         # book-11 bugfix：把解析后的参考图名挂到 args（main 的 submitted 行需要，防 NameError）
         try:
             args.resolved_images = [img.name for img in images]

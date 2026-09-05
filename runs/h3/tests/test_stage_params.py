@@ -52,5 +52,40 @@ class TestGenParams(unittest.TestCase):
         self.assertEqual(wf["130"]["inputs"]["fps"], 24)
 
 
+class TestApplyLora(unittest.TestCase):
+    """book-12 B1：加速 LoRA 注入（LoraLoaderModelOnly + steps 覆写）。"""
+
+    def _wf(self):
+        return {
+            "1": {"class_type": "UNETLoader", "inputs": {"unet_name": "m.safetensors"}},
+            "6": {"class_type": "BasicGuider", "inputs": {"model": ["1", 0]}},
+            "8": {"class_type": "BasicScheduler", "inputs": {"model": ["1", 0], "steps": 20}},
+            "11": {"class_type": "SamplerCustomAdvanced", "inputs": {"model": ["1", 0]}},
+        }
+
+    _LMAP = {"files": {"ref2v_4step": "ref2v_4.safetensors"},
+             "steps": {"ref2v_4step": 4}}
+
+    def test_inject_replaces_model_refs_and_steps(self):
+        wf = self._wf()
+        n = stage.apply_lora(wf, "ref2v_4step", self._LMAP)
+        self.assertGreaterEqual(n, 3)
+        lora_id = next(k for k, v in wf.items()
+                       if isinstance(v, dict) and v.get("class_type") == "LoraLoaderModelOnly")
+        self.assertIn("ref2v_4.safetensors", wf[lora_id]["inputs"]["lora_name"])
+        self.assertEqual(wf[lora_id]["inputs"]["model"], ["1", 0])
+        self.assertEqual(wf["6"]["inputs"]["model"], [lora_id, 0])
+        self.assertEqual(wf["8"]["inputs"]["steps"], 4)
+        self.assertEqual(wf["11"]["inputs"]["model"], [lora_id, 0])
+
+    def test_none_or_unknown_returns_zero(self):
+        wf = self._wf()
+        self.assertEqual(stage.apply_lora(wf, "none", self._LMAP), 0)
+        self.assertEqual(stage.apply_lora(wf, "bogus", self._LMAP), 0)
+        self.assertEqual(stage.apply_lora(wf, "ref2v_4step", {}), 0)
+        wf2 = {"1": {"class_type": "LoadImage"}}
+        self.assertEqual(stage.apply_lora(wf2, "ref2v_4step", self._LMAP), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

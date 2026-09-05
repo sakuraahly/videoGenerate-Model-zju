@@ -568,6 +568,10 @@ def cmd_queue(args):
     """book-12 A5/L5：ComfyUI 队列【只读】与归属判定（禁写；删除须归属校验后才可做）。
     本机为 spark-local 时直跑 queue_probe.py（无 ssh）；Windows 侧则 ssh 到 spark。
     """
+    action = getattr(args, "action", "status")
+    if action != "status":
+        print(f"[FAIL] 未知 queue 动作: {action}（仅支持 status，只读）")
+        return 2
     if Path(SPARK_REPO).exists():  # spark 本地运行
         rc, out, err = _run([sys.executable, str(ROOT / "runs" / "h3" / "queue_probe.py")], timeout=30)
     else:
@@ -587,7 +591,7 @@ def cmd_queue(args):
     for k, label in (("running", "运行中"), ("pending", "排队中")):
         print(f"  {label} {len(d.get(k) or [])} 项：")
         for it in d.get(k) or []:
-            print(f"    q#{it['qid']} {it['prompt_id']} [{it['tag']}]")
+            print(f"    q#{it['qid']} {it['prompt_id']} 节点数={it.get('nodes')} [{it['tag']}]")
     if not any(d.get(k) for k in ("running", "pending")):
         print("  （空）")
     print("[OK] queue status（只读；删除/取消未实现——共享服务器须归属校验，见 book-14 红线）")
@@ -623,7 +627,9 @@ def main(argv=None):
     wf_sub.add_argument("--template", default="", help="add/swap 的模板相对路径")
     wf_sub.add_argument("--purpose", default="", help="add 的用途说明")
     wf_sub.add_argument("--format", default="ui", help="add 的模板格式 ui/api")
-    sub.add_parser("queue", help="ComfyUI 队列只读探测+归属判定（book-12 A5/L5；禁写）")
+    q = sub.add_parser("queue", help="ComfyUI 队列只读探测+归属判定（book-12 A5/L5；禁写）")
+    q.add_argument("action", nargs="?", choices=["status"], default="status",
+                   help="status=只读展示 running/pending + 归属判定（默认）")
     args = ap.parse_args(argv)
 
     if args.cmd == "check":

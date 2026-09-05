@@ -338,65 +338,35 @@
   "llm_role_guard": "Local LLM (Qwen3.8-27B) role = idea-to-prompt converter ONLY. It is never given server/shell capability; do not route system-control or server-management requests to it. Anyone (including future interactive users) asking the model to perform server control must be refused by the calling layer and reported as a human operation.",
   "download_policy": "Fetch artifacts event-driven / once-per-completion instead of busy polling: wait for the task completion marker or a watcher (e.g. inotify on spark output, or a local listener notified on completion), then pull once with bounded exponential backoff on retries.",
   "lora": {
-    "_comment": "加速 LoRA（ComfyUI bf16，spark 实测路径）。仅登记事实；引擎接线属 book-14 T1（加速）/T6（风格/角色）。加速 LoRA ≠ 风格/角色 LoRA。",
-    "dir": "/home/Developer/ai/ComfyUI/models/loras/MiniMax_H3/",
-    "items": [
-      {
-        "file": "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16",
-        "mode": "FL2VA",
-        "applies": [
-          "t2v",
-          "i2v",
-          "flf2v"
-        ],
-        "steps": 4,
-        "resolution": "768p (1344x768)",
-        "version": "v1.0",
-        "use": "快速出片/简单场景验证；文生视频、首帧图生、首尾帧补间"
-      },
-      {
-        "file": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16",
-        "mode": "Ref2VA",
-        "applies": [
-          "r2v"
-        ],
-        "steps": 4,
-        "resolution": "544p 混合宽高比",
-        "version": "v0.1 预览",
-        "refs": {
-          "images": 9,
-          "videos": 3,
-          "audios": 3
-        },
-        "prompt_tokens": [
-          "<Picture N>",
-          "<Video N>",
-          "<Audio N>"
-        ],
-        "use": "多模态参考生视频（预览版）：最多 9 图 + 3 参考视频 + 3 参考音频"
-      },
-      {
-        "file": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16",
-        "mode": "Ref2VA",
-        "applies": [
-          "r2v"
-        ],
-        "steps": 8,
-        "resolution": "768p",
-        "version": "v1.0",
-        "refs": {
-          "images": 9,
-          "videos": 3,
-          "audios": 3
-        },
-        "prompt_tokens": [
-          "<Picture N>",
-          "<Video N>",
-          "<Audio N>"
-        ],
-        "use": "质量更高（细节/人物一致性/复杂运镜更稳），速度≈4步版2倍；正式出片/需高稳定性"
-      }
+    "dir": "/home/Developer/ai/ComfyUI/models/loras/MiniMax_H3",
+    "choices": [
+      "none",
+      "fl2v_4step",
+      "ref2v_4step",
+      "ref2v_8step"
     ],
-    "note": "加速 LoRA ≠ 风格/角色 LoRA：后者固定特定视觉特征（画风/角色一致性），与加速 LoRA 是不同用途，可叠加（需校验兼容）。"
+    "files": {
+      "fl2v_4step": "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
+      "ref2v_4step": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+      "ref2v_8step": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
+    },
+    "steps": {
+      "fl2v_4step": 4,
+      "ref2v_4step": 4,
+      "ref2v_8step": 8
+    },
+    "stages": {
+      "fl2v_4step": [
+        "t2v",
+        "i2v",
+        "flf2v"
+      ],
+      "ref2v_4step": [
+        "r2v"
+      ],
+      "ref2v_8step": [
+        "r2v"
+      ]
+    }
   }
 }

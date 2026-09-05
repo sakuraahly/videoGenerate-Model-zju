@@ -44,9 +44,8 @@
 ## 3. 任务清单（分级）
 
 ### P0（用户价值，正文案）
-- [ ] T1 候选加速：三个 LoRA 分别接线到本地模板（t2v/i2v/flf2v → fl2v_turbo_4step；r2v → ref2v 4/8step 可选），
-      按作者步数写 BasicScheduler.steps=4/8；h3_submit --lora + 注册表 features 声明；dry-run + 真机 ffprobe 回归
-      （同一提示词 4 步 vs 20 步输出参数/耗时对比进证据区）。
+- [x] T1 候选加速（**引擎侧完成 2026-09-05**）：capabilities.json 顶层 `lora` 注册（3 文件/steps/适用阶段）；`h3stage.apply_lora`（LoraLoaderModelOnly 注入+model 引用替换+steps 4/8 覆写+防自环）；`h3_submit --lora`（choices+日志同步）；tools.py CallComfyUI 新增 `lora` 参数（注册表派生枚举，agent 重启后可见）；单测 138 全绿；spark dry-run 双验证（r2v+ref2v_4step / t2v+fl2v_4step → LoraLoader+steps=4）。
+      **剩余（真机对比验证）**：同一提示词 4 步 vs 20 步各提交一次（360p/5s），记录耗时+ffprobe 输出参数进证据区（共享队列，安排空闲时段执行）。
 - [ ] T2 质量增强链（新管线 runs/h3/postprocess.py，接入取片）：超分（Real-ESRGAN 类）/插帧（RIFE）/降噪/调色、
       字幕与声音（TTS 语音清晰；字幕字体不乱码——必须校验字体渲染，中文字体嵌入）；
       dev.py postprocess 子命令 + 单测（输入输出参数断言 + ffprobe）。

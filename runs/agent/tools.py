@@ -287,6 +287,11 @@ class CallComfyUI(BaseTool):
                 'type': 'string',
                 'description': '逗号分隔的参考图（文件名或素材 id）。i2v/flf2v 传入即绑定模板首帧/末帧槽位；r2v 按顺序绑定；不传则要求模板已用 refimage use 设好（否则报错）',
             },
+            'lora': {
+                'type': 'string',
+                'enum': ['none', 'fl2v_4step', 'ref2v_4step', 'ref2v_8step'],
+                'description': 'book-12 B1 加速 LoRA（默认 none）。fl2v_4step 用于 t2v/i2v/flf2v；ref2v_4step/ref2v_8step 用于 r2v；自动把采样步数改为 4/8（更快出候选镜头）。fixed=None, 注: 仅注册表声明可用',
+            },
         },
         'required': ['stage'],
     }
@@ -696,6 +701,9 @@ def _derive_tool_enums(cap: dict, fallback: dict) -> dict:
         out['stage'] = stages
     if res:
         out['resolution'] = res
+    lora_choices = list((cap.get('lora') or {}).get('choices') or [])
+    if lora_choices:
+        out['lora'] = lora_choices
     return out
 
 
@@ -705,7 +713,8 @@ def _apply_registry_derived_schema() -> None:
         from pathlib import Path as _Path
         cap = json.loads(_Path(PROJECT_ROOT, 'config', 'capabilities.json').read_text(encoding='utf-8-sig'))
         fallback = {'stage': ['t2v', 'i2v', 'r2v', 'flf2v'],
-                    'resolution': ['360p', '480p', '540p', '720p', '768p']}
+                    'resolution': ['360p', '480p', '540p', '720p', '768p'],
+                    'lora': ['none', 'fl2v_4step', 'ref2v_4step', 'ref2v_8step']}
         enums = _derive_tool_enums(cap, fallback)
         for _cls in (CallComfyUI, BatchSubmit):
             props = (_cls.parameters or {}).get('properties', {})
@@ -713,6 +722,8 @@ def _apply_registry_derived_schema() -> None:
                 props['stage']['enum'] = enums['stage']
             if 'resolution' in props and props['resolution'].get('type') == 'string':
                 props['resolution']['enum'] = enums['resolution']
+            if 'lora' in props and props['lora'].get('type') == 'string':
+                props['lora']['enum'] = enums['lora']
         # 描述附加当前可用阶段（注册表为准）
         avail = '、'.join(str(s) for s in enums['stage'])
         if avail and avail != fallback['stage']:
