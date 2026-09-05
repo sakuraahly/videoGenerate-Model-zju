@@ -121,6 +121,30 @@ def poll_batch(manifest_path: str) -> dict:
         return {'status': 'failed', 'progress': f'❌ 批量状态读取失败: {e}'}
 
 
+# book-13 C2：任务首次出现时刻（已耗时用；不持久化，重启即清零）
+_first_seen: dict = {}
+# 已发过“提交告知/超时提示”的标志（防刷屏）
+_notified: set = set()
+
+
+def _elapsed(prompt_id: str) -> float:
+    now = time.monotonic()
+    if prompt_id not in _first_seen:
+        _first_seen[prompt_id] = now
+    return now - _first_seen[prompt_id]
+
+
+def _eta_hint(status: str) -> str:
+    """诚实区间：不给假 ETA，按状态给常规区间与异常提示。"""
+    if status == "queued":
+        return "排队中（共享服务器，前面可能有人；不会丢）"
+    if status == "running":
+        return "H3 单段常规 1-20 分钟（360p/5s ≈1-3 分钟；720p/15s ≈10-20 分钟）"
+    if status == "failed":
+        return "❌ 已失败，请检查日志（可点‘继续’重试）"
+    return ""
+
+
 def _monitor_worker(cid: str, turn_id: int, out_queue: queue.Queue, stop_event: threading.Event):
     """后台监控线程工作函数。
     
@@ -155,11 +179,17 @@ def _monitor_worker(cid: str, turn_id: int, out_queue: queue.Queue, stop_event: 
             all_completed = True
             any_failed = False
             status_parts = []
+            etas: list = []
             
+            results = {}
             for task in tasks:
                 if task['type'] == 'single':
-                    result = poll_single(task['prompt_id'])
-                    status_parts.append(f"任务 {task['prompt_id'][:8]}: {result['progress']}")
+                    pid = task['prompt_id']
+                    result = poll_single(pid)
+                    results[pid] = result
+                    el = _elapsed(pid)
+                    status_parts.append(f"任务 {pid[:8]}: {result['progress']}（已用 {int(el // 60)} 分 {int(el % 60)} 秒）")
+                    etas.append(_eta_hint(result['status']))
                     
                     if result['status'] == 'failed':
                         any_failed = True
@@ -169,6 +199,7 @@ def _monitor_worker(cid: str, turn_id: int, out_queue: queue.Queue, stop_event: 
                 elif task['type'] == 'batch':
                     result = poll_batch(task['manifest'])
                     status_parts.append(f"批量任务: {result['progress']}")
+                    etas.append("逐段进行；段数多时长=段数×单段")
                     
                     if result['status'] == 'failed':
                         any_failed = True
@@ -177,7 +208,23 @@ def _monitor_worker(cid: str, turn_id: int, out_queue: queue.Queue, stop_event: 
             
             # 构建状态 HTML
             status_html = '<div class="status-bar monitoring">' + '<br>'.join(status_parts) + '</div>'
-            note_md = ' 监控中...'
+            note_md = ' · '.join(e for e in etas if e)[:120] or ' 监控中...'
+            # book-13 C2：首次 update 明示后台执行与取片方式（一次即可，防刷屏）
+            if not any(k in _notified for k in ('announce',)):
+                _notified.add('announce')
+                note_md = ('任务已提交，正在后台执行；可随时点「继续」查询进度/取片。' +
+                           (' ' + note_md if note_md else ''))
+            # 队列/首次加载超 30 分钟提示（观测：H3 首载+排队是 40 分钟事件主因，非卡死）
+            if any(_elapsed(t['prompt_id']) > 1800
+                   and results.get(t['prompt_id'], {}).get('status') in ('queued', 'running')
+                   for t in tasks if t['type'] == 'single') and 'timeout30' not in _notified:
+                _notified.add('timeout30')
+                note_md = ('⏳ 已超 30 分钟：通常是共享队列等待或 H3 首次加载（正常非卡死）。'
+                           '任务仍在后台，可稍后继续查询；不要重复提交。')
+            if any(_elapsed(t['prompt_id']) > 1800
+                   for t in tasks if t['type'] == 'single') and 'eta' not in _notified and etas:
+                _notified.add('eta')
+                note_md = note_md + ('；若持续无进展，检查 ComfyUI 队列（dev.py queue）或联系管理员。' if note_md else '')
             
             if any_failed:
                 status_html = '<div class="status-bar error">部分任务失败</div>'
