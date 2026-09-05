@@ -82,6 +82,12 @@
 - [ ] L4 book-13↔book-14 条目迁移核对（仅文档：把 book-13 §3.1/3.2/见闻迁移到本册，串引用）
 - [ ] L5 dev.py queue status（只读：队列清单+归属判定=本会话登记/未知/他人；**禁止**实现删除——删除/取消由 **T9** 实现，含归属校验）。**L5 已完成**（book-12 A5：`dev.py queue`，只读+归属，spark 实测）。
 
+> **协作裁定（2026-09-05，给执行 L 类的 agent）**：
+> 1. **L3 已由 T1 吸收**：capabilities.json 顶层 `lora` 段以 **T1 引擎 schema 为准**（`files` 值为 ComfyUI 枚举名，含 `MiniMax_H3/` 前缀；`choices/steps/stages` 为运行字段）——**不要再改 capabilities.json 的 lora 段**；L3 仅需在 docs/code-fact-registry.md 追加登记小节（3 个 LoRA 路径/步数/用途）。
+> 2. **L2 验证**：改 runs/agent/ui_app.py 后需重启 agent 并跑 e2e smoke（命令见 handoff-2026-09-05-L-tasks.md §6）。
+> 3. **spark 未提交改动**：如看到 spark 有未提交改动（如 T9 在制品），**不要动、不要 sync/覆盖**；L 类只提交自己的文件（dev.py commit 只带自己的文件列表；必要时手动 git add 精确路径）。
+> 4. **进度勾选**：完成项在 L1–L5 上改为 [x] 即可。
+
 ---
 
 ## 4. 验收与联动
