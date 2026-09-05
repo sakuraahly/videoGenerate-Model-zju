@@ -850,6 +850,11 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.19 九审闭环：S7（参考视频/音频）规格重定稿 + 实测新取证（2026-09-05）
+- **九审意见（S7 专项）→ 处置**：①【高】S7 漏必需落点 uiapi.py 文件选择器转换分支 → §7 7b 落点 1（实测失效机制：LoadVideo/LoadAudio object_info 只声明 1 个 COMBO 而 UI widgets_values 记 2 值 → 通用路径 :302-305 抛 UiUnsupported；实证 spark utility-gan_upscaler.json node 9）；②【高】“dry-run 断言图注入”离线不可达成（7 份模板全 UI，stage.py:322-326 无 client 抛 ParamError）→ 验证改两级判据（一级=在线 convert_ui_file API dict 断言，可 mock 单测；二级=真实提交）；③【中】api_* 实为 UI 格式 → 现状改写 + §0 新事实行；④【中】add_local 登记默认值相反 → 7a 补“登记后补全”（扩展 add_local 收 slots/features 或 patch+validate_all）+ template_health 扩展数 LoadVideo/LoadAudio；⑤【中】bind_refs_to_template 的 template 设为必填（book-11 污染模式不从签名留后门）。工作量 7b 中→**中-大**（5 个落点）。
+- **新取证（实施期无需再探测）**：MiniMaxH3ReferenceToVideo 四类 AUTOGROW 槽位上限 9/3/3/3；**ref_videos 槽位类型=IMAGE（24fps 帧序列）**——LoadVideo 不能直连，须经 GetVideoComponents（VIDEO→images IMAGE+audio AUDIO，utility-gan_upscaler.json 同型链实证）；本地 video_minimax_h3_r2v.json 即 Ref2VA 模板（全套 ref_* 槽位已有、仅未接线，8 张 LoadImage 仅 2 张已接）→ 更正原“无 Ref2VA 模板/第一步须探测”；spark core 已有 LoadVideo/LoadAudio。
+- **更正上轮误判**：reference_videos 非双源（workflow_registry.py:195 只是 add_local 默认值模板；权威=config/capabilities.json，workflow_registry.py:4 声明）。
+- **本轮性质**：纯规格修订（spec §0/§7、changelog §20、本记录、handoff 同步），未动代码；“成立/采纳”均按落点 grep 核对。S7 仍为待实施任务，推荐实施序不变（S2-P1a → S3 → S8 → …S7）。
 ### 20.18 八审炸弹拆除：TTS 钩子两处 UnboundLocalError 回归（2026-09-05）
 - **发现**：八审（外部 AI 复轮）在七审修复（1d3e3bb）与六审（93c1533）中检出**正在生效的功能回归**：① _voice 仅在 fast 分支赋值、else（非合并）分支引用——P1a 前非 fast 是 agent 唯一路径 → 所有带台词提交“有画面无语音无字幕”；② _tj 仅 CLI 未给 tts_text 时赋值、task_folder 为真即引用——P1a 落地后 fast+CLI 台词路径必炸；两者均被宽泛 except 吞掉静默失效。
 - **影响证据**：spark 现行（87f3979 起）含缺陷行 897/908；但所有 tts_done 成功事件（video_22/27/28/29/31，10:26–20:34）均早于回归提交（22:06）→ 尚无生产运行落在缺陷代码上（下次带台词提交即中招）；spark grep 'tts_error err=UnboundLocalError'=0。

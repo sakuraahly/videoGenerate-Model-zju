@@ -148,3 +148,25 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **机制补充（第 N 次同型后落地）**：`_run_tts_hook` 之前的主干钩子属“新代码路径零测试”——此轮后**新钩子/新分支必有单测**（无 ffmpeg 也可 via monkeypatch），且“两条路径共用变量”必须前置初始化（而非分支内首次赋值）。
 
 **其余**：§2 line 41 残留误写“（1216→2432）”已更正为“1216×704→4864×2816（4x，与 line 40 口径一致）”；§6 实现/验证按八审 Option A 回填（映射层位置+短名判据+“勿再写 tools 侧复用映射”）。
+
+---
+
+## 20. 九审应答（2026-09-05 · S7 最大工程专项）
+
+**九审意见 → 处置对照表**（每条均已按“声明后 grep 落点”机制核对；除文档修订外**未改任何代码**——S7 仍是待实施任务，本轮只修规格）：
+
+| # | 级别 | 意见 | 核查结果（证据） | 处置 |
+|---|---|---|---|---|
+| 1 | 高 | §7 漏必需落点：uiapi.py 需为 LoadVideo/LoadAudio 增转换分支（LoadImage 有专属特例 uiapi.py:273-276，通用路径对文件选择器类节点是错的） | **成立，且查明了精确失效机制**：LoadVideo/LoadAudio 的 object_info 只声明 1 个必需 COMBO（file/audio，cfg 含 video_upload/audio_upload 标记），但 UI 节点 widgets_values 记 2 值（文件名 + upload 展示值 "image"）——实证 spark 同事模板 utility-gan_upscaler.json node 9（LoadVideo widgets=["MiniMax_H3_00035_.mp4","image"]）；走通用路径（uiapi.py:277-306）消费 1 值后触发 :302-305 残留值检查 → UiUnsupported（“2 个 widget 值无法按定义分配”） | §7 7b 新增**落点 1**：文件选择器类转换分支（与 LoadImage 特例并列：只取首值写入 file/audio 并 widgets.clear()），列为 7b 完成度必要判据 |
+| 2 | 高 | §7 “dry-run 断言图注入”离线不可达成——7 份模板全为 UI 格式，转换需 live client，否则 ParamError | **成立**：本地 7 份模板按内容判定全部为 UI（nodes/links/widgets_values）；stage.py:322-326 无 client 抛 ParamError | §7 验证改为**两级判据**：一级=在线 convert_ui_file 的 API dict 断言（class_type 存在/inputs 只含预期 key/ref 槽位接线正确，可 mock client 单测）；二级=真实提交 ffprobe/抽帧/听测；dry-run 只保留 UI 层图注入断言；原表述标记作废 |
+| 3 | 中 | 3 份 api_.json 实为 UI 格式，“×api/video”表述误导格式判断 | **成立**（逐一实测：api_minimax_h3_* 全部 nodes/links/widgets_values；如 api_minimax_h3_r2v.json 含 MinimaxHailuo03ReferenceNode+LoadImage+SaveVideo） | §7 现状改写：7 份全 UI；“api_*”=Comfy 云通道模板命名≠API 格式（本地可执行=4 份 video_*）；同步 §0 新增转换链事实行 |
+| 4 | 中 | §7a 登记默认值与需求相反（add_local 写空 slots + reference_videos:False；workflow_registry.py:190-200 返回消息即写“请补全”）；另更正上轮怀疑：reference_videos 非双源 | **成立**：add_local（workflow_registry.py:184-200）写入 slots 三池全空 + features 全 false（:190-196），返回 “已登记 …请补全 slots/inject_spec 并 validate”；**更正接受**：workflow_registry.py:4 明确“单一来源：config/capabilities.json”，:195 只是 add_local 的默认值模板，非第二来源（上轮“双源”判断有误，在此更正） | §7 7a 增加**登记后补全**步骤（扩展 add_local 接受 slots/features 参数为推荐方案，或登记后 patch+validate_all；禁止只登记不补全），并给目标条目（slots=9/3/3、features.reference_videos=True/audio=True）与 template_health 需扩展数 LoadVideo/LoadAudio 的提示 |
+| 5 | 中 | bind_images_to_template 的 template 参数可选、默认原地写共享模板（book-11 事故）；新建 bind_refs_to_template 应设为必填 | **成立**：refimage.py:184 tpl=Path(template) if template else _stage_template(stage)；:201 tpl.write_text(...) 原地写回；docstring 自记“默认绑定【共享模板】（历史行为）；调用方传入 template 时绑定该副本” | §7 7b 落点 2：新函数签名 **template 设为必填**（无历史负担），任务副本沿用 h3_submit.py:484-487 的 copy2+绑定模式 |
+| — | 对应补充 | （九审结论段）7b 工作量应上调；“探测失败即归档”取舍正确 | 采纳 | 工作量改为**大（7a 小 / 7b 中-大 / 7c 小）**，7b 五个落点写明；归档取舍保留 |
+
+**九审过程中新取证（超出九审意见本身，写入 §7 作为已定案事实，实施期无需再探测）**：
+- MiniMaxH3ReferenceToVideo（spark live object_info）optional=COMFY_AUTOGROW_V3 ×4：ref_images（ref_image: IMAGE，max 9）、**ref_videos（ref_video: IMAGE，“Reference video frames at 24 fps (2-15s)”，max 3）**、ref_video_audios（ref_video_audio: AUDIO，“Soundtrack of the same-numbered reference video”，max 3）、ref_audios（ref_audio: AUDIO，max 3）→ **ref_videos 槽位类型是 IMAGE 而非 VIDEO**：LoadVideo 不能直连，必须经 **GetVideoComponents**（VIDEO→images IMAGE + audio AUDIO + fps/bit_depth/color_space；spark 同事模板 utility-gan_upscaler.json 已实证同型链）→ images 接 ref_videos、audio 接同号 ref_video_audios；LoadAudio（audio COMBO）→ ref_audios。
+- **本地 video_minimax_h3_r2v.json 就是 Ref2VA 模板**（MiniMaxH3ReferenceToVideo id 136 + 全套 ref_* 槽位仅未接线；8 张 LoadImage 仅 2 张接 ref_image_0/1，其余 6 张为死链由 prune_dead_output_nodes 清理）——原“无 Ref2VA 模板、第一步须探测”表述更正；7a 的“探测失败即归档”仍保留为版本不符时的兜底。
+- spark core 已有 LoadVideo（comfy_extras/nodes_video.py，io.Combo file + video_upload）与 LoadAudio（nodes_audio.py，io.Combo audio + audio_upload）。
+
+**机制备注**：本轮为纯规格修订（spec §0/§7 + changelog + session-summary + handoff 同步），未动代码，故无单测/真机验收；所有“成立/采纳”声明均已按落点 grep 机械核对（§7 更新后 grep：uiapi.py 文件选择器、GetVideoComponents、template 设为必填、登记后必须补全、两级判据、中-大 逐条命中）。
