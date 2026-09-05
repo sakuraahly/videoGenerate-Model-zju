@@ -216,20 +216,25 @@ def cmd_commit(args):
     if not files:
         print("没有待提交的改动（已排除机器配置/产物/审计目录）。")
         return 0
-    print("== Windows commit ==")
-    add = ["git", "-C", str(ROOT), "add"] + files
-    rc, out, err = _run(add)
-    if rc != 0:
-        print("[FAIL] git add:", err.strip())
-        return 1
-    rc, out, err = _git(["commit", "-m", msg])
-    if rc != 0:
-        print("[FAIL] git commit:", err.strip() or out)
-        return 1
+    # book-17 §1.1：win 无改动（已提交过、仅需补推 spark）时跳过本地 commit/push，直接走 spark commit
+    _rc, _out, _err = _run(["git", "-C", str(ROOT), "status", "--porcelain", "--"] + files)
+    win_clean = not (_out or _err or "").strip()
     win = _win_head()
-    print(f"  {win}  {msg}")
+    print(f"== Windows commit{'：无新改动，跳过（' + win + '）' if win_clean else ''} ==")
+    if not win_clean:
+        add = ["git", "-C", str(ROOT), "add"] + files
+        rc, out, err = _run(add)
+        if rc != 0:
+            print("[FAIL] git add:", err.strip())
+            return 1
+        rc, out, err = _git(["commit", "-m", msg])
+        if rc != 0:
+            print("[FAIL] git commit:", err.strip() or out)
+            return 1
+        win = _win_head()
+        print(f"  {win}  {msg}")
 
-    if not getattr(args, 'no_push', False):
+    if not win_clean and not getattr(args, 'no_push', False):
         print("== push GitHub ==")
         rc, out, err = _git(["push", "origin", "master"], timeout=120)
         if rc != 0:
