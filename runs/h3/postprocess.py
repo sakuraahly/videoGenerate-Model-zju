@@ -49,6 +49,8 @@ def process(input_path: Path, out: Path, scale: float = 2.0, denoise: float = 1.
     """执行后处理并断言输出参数。返回 probe(out)。失败抛 ValueError（确定性）。
     book-13 S2（二轮审阅）：srt 参数把字幕烧录并入**同一 -vf**（单次编码=增强+字幕，
     消除 process+render_subtitle 双次 CRF18 的代际损失）。"""
+    input_path = Path(input_path)
+    out = Path(out)
     if not input_path.is_file():
         raise ValueError(f"输入不存在: {input_path}")
     vf = []
