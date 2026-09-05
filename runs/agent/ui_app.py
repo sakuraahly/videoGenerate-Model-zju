@@ -223,35 +223,54 @@ def _http_chat_once(messages: list, tools_schemas: list, timeout: int = 120) -> 
         raise ValueError('响应解析失败: ' + str(e)[:120]) from e
 
 
-_TOOL_SCHEMA_CACHE: list = []
+_TOOL_SCHEMA_CACHE: dict = {}  # key = 子集指纹
+# book-17 P2.1.2：按任务能力动态下发子集（最小权限）——仅当用户明确要求工作流改造时才下发 modify_workflow
+_WORKFLOW_EDIT_KEYS = ('修改工作流', '改工作流', '工作流改动', '模板修改', '自定义工作流', '新增工作流', 'workflow')
 
 
-def _tool_defs() -> list:
-    """book-16 自管循环：从 qwen_agent 工具注册表生成 OpenAI functions schema（模块级，可单测）。"""
-    if _TOOL_SCHEMA_CACHE:
-        return _TOOL_SCHEMA_CACHE
+def _wants_workflow_edit(text: str) -> bool:
+    if not text:
+        return False
+    return any(k in text for k in _WORKFLOW_EDIT_KEYS)
+
+
+def _tool_defs(user_text: str = '') -> list:
+    """book-16 自管循环：从 qwen_agent 工具注册表生成 OpenAI functions schema（模块级，可单测）。
+    book-17 P2.1.2：按 user_text 动态下发子集（默认不含 modify_workflow，减少幻觉表面积）。"""
+    try:
+        from runs.agent.scheduler import TOOL_NAMES
+    except Exception:
+        TOOL_NAMES = []
+    subset = sorted(set(TOOL_NAMES) - ({'modify_workflow'} if not _wants_workflow_edit(user_text) else set()))
+    key = tuple(subset)
+    if key in _TOOL_SCHEMA_CACHE:
+        return _TOOL_SCHEMA_CACHE[key]
+    out: list = []
     try:
         from qwen_agent.tools import TOOL_REGISTRY
-        from runs.agent.scheduler import TOOL_NAMES
-        for name in TOOL_NAMES:
+        for name in subset:
             cls = TOOL_REGISTRY.get(name)
             if cls is None:
                 continue
             inst = cls()
             fn = getattr(inst, 'function', None)
             if isinstance(fn, dict):
-                _TOOL_SCHEMA_CACHE.append(dict(fn))
+                out.append(dict(fn))
             else:
-                _TOOL_SCHEMA_CACHE.append({'name': getattr(inst, 'name', name),
-                                           'description': str(getattr(inst, 'description', ''))[:1500],
-                                           'parameters': getattr(inst, 'parameters', {})})
+                out.append({'name': getattr(inst, 'name', name),
+                            'description': str(getattr(inst, 'description', ''))[:1500],
+                            'parameters': getattr(inst, 'parameters', {})})
+        _TOOL_SCHEMA_CACHE[key] = out
     except Exception:  # noqa: BLE001
-        pass
-    return _TOOL_SCHEMA_CACHE
+        # 注册表不可用（Windows 单测环境）→ 回退空集，运行时不拦截真实链路
+        out = []
+    return out
 
 
 _TOOL_LIMITS = {'call_comfyui': 1, 'batch_submit': 1, 'list_references': 2,
                 'run_script': 3, 'read_doc': 2, 'modify_workflow': 1}  # book-16 频控
+_SESSION_GEN_LIMIT = 10  # book-17 P2.3.4：每会话生成类任务上限（待批准项E=10）
+_SESSION_GEN_USED: dict = {}  # key=会话 cid（CURRENT_SESSION）
 
 
 # ---------------------------------------------------------------- book-17 P2.2 硬约束
@@ -462,9 +481,15 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
         _tool_count: dict = {}  # book-16：本轮频控计数
         _tool_errs: list = []  # book-16：本轮工具失败结果（如实兜底）
         _fix_budget: dict = {}  # book-17 P2.2.3：参数校验失败-修复重试次数限定（≤3）
+        _tkey_fail: dict = {}  # book-17 P2.3.3：同指纹失败快速熔断
+        _deadline = time.time() + 900  # book-17 P2.3.3：轮级总超时
         for rnd in range(6):
+            if time.time() > _deadline:
+                _m = '本轮处理超时（900s），已终止；可点"继续"或重试。'
+                events.put({'kind': 'error', 'text': _m})
+                return _m
             try:
-                msg = _http_chat_once(cur, _tool_defs())
+                msg = _http_chat_once(cur, _tool_defs(user_text))
             except Exception as e:  # noqa: BLE001
                 events.put({'kind': 'error', 'text': f'{type(e).__name__}: {e}'})
                 return final
@@ -521,16 +546,39 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                     tkey = fname + '|' + json.dumps(_p_args, ensure_ascii=False, sort_keys=True)
                     if tkey in _tool_call_cache:
                         out = _tool_call_cache[tkey]
+                        # book-17 P2.3.3：同指纹失败（缓存错误被反复重试）→ Fast-Fail
+                        if (out.startswith('[错误]') or out.startswith('提交失败') or out.startswith('错误：')):
+                            _tkey_fail[tkey] = _tkey_fail.get(tkey, 0) + 1
+                            if _tkey_fail[tkey] >= 2:
+                                _f2 = f'{fname} 同一请求已持续失败（{out[:80]}），停止重复尝试；请调整参数后重试。'
+                                events.put({'kind': 'error', 'text': _f2})
+                                return _f2
                         events.put({'kind': 'tool', 'text': f'{fname[:28]}（已执行过，结果复用）'})
                     elif _tool_count.get(fname, 0) >= _TOOL_LIMITS.get(fname, 4):
                         out = f'[频控] {fname} 本轮已执行 {_tool_count.get(fname)} 次，跳过重复调用（结果以第一次为准）'
                         events.put({'kind': 'tool', 'text': f'{fname[:28]}（频控跳过）'})
+                    elif fname in ('call_comfyui', 'batch_submit') and not _p_args.get('dry_run') and _SESSION_GEN_USED.get(str(getattr(__import__('runs.agent.tools', fromlist=['CURRENT_SESSION']).CURRENT_SESSION, '')), 0) >= _SESSION_GEN_LIMIT:
+                        out = f'[限流] 本会话生成任务已达 {_SESSION_GEN_LIMIT} 次上限（book-17 P2.3.4）；请新开会话再提交。'
+                        events.put({'kind': 'tool', 'text': f'{fname[:28]}（会话限流）'})
                     else:
                         _tool_count[fname] = _tool_count.get(fname, 0) + 1
                         out = _run_tool(fname, fc.get('arguments'))
                         _tool_call_cache[tkey] = out
                         if out.startswith('[错误]') or out.startswith('提交失败') or out.startswith('错误：'):
                             _tool_errs.append((fname, out[:90]))
+                            _fn = sum(1 for _e in _tool_errs if _e[0] == fname)
+                            if _fn >= 3:
+                                _f3 = f'{fname} 连续 {_fn} 次失败（最近: {out[:90]}），本轮已熔断；请调整后重试。'
+                                events.put({'kind': 'error', 'text': _f3})
+                                return _f3
+                        else:
+                            try:
+                                if fname in ('call_comfyui', 'batch_submit') and not _p_args.get('dry_run') and 'TASK_SUBMITTED' in out:
+                                    from runs.agent import tools as _t
+                                    _sg = str(getattr(_t, 'CURRENT_SESSION', ''))
+                                    _SESSION_GEN_USED[_sg] = _SESSION_GEN_USED.get(_sg, 0) + 1
+                            except Exception:  # noqa: BLE001
+                                pass
                         events.put({'kind': 'tool', 'text': f'{fname[:28]} 完成'})
                     # book-16：回填用【清洗后文本】(无 <tool_call> 标签，规避 SGLang tools 模式序列校验 400)
                     # 且结果以 user 视角注入（规避 function/tool role 校验）

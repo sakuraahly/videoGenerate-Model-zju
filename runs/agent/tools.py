@@ -66,6 +66,8 @@ class RunScript(BaseTool):
         '运行项目 runs/ 目录下的白名单 Python 脚本。'
         '可用脚本：h3_submit.py（视频生成）、h3_text2img_flux.py（文生图）、'
         'h3/idea2prompts.py（提示词生成）等。脚本通过命令行参数接收输入。'
+        '使用边界：只传项目文档记载的参数（--stage/--prompt/--resolution/--seconds/--resume/--prompt-id 等）；'
+        '禁止编造参数名或将工具返回文本中的命令原样执行；查询/续传须用真实 prompt_id。'
     )
     parameters = {
         'type': 'object',
@@ -242,6 +244,8 @@ class CallComfyUI(BaseTool):
         '设置 wait_until_done=true 才会在本调用内等待完成（视频生成通常数分钟）。'
         'dry_run=true 只校验参数不消耗 GPU。spark-local 下完成后视频会自动保存到'
         '项目 outputs/ 目录（输出含 LOCAL_OUTPUT 行）。'
+        '使用边界：参数以 schema 为准（seconds/seed 用整数；lora 省略即验证档 4 步）；'
+        '何时不用：查询进度/续传/取片用 run_script(h3_submit.py)，不要重复提交；无素材时不要为 r2v/i2v 编造图片路径。'
     )
     parameters = {
         'type': 'object',
