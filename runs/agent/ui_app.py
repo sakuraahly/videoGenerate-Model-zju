@@ -48,6 +48,7 @@ _active_turn = threading.Lock()  # 发送幂等锁：忙碌时再次点击直接
 _stop_requested = threading.Event()  # 停止按钮信号：置位后当前轮尽早收尾（程序级中止）
 _upload_in_progress = False  # 上传进行中标志：防止上传/发送竞争
 _pending_batch_id: str | None = None  # 当前待发送批次的 batch_id
+_gal_previews: list = []  # 本会话上传预览累积（book-11 bugfix：后上传覆盖先上传的观感）
 
 
 # ---------------------------------------------------------------- 状态栏 HTML 常量
@@ -415,11 +416,14 @@ def ingest_upload(paths, cid='') -> tuple:
         if kind == 'image':
             try:
                 input_mirror.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(p, input_mirror / p.name)
+                # book-11 bugfix：镜像名带 sha8 前缀——同名不同图不再互相覆盖
+                # （旧镜像为原名，仍可被 _resolve_input_image 递归命中，兼容）
+                mir_name = f'{sha[:8]}_{p.name}'
+                shutil.copy2(p, input_mirror / mir_name)
             except OSError:
                 err += 1
             thumb = _make_thumb(p, sha)
-            previews.append(str(thumb) if thumb else str(input_mirror / p.name))
+            previews.append(str(thumb) if thumb else str(input_mirror / mir_name))
     parts = []
     if added:
         parts.append(f'✅ {added} 个新素材已加入本会话素材池')
@@ -796,10 +800,11 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     gr.update(value=[]), UP_IDLE)
 
         def _load(sel):
-            global _current_cid
+            global _current_cid, _gal_previews
             if not sel:
                 return [], IDLE_HTML, '请先选择历史会话。', gr.update(), '', [], gr.update(value=[]), UP_IDLE
             _current_cid = sel
+            _gal_previews = []
             msgs = load_chat(sel)
             return (fmt_msgs(msgs), IDLE_HTML,
                     f'已加载会话 {sel}（{len(msgs) // 2} 轮），可直接继续提问。\n（上传预览已清空；本会话素材以 list_references 为准）',
@@ -807,10 +812,11 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     gr.update(value=[]), UP_IDLE)
 
         def _new():
-            global _current_cid, _pending_batch_id
+            global _current_cid, _pending_batch_id, _gal_previews
             cid = new_chat_id()
             _current_cid = cid
             _pending_batch_id = None
+            _gal_previews = []
             return [], IDLE_HTML, f'✅ 已开启新对话（会话 id：`{cid}`）。\n（新会话：素材需重新上传到本会话）', \
                 gr.update(choices=_choices()), cid, [], gr.update(value=[]), UP_IDLE
 
@@ -820,7 +826,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             return gr.update(choices=_choices())
 
         def _upload(files, cid):
-            global _upload_in_progress
+            global _upload_in_progress, _gal_previews
             n = len(files) if files else 0
             _upload_in_progress = True
             try:
@@ -844,7 +850,8 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                             f'border:1px solid {border};border-radius:4px;'
                             f'color:{color};font-weight:600;font-size:13px”>'
                             f'{msg}</div>')
-                    yield html, previews
+                    _gal_previews = (_gal_previews or []) + list(previews)
+                    yield html, _gal_previews
                 except Exception as e:  # noqa: BLE001
                     yield (_pill(f'❌ 上传处理异常：{type(e).__name__}: {e}',
                                  '#c0392b', '#fdf2f2', '#e5b8b8'), [])

@@ -85,3 +85,12 @@
 - `python runs/consistency_check.py`：静态一致性（含 runtime_check 汇总）。
 - `python tests/e2e_smoke.py`：防绕过基座门禁（smoke），输出 `SMOKE_OK`。
 - `python runs/dev.py check`：三端状态漂移核对（含 spark 是否含本提交）。
+
+---
+
+## 8. 素材上传/镜像命名与防覆盖（2026-09-05 定稿）
+
+- 归档：`uploads/YYYYMMDD/<sha8>_<原名>`；镜像：`<ComfyUI>/input/user_uploads/<sha8>_<原名>` —— **均带 sha8 前缀**，同名不同内容的图片互不覆盖（修复前镜像用原名，后传同名会覆盖先传，导致素材池只见一张）。
+- `ingest_upload` 的去重与归属：按内容 sha（16 位）全局去重；重复上传仍写一行（`dup:true`+`cid`）供会话归属；同名不同图=两个不同 sha=两行、两归档、两镜像。
+- 旧镜像（无 sha8 前缀、原名）仍被 `stage._resolve_input_image` 递归命中，不需迁移；新上传一律新命名。
+- 上传预览（Gradio Gallery）**累积展示本会话全部预览**（book-11 修复：后上传不再覆盖先上传的预览），切换/新建会话时清空。
