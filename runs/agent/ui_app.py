@@ -381,6 +381,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
         _last = ['']
         _tool_call_cache: dict = {}  # book-16：本轮同参数去重
         _tool_count: dict = {}  # book-16：本轮频控计数
+        _tool_errs: list = []  # book-16：本轮工具失败结果（如实兜底）
         for rnd in range(6):
             try:
                 msg = _http_chat_once(cur, _tool_defs())
@@ -433,6 +434,8 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                         _tool_count[fname] = _tool_count.get(fname, 0) + 1
                         out = _run_tool(fname, fc.get('arguments'))
                         _tool_call_cache[tkey] = out
+                        if out.startswith('[错误]') or out.startswith('提交失败') or out.startswith('错误：'):
+                            _tool_errs.append((fname, out[:90]))
                         events.put({'kind': 'tool', 'text': f'{fname[:28]} 完成'})
                     # book-16：回填用【清洗后文本】(无 <tool_call> 标签，规避 SGLang tools 模式序列校验 400)
                     # 且结果以 user 视角注入（规避 function/tool role 校验）
@@ -461,9 +464,15 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
             break
         # book-16：工具轮后无总结文本 → 兜底补状态行（防 UI“（模型未返回内容）”）
         if not final and _tool_count:
-            final = ('任务已完成：本轮共调用工具 %d 次（%s）。结果见“工具执行”状态条；'
-                     '可点“继续”查询结果或换一种说法。' % (sum(_tool_count.values()),
-                        ', '.join('%s×%d' % (k, v) for k, v in _tool_count.items())))
+            ok_exec = sum(_tool_count.values()) - len(_tool_errs)
+            if _tool_errs and ok_exec <= 0:
+                final = ('本轮工具执行未成功：' + '；'.join('%s: %s' % (n, e[:70])
+                                                          for n, e in _tool_errs[:3])
+                         + '。请根据错误信息调整请求。')
+            else:
+                final = ('任务已完成：本轮共调用工具 %d 次（%s）。结果见“工具执行”状态条；'
+                         '可点“继续”查询结果或换一种说法。' % (sum(_tool_count.values()),
+                            ', '.join('%s×%d' % (k, v) for k, v in _tool_count.items())))
             events.put({'kind': 'chunk', 'text': final})
         return final
 

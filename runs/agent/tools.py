@@ -297,7 +297,7 @@ class CallComfyUI(BaseTool):
     }
 
     def call(self, params: Union[str, dict], **kwargs) -> str:
-        params = self._verify_json_format_args(params)
+        params = _coerce_int_fields(self._verify_json_format_args(params))
         stage = params['stage']
 
         submit_script = os.path.join(PROJECT_ROOT, 'runs', 'h3_submit.py')
@@ -487,7 +487,7 @@ class BatchSubmit(BaseTool):
     }
 
     def call(self, params: Union[str, dict], **kwargs) -> str:
-        params = self._verify_json_format_args(params)
+        params = _coerce_int_fields(self._verify_json_format_args(params))
         batch_script = os.path.join(PROJECT_ROOT, 'runs', 'h3_batch.py')
         if not os.path.isfile(batch_script):
             return f'错误：h3_batch.py 不存在于 {batch_script}'
@@ -592,7 +592,21 @@ def _log_tool(name, event, **fields):
         pass
 
 
-def _log_tool_audit(name, params, result):
+def _coerce_int_fields(params, fields=('seconds', 'seed')):
+    """book-16：模型常把整数参数写成字符串（seconds: '5'）→ 参数校验拒收；提交前统一强转。"""
+    if not isinstance(params, dict):
+        return params
+    for k in fields:
+        v = params.get(k)
+        if isinstance(v, str) and v.strip().lstrip('-').isdigit():
+            try:
+                params[k] = int(v)
+            except ValueError:
+                pass
+    return params
+
+
+def _log_tool_audit(name, params, result, ok=None):
     """结构化审计（book-11）：logs/agent_tool_audit.jsonl —— 时间/工具/关键参数/结果摘要/prompt_id。"""
     import datetime as _dt
     import json as _json
@@ -614,7 +628,7 @@ def _log_tool_audit(name, params, result):
         audit = {'ts': _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'tool': name,
                  'params': {k: v for k, v in key.items() if v},
                  'result_len': len(str(result or '')),
-                 'ok': not any(mk in str(result or '') for mk in ('exit 3', '⛔', '失败', '超时'))}
+                 'ok': ok if ok is not None else not any(mk in str(result or '') for mk in ('exit 3', '⛔', '失败', '超时'))}
         if m:
             audit['prompt_id'] = m.group(1)
         f = Path(PROJECT_ROOT) / 'logs' / 'agent_tool_audit.jsonl'
@@ -639,7 +653,7 @@ def _wrap_call(cls):
             out = orig(self, params, **kwargs)
         except Exception as e:  # noqa: BLE001
             _log_tool(name, 'error', err=_truncate(str(e), 300))
-            _log_tool_audit(name, p, 'EXC ' + _truncate(str(e), 300))
+            _log_tool_audit(name, p, 'EXC ' + _truncate(str(e), 300), ok=False)
             raise
 
         out_str = str(out)

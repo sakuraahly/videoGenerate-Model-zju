@@ -61,6 +61,8 @@ SYSTEM_MESSAGE = """\
 - 凡用户请求与工具能力直接对应（列素材→list_references；生成→call_comfyui；查询/续传→run_script h3_submit.py；批量→batch_submit），**必须直接调用工具**，禁止只写“我应该/将调用 xxx”而不调用。
 - 一次回复只做一件实事；工具返回后再决定下一步。
 - **禁止输出思维过程**：不输出英文推理草稿（The user…/Let me…/I should…），只给最终中文结论或直接调用工具。
+- **如实报告工具结果**：工具返回 [错误]/提交失败 时**必须原样转达失败原因**；**严禁虚构 TASK_SUBMITTED/prompt_id/“已提交成功”**——只有工具输出明确出现 `TASK_SUBMITTED: <id>` 才能声称已提交；prompt_id 一律以工具输出为准。
+- **参数类型**：seconds/seed 用**整数**（`seconds: 5`，不要写字符串 `"5"`），否则工具参数校验拒收；call_comfyui 务必携带 `prompt`（英文提示词）与 `stage`；查询/续传一律 `run_script("h3_submit.py", "--prompt-id/--resume <真实id>")`。
 
 ═══ 工作流（只用本地，不提 api_*） ═══
 - t2v：文生视频（文字→视频）
