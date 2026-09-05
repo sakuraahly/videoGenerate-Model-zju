@@ -427,6 +427,17 @@ def cmd_promote(dirs: dict, sel: str, as_name: str = "") -> int:
 
 
 def _stage_template(stage: str) -> Path:
+    """阶段模板路径（book-12 步骤2：优先注册表 template，缺失/未注册回退旧命名）。"""
+    try:
+        from h3 import workflow_registry as _wreg
+        cap = _wreg.load_registry(ROOT)
+        entry, _why = _wreg.resolve(cap, stage)
+        if entry is not None:
+            p = _wreg.template_path(ROOT, entry)
+            if p.exists():
+                return p
+    except Exception:  # noqa: BLE001
+        pass
     if stage == "flf2v":
         return ROOT / "workflows" / "remote_workflows" / "video_minimax_h3_flf2v.json"
     return ROOT / "workflows" / "remote_workflows" / f"video_minimax_h3_{stage}.json"
