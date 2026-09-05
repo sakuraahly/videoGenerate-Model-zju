@@ -850,6 +850,9 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.15 S14 上传拆分（2026-09-05 用户实测）
+- 现象：选择→预览出现前无状态（与预览强耦合）。修复：select 前置状态 + ingest/缩略图解耦 + 分段状态（上传中→生成预览 i/N→完成）；真实链 SSE 帧序列验证通过；浏览器 select 显示待用户确认。
+
 ### 20.14 book-18 完成（2026-09-05，按册序）
 - **质量提示词固化**：prompts/ Q+（masterpiece/best quality/ultra detailed…）与 Q-（blurred scene/motion blur/…+文字防乱码补词）单源；`consistency_check` 新增「Q+/Q- 基线断言」（缺失即 FAIL）；spark dry-run 注入断言通过；SYSTEM 规则「质量词不得删除」。
 - **清晰度加强（取舍后）**：SYSTEM 台词规范（短句/常用字/标点）+ `--rate=-8%`（修复 argparse 负号旗标 bug）+ 单句重试 + `afftdn,loudnorm(I=-14)` + 字幕规范参数化（字号/描边/安全区）+ 内嵌文字规则（参考图驱动优先）。
