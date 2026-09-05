@@ -554,7 +554,7 @@ def _wait_timeout(args: argparse.Namespace, task_folder: Optional[Path],
     if args.timeout:
         return args.timeout
     if gp is not None:
-        return gp.timeout
+        return getattr(gp, 'timeout', 0) or int(h3params.DEFAULTS['timeout'])
     if task_folder is not None:
         job = jobstate.read_json(task_folder / "job.json")
         p = (job or {}).get("params") or {}
@@ -637,7 +637,8 @@ def main(argv: Optional[list] = None) -> int:
             if _p.get("width"):
                 gp = argparse.Namespace(width=int(_p["width"]), height=int(_p["height"]),
                                         length=int(_p.get("length") or 0),
-                                        seconds=float(_p.get("seconds") or 0))
+                                        seconds=float(_p.get("seconds") or 0),
+                                        timeout=int(_p.get("timeout") or 0))
         except Exception:  # noqa: BLE001
             gp = None
         _log_event(f"resume prompt_id={resume_id}")
