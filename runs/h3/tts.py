@@ -133,19 +133,20 @@ def build_track(parts: list, total: float, out: Path, tmp: Path) -> Path:
 
 def replace_with_speech_text(input_video: Path, text: str, out: Path = None,
                              voice: str = DEFAULT_VOICE) -> Path:
-    """整段文本 → 中文语音 → 替换视频音轨（-shortest；保留画面）。返回产物路径。"""
+    """整段文本 → 中文语音 → 替换视频音轨（-shortest；保留画面；临时文件+原子替换，防原地写失败）。"""
     from h3.postprocess import mix_audio
     input_video = Path(input_video)
-    out = Path(out) if out else input_video
-    tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-    speech = Path(tmp.name)
-    tmp.close()
+    dest = Path(out) if out else input_video
+    tmp_out = dest.with_name(dest.stem + "_tts" + dest.suffix)
+    speech = Path(tempfile.mkstemp(suffix=".mp3")[1])
     try:
         synthesize(text, speech, voice=voice)
-        mix_audio(input_video, out, speech)
+        mix_audio(input_video, tmp_out, speech)
+        tmp_out.replace(dest)
     finally:
         speech.unlink(missing_ok=True)
-    return out
+        tmp_out.unlink(missing_ok=True)
+    return dest
 
 
 def main(argv=None) -> int:
