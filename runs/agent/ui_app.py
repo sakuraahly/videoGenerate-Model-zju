@@ -48,7 +48,8 @@ _active_turn = threading.Lock()  # 发送幂等锁：忙碌时再次点击直接
 _stop_requested = threading.Event()  # 停止按钮信号：置位后当前轮尽早收尾（程序级中止）
 _upload_in_progress = False  # 上传进行中标志：防止上传/发送竞争
 _pending_batch_id: str | None = None  # 当前待发送批次的 batch_id
-_gal_previews: list = []  # 本会话上传预览累积（book-11 bugfix：后上传覆盖先上传的观感）
+_gal_previews: list = []  # 兼容旧引用（保留）
+_gal_by_cid: dict = {}  # book-16：预览按会话隔离（cid -> list）
 
 
 # ---------------------------------------------------------------- 状态栏 HTML 常量
@@ -245,6 +246,53 @@ def _tool_defs() -> list:
     return _TOOL_SCHEMA_CACHE
 
 
+def _parse_tool_args(text) -> dict:
+    """工具参数解析（book-16）：兼容 JSON、```围栏、以及 qwen3.8 KV 裸串（stage=t2v, seconds=5）。"""
+    if isinstance(text, dict):
+        return text
+    s = str(text or '').strip()
+    if not s:
+        return {}
+    # 剥代码围栏
+    if s.startswith('```'):
+        s = s.strip('`')
+        if s.startswith('json'):
+            s = s[4:]
+        s = s.strip()
+    # JSON 优先
+    try:
+        d = json.loads(s)
+        return d if isinstance(d, dict) else {}
+    except Exception:  # noqa: BLE001
+        pass
+    # 裸 KV：按“引号外逗号”切分
+    import re as _re
+    parts = _re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', s)
+    out = {}
+    for part in parts:
+        if '=' not in part:
+            continue
+        k, v = part.split('=', 1)
+        k = k.strip()
+        v = v.strip().strip('\"\'')
+        for iv in ('true', 'True'):
+            if v == iv:
+                v = True
+        for iv in ('false', 'False'):
+            if v == iv:
+                v = False
+        try:
+            v = int(v) if _re.fullmatch(r'-?\d+', v) else v
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            v = float(v) if _re.fullmatch(r'-?\d+\.\d+', str(v)) else v
+        except Exception:  # noqa: BLE001
+            pass
+        out[k] = v
+    return out
+
+
 def _run_tool(name: str, args) -> str:
     """执行工具（qwen_agent 0.0.34 实例约定）并返回字符串结果（模块级，可单测）。"""
     try:
@@ -253,11 +301,7 @@ def _run_tool(name: str, args) -> str:
         if cls is None:
             return f'[错误] 工具未注册: {name}'
         inst = cls()
-        if isinstance(args, str):
-            try:
-                args = json.loads(args) if args.strip() else {}
-            except Exception:  # noqa: BLE001
-                pass
+        args = _parse_tool_args(args)
         out = inst.call(args) if args else inst.call({})
         return str(out)
     except Exception as e:  # noqa: BLE001
@@ -818,6 +862,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             phase = 'ok'
             aborted = False
             _dup_streak = 0  # book-13 防复读：连续重复块计数
+            _prev_final = ''  # book-16：空转检测
 
             try:
                 for attempt in range(MAX_AUTO_CONTINUE + 1):
@@ -906,6 +951,13 @@ def run_app(port: int = 7860, share: bool = False) -> None:
 
                     needs_continuation = should_continue(
                         user_text, final_text, prompt_ids)
+
+                    # book-16: spin-stop (empty-progress repeat)
+                    if _prev_final and (final_text.startswith(_prev_final[:80])
+                                        or _prev_final.startswith(final_text[:80])):
+                        note_md = 'spin-stop'
+                        break
+                    _prev_final = final_text
 
                     if not needs_continuation or attempt >= MAX_AUTO_CONTINUE:
                         break
@@ -1042,11 +1094,10 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     gr.update(value=[]), UP_IDLE)
 
         def _load(sel):
-            global _current_cid, _gal_previews
+            global _current_cid
             if not sel:
                 return [], IDLE_HTML, '请先选择历史会话。', gr.update(), '', [], gr.update(value=[]), UP_IDLE
             _current_cid = sel
-            _gal_previews = []
             msgs = load_chat(sel)
             return (fmt_msgs(msgs), IDLE_HTML,
                     f'已加载会话 {sel}（{len(msgs) // 2} 轮），可直接继续提问。\n（上传预览已清空；本会话素材以 list_references 为准）',
@@ -1054,11 +1105,11 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     gr.update(value=[]), UP_IDLE)
 
         def _new():
-            global _current_cid, _pending_batch_id, _gal_previews
+            global _current_cid, _pending_batch_id
             cid = new_chat_id()
             _current_cid = cid
             _pending_batch_id = None
-            _gal_previews = []
+            _gal_by_cid[cid] = []  # book-16：预览按会话隔离
             return [], IDLE_HTML, f'✅ 已开启新对话（会话 id：`{cid}`）。\n（新会话：素材需重新上传到本会话）', \
                 gr.update(choices=_choices()), cid, [], gr.update(value=[]), UP_IDLE
 
@@ -1068,7 +1119,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             return gr.update(choices=_choices())
 
         def _upload(files, cid):
-            global _upload_in_progress, _gal_previews
+            global _upload_in_progress
             n = len(files) if files else 0
             _upload_in_progress = True
             try:
@@ -1092,8 +1143,8 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                             f'border:1px solid {border};border-radius:4px;'
                             f'color:{color};font-weight:600;font-size:13px”>'
                             f'{msg}</div>')
-                    _gal_previews = (_gal_previews or []) + list(previews)
-                    yield html, _gal_previews
+                    _gal_by_cid[cid] = (_gal_by_cid.get(cid) or []) + list(previews)
+                    yield html, _gal_by_cid[cid]
                 except Exception as e:  # noqa: BLE001
                     yield (_pill(f'❌ 上传处理异常：{type(e).__name__}: {e}',
                                  '#c0392b', '#fdf2f2', '#e5b8b8'), [])
