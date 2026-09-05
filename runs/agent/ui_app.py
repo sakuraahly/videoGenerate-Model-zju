@@ -334,7 +334,11 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     turn_state.begin_turn(batch_id=_pending_batch_id)
     _pending_batch_id = None
 
-    trimmed, dropped = trim_context(history + [{'role': 'user', 'content': user_text}])
+    # book-16：自动续接时 user_text=None → 不得追加 content=None 的 user 消息（SGLang tools 模式 400）
+    _payload_src = list(history)
+    if user_text:
+        _payload_src.append({'role': 'user', 'content': user_text})
+    trimmed, dropped = trim_context(_payload_src)
     payload = dedupe_messages(list(trimmed))  # 连续重复消息剔除（污染防御）
     try:
         from h3 import logutil
