@@ -170,16 +170,45 @@ def _basename(key: str) -> str:
     return key.split(".")[-1].lower()
 
 
-def inject_local_prompts(api: dict, positive: str, negative: str) -> int:
+def inject_local_prompts(api: dict, positive: str, negative: str, spec: dict = None) -> int:
     """
     就地修改 api 工作流，把 prompt/negative 写入可识别的字段。
-    - 普通 widget（字符串值）：键的 basename 命中 prompt/positive/text 或 negative 则替换；
-    - 动态组合键（如 model.prompt）同样命中；
-    - 若 prompt 以连线提供（上游 PrimitiveString*/Text 节点），改上游节点的字符串值。
+    - spec（book-12 注册表声明）：形如 {"class_prefix": "MiniMaxH3", "positive_key": "prompt",
+      "negative_key": "negative_prompt"} —— 在 class_type 以 class_prefix 开头的节点上直接写入
+      positive_key/negative_key（字符串直写，与内置生成器提交格式一致；不依赖上游 primitives）；
+      命中即返回，不走到启发式（避免误改其它 prompt 字段）。
+    - 无 spec / 未命中：回退 basename 启发式（普通 widget 字符串值 basename 命中
+      prompt/positive/text 或 negative 则替换；连线输入则改写上游 primitive 节点字符串值）。
     返回发生替换的字段数。
     """
     if not positive and not negative:
         return 0
+
+    # ---- book-12：注册表注入点优先（精确、不误伤） ----
+    if spec and isinstance(spec, dict):
+        prefix = str(spec.get("class_prefix") or "")
+        pkey = str(spec.get("positive_key") or "")
+        nkey = str(spec.get("negative_key") or "")
+        if prefix:
+            for node in api.values():
+                if not isinstance(node, dict):
+                    continue
+                if not str(node.get("class_type") or "").startswith(prefix):
+                    continue
+                ins = node.get("inputs") or {}
+                changed = 0
+                if positive and pkey and pkey in ins and ins[pkey] != positive:
+                    ins[pkey] = positive
+                    changed += 1
+                if negative and nkey and nkey in ins and ins[nkey] != negative:
+                    ins[nkey] = negative
+                    changed += 1
+                return changed
+    return _inject_heuristic(api, positive, negative)
+
+
+def _inject_heuristic(api: dict, positive: str, negative: str) -> int:
+    """旧启发式（无注册表 spec 时的回退路径）。"""
     changed = 0
 
     def _set(key: str, val: str) -> bool:

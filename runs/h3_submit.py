@@ -462,7 +462,16 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
             wf = h3stage.build_builtin_workflow(stage, gp, images)
 
         # 关键：把本地提示词自动注入工作流（覆盖模板内嵌 prompt；内置生成器幂等）
-        changed = h3prompts.inject_local_prompts(wf, prompt, negative)
+        # book-12：注入点按注册表 inject_spec（class_prefix/prompt/negative_prompt），未注册时回退启发式
+        _p_spec = None
+        try:
+            from h3 import workflow_registry as _wreg2
+            _entry2, _ = _wreg2.resolve(_wreg2.load_registry(project_dir), stage_id)
+            if _entry2 is not None:
+                _p_spec = _wreg2.inject_spec(_entry2)
+        except Exception:  # noqa: BLE001
+            pass
+        changed = h3prompts.inject_local_prompts(wf, prompt, negative, spec=_p_spec)
         if changed:
             print(f"[提示] 已用本地提示词覆盖工作流内嵌字段（{changed} 处）。", flush=True)
         # book-11 bugfix：把解析后的参考图名挂到 args（main 的 submitted 行需要，防 NameError）

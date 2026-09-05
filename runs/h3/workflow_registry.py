@@ -73,6 +73,13 @@ def slot_spec(entry: dict) -> dict:
             "audios": s.get("audios") or []}
 
 
+def inject_spec(entry: dict) -> dict:
+    """提示词注入点（book-12：由注册表声明，替代 basename 启发式）。
+    形如 {"class_prefix": "MiniMaxH3", "positive_key": "prompt", "negative_key": "negative_prompt"}。
+    """
+    return entry.get("inject_spec") or {}
+
+
 def image_slot_count(spec: dict) -> int:
     return sum(int(x.get("count", 0)) for x in spec.get("images", []))
 
