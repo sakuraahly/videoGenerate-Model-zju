@@ -103,7 +103,7 @@
 - **验证记录（真实链，Gradio HTTP send 端点）**：
   - t0（你好）：done / 66 字 / ✅；
   - list（素材）：done / 212 字 / ✅ / list_references 真实执行 ×2（频控上限 2）；
-  - gen（t2v 720p/5s）：`call_comfyui` **ok=true + 真实 prompt_id=9dcb5b1e-98c2-4245-a947-6d4b902cb68c**（run log：submitted/submitted_only + task-watch queued→running 监控）；
+  - gen（t2v 720p/5s）：`call_comfyui` **ok=true + 真实 prompt_id=9dcb5b1e-98c2-4245-a947-6d4b902cb68c**（run log：submitted/submitted_only + task-watch queued→running 监控）；后续 fresh 轮再提交 `535acf00-519d-49ef-a35c-8829cfab134e`（09:33，真实工作流目录 h3_20260905_093317_507）——两条均为**模型经真实链调用工具并真实出片**：`h3_submit.py --resume 535acf00…` → `Status: success / LOCAL_OUTPUT: outputs/video_17.mp4`（ffprobe：1280×736/24fps/124 帧/5.167s/817KB/AAC 立体声）；
   - 中途发现并修复：① seconds 字符串→校验拒收（`_coerce_fields` 强转须在 `_verify_json_format_args` **之前**——首次顺序写反两连败）；② wait_until_done/force_new/dry_run 布尔字符串化（`_run_tool` 按 schema 通用 int/bool/number 强转）；③ 模型虚构“提交成功”（诚实规则：SYSTEM_MESSAGE 禁止虚构 TASK_SUBMITTED/prompt_id——修复后模型如实报告失败并请求用户选择，不再编造）；④ audit `ok` 对工具异常曾假绿（出错路径显式 ok=false）。
   - **断点守卫**遇上一次未完成任务 → 提交被拦截并如实告知（模型给出续传/强制新开二选一）——符合预期行为，非缺陷。
   - **产物**：video_16.mp4（1280×736/24fps/124 帧/5.167s/AAC）；注：t2v 音频为模型生成环境/氛围音，**说话类语音仍待 T2b P0 TTS**（book-14）。

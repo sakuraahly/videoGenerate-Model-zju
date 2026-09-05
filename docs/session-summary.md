@@ -832,10 +832,21 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 | `docs/planbook/book-14-lora-accel-delivery.md` | 修改：T2b 语音链升级 P0（P0-1 选型/P0-2 音轨替换/P0-3 自动接线 + 严完成标准） |
 | `docs/dev-workflow.md` | 修改：§8 反例补充 + 新增 §12 验收纪律（四条件+报告模板） |
 | `docs/session-summary.md` | 修改：+§20（本批） |
+| `runs/agent/ui_app.py`（复验期再修） | done占位误追加；自动续接 content=None 的 400；工具结果错误体质兜底；schema 通用 int/bool/number 强转 |
+| `runs/agent/tools.py`（复验期再修） | `_coerce_fields` 校验前强转；异常时 audit ok=false |
+| `runs/agent/scheduler.py` | 铁律：如实报告工具结果/禁止虚构提交/参数类型/查询带真实 id |
 
-### 20.4 下一步（按计划书顺序）
-1. book-16 台账#5 全链复验：R2 生成轮 END=done 且 text_len>0 且 call_comfyui 真实执行 1 次（真实 UI 链）；
-2. book-15 服务编排（SGLang 内存管理/共存参数）+ book-16 台账#6 SYSTEM_MESSAGE 声音决策规则；
-3. **book-14 T2b P0 语音链**（TTS 引擎选型 → 音轨替换 → 字幕对齐接线；用户四问最高优先）；
-4. book-13 P2-9b 历史会话预览重建 + C3–C5。
+### 20.4 真实链复验结果（2026-09-05 深夜，判据见 dev-workflow §12）
+- **链路**：Gradio HTTP send 端点（=前端 send 同链）→ `_one_run` → SGLang → 工具 → 回填 → done；会话经真实会话档存档（logs/agent_chats/*.jsonl）。
+- **t0 你好**：done / 66 字 / note ✅（顺带修复：done 文本已流式展示时不再误追加“(模型未返回内容)”占位）。
+- **list 素材**：done / 212 字 / ✅ / list_references 真实执行×2（频控上限 2）。
+- **gen 生成**：`call_comfyui` ok=true + 真实 `prompt_id`（9dcb5b1e…/535acf00…）；run log 含 submitted/submitted_only + task-watch queued→running 监控；`Status: success / LOCAL_OUTPUT: outputs/video_17.mp4`（1280×736/24fps/124 帧/5.167s/AAC 立体声，817KB）。
+- **过程中修复的同类问题**（台账 8-10）：① 参数类型强转（seconds/seed 整数、bool 字符串化）须在校验**前**执行——顺序曾写反导致连败，audit 曾假绿 ok；② 模型虚构“TASK_SUBMITTED/prompt_id”——SYSTEM_MESSAGE 诚实铁律（输出含 `TASK_SUBMITTED: <id>` 才可声称；失败如实转达），修复后模型如实报告失败并二选一征询；③ 断点守卫（上次任务未完成时拦截提交并续传取回）符合预期。
+- **口径**：语音类“说话/配音”**仍未通过**——t2v 音频为模型生成环境/氛围音（AAC，2 声道）；人物说话须等 **book-14 T2b P0 TTS 语音链**（P0-1 选型/P0-2 音轨替换/P0-3 字幕对齐接线）。
+
+### 20.5 下一步（按计划书顺序，已更新）
+1. book-15 服务编排（SGLang 内存管理/共存参数）+ book-16 台账#6 SYSTEM_MESSAGE 声音决策规则；
+2. **book-14 T2b P0 语音链**（TTS 引擎选型 → 音轨替换 → 字幕对齐接线；用户四问最高优先）；
+3. book-13 P2-9b 历史会话预览重建 + C3–C5。
+4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
