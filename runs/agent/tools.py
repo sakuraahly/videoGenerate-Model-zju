@@ -268,6 +268,10 @@ class CallComfyUI(BaseTool):
                 'type': 'integer',
                 'description': '随机种子（可选）',
             },
+            'tts_text': {
+                'type': 'string',
+                'description': '中文台词/旁白文本（如“再见了，故乡。”）。用户要求说话/台词/配音时必须填写；任务完成后该文本会被 edge-tts 合成中文语音并替换视频音轨（T2b）。不填则保留原音轨。',
+            },
             'dry_run': {
                 'type': 'boolean',
                 'description': '仅验证参数不实际生成',
@@ -349,6 +353,8 @@ class CallComfyUI(BaseTool):
                 cmd.extend(['--image', _img])
         if params.get('lora') and params['lora'] != 'none':
             cmd.extend(['--lora', params['lora']])
+        if params.get('tts_text'):
+            cmd.extend(['--tts-text', str(params['tts_text'])])
 
         tool_timeout = 600 if params.get('wait_until_done') else 180
 

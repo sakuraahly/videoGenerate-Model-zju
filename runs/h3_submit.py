@@ -264,6 +264,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--resolution", type=str, default=None,
                    choices=sorted(h3workflow.RESOLUTION_PRESETS),
                    help="Use a resolution preset (overrides file value)")
+    p.add_argument("--tts-text", type=str, default="",
+                help="中文台词/旁白文本：完成后将该文本合成中文语音并替换视频音轨（T2b edge-tts）")
     p.add_argument("--lora", type=str, default="none",
                    choices=["none", "fl2v_4step", "ref2v_4step", "ref2v_8step"],
                    help="book-12 B1 加速 LoRA: none(默认)/fl2v_4step(t2v·i2v·flf2v)/ref2v_4step|ref2v_8step(r2v); steps 自动 4/8")
@@ -718,6 +720,7 @@ def main(argv: Optional[list] = None) -> int:
             jobstate.record_task_start(project_dir, task_folder, {
                 "prompt_id": "",
                 "stage": stage_id,
+                "tts_text": getattr(args, "tts_text", "") or "",
                 "params": gp.workflow_dict() if gp else {},
                 "log_file": os.path.basename(run_log) if run_log else "",
                 "prompt_files": {
@@ -853,6 +856,25 @@ def main(argv: Optional[list] = None) -> int:
         # win-remote → 保持 scp 提示（由外层/人工经隧道下载）。
         if _site(project_dir) == "spark-local":
             _finalize_local_outputs(project_dir, all_remote, gp=gp)
+            # book-14 T2b：中文语音替换（--tts-text 或任务记录 tts_text；失败不阻断主产物）
+            try:
+                _tts_txt = (getattr(args, "tts_text", "") or "").strip()
+                if not _tts_txt and task_folder:
+                    _tj = jobstate.read_json(jobstate.task_job_path(project_dir, task_folder)) or {}
+                    _tts_txt = str(_tj.get("tts_text") or "").strip()
+                if _tts_txt:
+                    _tts_outs = sorted(Path(project_dir, "outputs").glob("video_*.mp4"),
+                                       key=lambda p: p.stat().st_mtime, reverse=True)
+                    if _tts_outs:
+                        from h3 import tts as _tts
+                        _tts.replace_with_speech_text(_tts_outs[0], _tts_txt)
+                        print(f"TTS_OUT: outputs/{_tts_outs[0].name}", flush=True)
+                        _log_event(f"tts_done file={_tts_outs[0].name} voice={_tts.DEFAULT_VOICE}")
+                    else:
+                        _log_event("tts_skip (no local output)")
+            except Exception as _te:  # noqa: BLE001
+                _log_event(f"tts_error err={type(_te).__name__}: {_te}")
+                print(f"[提示] TTS 语音替换失败（不影响主产物）: {_te}", file=sys.stderr, flush=True)
             # book-14 T2：完成后质量增强（--postprocess fast=2x+降噪+锐化；失败不阻断主产物）
             if getattr(args, 'postprocess', '') == 'fast':
                 try:
