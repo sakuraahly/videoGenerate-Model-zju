@@ -112,7 +112,8 @@
 - **实测缺陷（用户报告）**：请求 720p/24fps/15s，产出 864×480/24fps/5.17s —— UI→API 在线转换保留模板默认值（ResolutionSelector 0.4MP=480p、时长表达式 5s），gp 参数从未写入转换后的节点（`substitute_api_workflow` 只替换字符串 token）。
 - **修复**：`stage.apply_generation_params`（按 token_map 覆写 MiniMaxH3* width/height/length、BasicScheduler steps、CreateVideo fps）+ 3 个单测（全量 117 全绿）。
 - **A 阶段完成**：① 参数注入 ffprobe 回归通过（1280×736/24fps/15.08s，用户已确认）；② `--stage` 校验走注册表（未知/禁用即拒）；③ refimage 模板路径走注册表（缺失回退）；④ **prompts 注入点按注册表 `inject_spec`**（class_prefix MiniMaxH3 + prompt/negative_prompt 直写，替代 basename 启发式；未命中回退启发式；单测 5 例，全量 122 全绿）。
-- **待办**：⑤ tools.py 枚举+描述注册表派生；⑥ stage.py/pipeline 合并；⑦ 步骤3 动态认知（digest 注入 SYSTEM_MESSAGE + 05-workflows-registry.md）。
+- **A 阶段完成 ⑤**：tools.py CallComfyUI/BatchSubmit 的 stage/resolution enum 与描述改为**注册表派生**（`_derive_tool_enums` 纯函数 + `_apply_registry_derived_schema`；enabled 过滤；异常回退旧值；spark 实测 ENUM_DERIVE_OK）。
+- **待办**：⑥ stage.py/pipeline 合并；⑦ 步骤3 动态认知（digest 注入 SYSTEM_MESSAGE + 05-workflows-registry.md）。
 
 ---
 

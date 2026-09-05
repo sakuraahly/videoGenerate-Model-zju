@@ -673,3 +673,53 @@ def _wrap_call(cls):
 for _cls in (RunScript, ModifyWorkflow, CallComfyUI, ReadDoc,
              ListReferences, BatchSubmit):
     _wrap_call(_cls)
+
+
+def _derive_tool_enums(cap: dict, fallback: dict) -> dict:
+    """book-12 A2：从注册表派生 stage/resolution enum（enabled 过滤；失败回退旧值）。"""
+    try:
+        runs_dir = os.path.join(PROJECT_ROOT, 'runs')
+        if runs_dir not in sys.path:
+            sys.path.insert(0, runs_dir)
+        from h3 import workflow_registry as _wreg
+        entries = _wreg.local_entries(cap)
+    except Exception:  # noqa: BLE001
+        return dict(fallback)
+    stages = [e['stage'] for e in entries if e.get('enabled', True)]
+    res = []
+    for e in entries:
+        if e.get('enabled', True) and e.get('params'):
+            res = list((e.get('params') or {}).get('resolutions') or res)
+            break
+    out = dict(fallback)
+    if stages:
+        out['stage'] = stages
+    if res:
+        out['resolution'] = res
+    return out
+
+
+def _apply_registry_derived_schema() -> None:
+    """把 CallComfyUI/BatchSubmit 的 stage/resolution enum 与描述改为注册表派生。"""
+    try:
+        from pathlib import Path as _Path
+        cap = json.loads(_Path(PROJECT_ROOT, 'config', 'capabilities.json').read_text(encoding='utf-8-sig'))
+        fallback = {'stage': ['t2v', 'i2v', 'r2v', 'flf2v'],
+                    'resolution': ['360p', '480p', '540p', '720p', '768p']}
+        enums = _derive_tool_enums(cap, fallback)
+        for _cls in (CallComfyUI, BatchSubmit):
+            props = (_cls.parameters or {}).get('properties', {})
+            if 'stage' in props and props['stage'].get('type') == 'string':
+                props['stage']['enum'] = enums['stage']
+            if 'resolution' in props and props['resolution'].get('type') == 'string':
+                props['resolution']['enum'] = enums['resolution']
+        # 描述附加当前可用阶段（注册表为准）
+        avail = '、'.join(str(s) for s in enums['stage'])
+        if avail and avail != fallback['stage']:
+            CallComfyUI.description = CallComfyUI.description + ('(book-12 注册表：当前可用阶段 ' + avail + ')'
+                                                                if '(book-12 注册表' not in CallComfyUI.description else '')
+    except Exception:  # noqa: BLE001
+        pass
+
+
+_apply_registry_derived_schema()
