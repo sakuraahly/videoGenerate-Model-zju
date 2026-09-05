@@ -45,12 +45,23 @@ def probe_av(path: str) -> dict:
     _a = next((s for s in _streams if s.get("codec_type") == "audio"), {})
     v, a = _v, _a
     fmt = d.get("format") or {}
-    return {"width": v.get("width"), "height": v.get("height"),
-            "fps": v.get("r_frame_rate"), "frames": v.get("nb_frames"),
-            "video_duration": v.get("duration", fmt.get("duration")),
-            "audio_codec": a.get("codec_name"), "audio_channels": a.get("channels"),
-            "audio_duration": a.get("duration"),
-            "duration": fmt.get("duration"), "size": fmt.get("size")}
+    def _i(x):
+        try:
+            return int(float(x)) if x not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+    def _f(x):
+        try:
+            return float(x) if x not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+    return {"width": _i(v.get("width")), "height": _i(v.get("height")),
+            "fps": v.get("r_frame_rate") if v.get("r_frame_rate") else None,
+            "frames": _i(v.get("nb_frames")),
+            "video_duration": _f(v.get("duration") or fmt.get("duration")),
+            "audio_codec": a.get("codec_name"), "audio_channels": _i(a.get("channels")),
+            "audio_duration": _f(a.get("duration")),
+            "duration": _f(fmt.get("duration")), "size": _i(fmt.get("size"))}
 
 
 def probe(path: str) -> dict:

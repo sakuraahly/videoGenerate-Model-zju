@@ -271,6 +271,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--resolution", type=str, default=None,
                    choices=sorted(h3workflow.RESOLUTION_PRESETS),
                    help="Use a resolution preset (overrides file value)")
+    p.add_argument("--tts-voice", type=str, default="zh-CN-XiaoxiaoNeural",
+                help="六审预接通（S6）：TTS 音色（zh-CN-XiaoxiaoNeural 女声 / zh-CN-YunxiNeural 男声）")
     p.add_argument("--tts-text", type=str, default="",
                 help="中文台词/旁白文本：完成后将该文本合成中文语音并替换视频音轨（T2b edge-tts）")
     p.add_argument("--lora", type=str, default="none",
@@ -728,6 +730,7 @@ def main(argv: Optional[list] = None) -> int:
                 "prompt_id": "",
                 "stage": stage_id,
                 "tts_text": getattr(args, "tts_text", "") or "",
+                "tts_voice": getattr(args, "tts_voice", "") or "",
                 "params": gp.workflow_dict() if gp else {},
                 "log_file": os.path.basename(run_log) if run_log else "",
                 "prompt_files": {
@@ -885,13 +888,14 @@ def main(argv: Optional[list] = None) -> int:
                         _need_pp = getattr(args, 'postprocess', '') == 'fast'
                         if _need_pp:
                             from h3 import postprocess as _pp
-                            _prep = _tts.prepare_speech(_tts_txt, out_dir=(Path(project_dir) / "workflows" / (task_folder.name if task_folder else "tts_prep")))
+                            _voice = (_tj.get("tts_voice") or getattr(args, "tts_voice", "") or _tts.DEFAULT_VOICE) if task_folder else (getattr(args, "tts_voice", "") or _tts.DEFAULT_VOICE)
+                            _prep = _tts.prepare_speech(_tts_txt, voice=_voice, out_dir=(Path(project_dir) / "workflows" / (task_folder.name if task_folder else "tts_prep")))
                             _dst = _tts_src.with_name(_tts_src.stem + "_pp.mp4")
                             _pp.process(_tts_src, _dst, srt=_prep["srt"])  # 单次编码：增强+字幕
                             _tts.replace_audio_only(_dst, _prep["speech"], _dst, dur=_src_dur)
                             print(f"TTS_OUT: outputs/{_dst.name} speech_s={_prep['speech_dur']:.2f} srt=yes", flush=True)
                             print(f"POSTPROCESS_OUT: outputs/{_dst.name}", flush=True)
-                            _log_event(f"tts_done file={_dst.name} voice={_tts.DEFAULT_VOICE} "
+                            _log_event(f"tts_done file={_dst.name} voice={_voice} "
                                        f"speech={_prep['speech_dur']:.2f}s srt=yes merged_encode=1")
                         else:
                             _res = _tts.attach_speech_and_subtitle(_tts_src, _tts_txt)
