@@ -266,8 +266,15 @@ def _parse_tool_args(text) -> dict:
         return d if isinstance(d, dict) else {}
     except Exception:  # noqa: BLE001
         pass
-    # 裸 KV：按“引号外逗号”切分
+    # XML 参数（qwen3.8 关闭 thinking 后的工具参数形态）：<parameter=name>value</parameter>…
     import re as _re
+    if '<parameter=' in s:
+        xout = {}
+        for mm in _re.finditer(r'<parameter=([^>]+)>\s*(.*?)\s*</parameter>', s, _re.S):
+            xout[mm.group(1).strip()] = mm.group(2).strip()
+        if xout:
+            return xout
+    # 裸 KV：按“引号外逗号”切分
     parts = _re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', s)
     out = {}
     for part in parts:

@@ -27,6 +27,12 @@ class TestParseToolArgs(unittest.TestCase):
         txt = chr(96) * 3 + chr(34) * 0 + "json" + chr(10) + '{"a": 1}' + chr(10) + chr(96) * 3
         self.assertEqual(_parse_tool_args(txt), {"a": 1})
 
+    def test_xml(self):
+        txt = '<parameter=stage>t2v</parameter>' + chr(10) + '<parameter=resolution>360p</parameter>' + chr(10) + '<parameter=seconds>5</parameter>'
+        d = _parse_tool_args(txt)
+        self.assertEqual(d.get('stage'), 't2v')
+        self.assertEqual(d.get('resolution'), '360p')
+
     def test_empty(self):
         self.assertEqual(_parse_tool_args(""), {})
         self.assertEqual(_parse_tool_args(None), {})
