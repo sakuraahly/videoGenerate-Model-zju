@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
 _PROJECT_ROOT = os.environ.get(
     'VIDEOGEN_PROJECT_ROOT',
@@ -154,6 +155,20 @@ def run_gui(port: int = 7860, share: bool = False):
     ui_app.run_app(port=port, share=share)
 
 
+def get_system_message() -> str:
+    """book-12 A4：SYSTEM_MESSAGE + 注册表动态工作流段（读取失败保留原文）。"""
+    try:
+        root = _detect_project_root()
+        _runs = os.path.join(root, 'runs')
+        if _runs not in sys.path:
+            sys.path.insert(0, _runs)
+        from h3 import capabilities as _cap
+        digest = _cap.agent_digest(Path(root))
+        return _cap.compose_system_message(SYSTEM_MESSAGE, digest)
+    except Exception:  # noqa: BLE001
+        return SYSTEM_MESSAGE
+
+
 def run_cli():
     from qwen_agent.agents import Assistant
     from runs.agent import ctx_budget
@@ -161,13 +176,14 @@ def run_cli():
     llm = dict(LLM_CFG)
     # 输入硬预算：qwen_agent 截断层按 max_input_tokens − tokens(system) 限制
     # 对话往返，与回复预算 2048 合计不越 ctx=8192（实测依据见 ctx_budget.py）
-    max_input, _ = ctx_budget.request_budgets(SYSTEM_MESSAGE)
+    sys_msg = get_system_message()
+    max_input, _ = ctx_budget.request_budgets(sys_msg)
     llm['generate_cfg'] = {**(llm.get('generate_cfg') or {}),
                            'max_input_tokens': max_input}
 
     bot = Assistant(
         llm=llm,
-        system_message=SYSTEM_MESSAGE,
+        system_message=sys_msg,
         function_list=TOOL_NAMES,
     )
 

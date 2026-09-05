@@ -114,7 +114,8 @@
 - **A 阶段完成**：① 参数注入 ffprobe 回归通过（1280×736/24fps/15.08s，用户已确认）；② `--stage` 校验走注册表（未知/禁用即拒）；③ refimage 模板路径走注册表（缺失回退）；④ **prompts 注入点按注册表 `inject_spec`**（class_prefix MiniMaxH3 + prompt/negative_prompt 直写，替代 basename 启发式；未命中回退启发式；单测 5 例，全量 122 全绿）。
 - **A 阶段完成 ⑤**：tools.py CallComfyUI/BatchSubmit 的 stage/resolution enum 与描述改为**注册表派生**（`_derive_tool_enums` 纯函数 + `_apply_registry_derived_schema`；enabled 过滤；异常回退旧值；spark 实测 ENUM_DERIVE_OK）。
 - **A 阶段完成 ⑥（修订边界）**：pipeline.json 是**机器配置**（两端各自维护，dev.py EXCLUDE），故不做自动合并——新增 `consistency_check.check_registry_vs_pipeline`：注册表启用工作流未在 pipeline 登记引擎参数 → ISSUES；pipeline 多出阶段 → NOTES（占位阶段除外）。实测问题 0。
-- **待办**：⑦ 步骤3 动态认知（digest 注入 SYSTEM_MESSAGE + 05-workflows-registry.md）；⑧ 步骤4 `dev.py workflows` 子命令 + 步骤5 黄金路径回归。
+- **A 阶段完成 ⑦（步骤3 动态认知）**：`capabilities.agent_digest`（注册表 enable+参数范围+特性）+ `compose_system_message`（替换 SYSTEM_MESSAGE 硬编码工作流段为注册表段，读取失败保留原文）+ `--registry-doc` 自动生成 `docs/agent-reading/05-workflows-registry.md`（ReadDoc 自动可见）；scheduler/ui_app 统一 `get_system_message()`（含预算计算同源）；单测 5 例（127 全绿）。
+- **待办**：⑧ 步骤4 `dev.py workflows`（list/add/disable/enable/validate/swap）+ 合并 `queue status`；⑨ 步骤5 黄金路径回归 + book-12 验收演示。
 
 ---
 

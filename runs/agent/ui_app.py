@@ -192,7 +192,8 @@ def trim_context(msgs: list) -> tuple:
 def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     """后台线程：新开一个 Assistant 处理当前轮（无状态，历史由外部传入）。"""
     from qwen_agent.agents import Assistant
-    from runs.agent.scheduler import LLM_CFG, SYSTEM_MESSAGE, TOOL_NAMES
+    from runs.agent.scheduler import LLM_CFG, TOOL_NAMES, get_system_message
+    system_message = get_system_message()  # book-12 A4：注册表动态工作流段
     from runs.agent import turn_state
     global _pending_batch_id
     turn_state.begin_turn(batch_id=_pending_batch_id)
@@ -210,7 +211,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     # 回复上限 + qwen_agent 输入硬预算（实测依据见 ctx_budget.py）：
     # 截断层 available = max_input_tokens − tokens(system)，保证每次调用
     # （含回合内工具往返）服务端总输入 ≤ 6144，与 2048 回复合计不越 ctx=8192。
-    max_input, overhead = ctx_budget.request_budgets(SYSTEM_MESSAGE)
+    max_input, overhead = ctx_budget.request_budgets(system_message)
     llm['generate_cfg'] = {**(llm.get('generate_cfg') or {}),
                            'max_tokens': REPLY_MAX_TOKENS,
                            'max_input_tokens': max_input}
@@ -228,7 +229,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     events.put({'kind': 'phase', 'text': '🔶 模型就绪：推理/工具调度中（长任务期间此状态会持续跳动，请勿重复发送）'})
 
     def _one_run(msgs):
-        bot = Assistant(llm=llm, system_message=SYSTEM_MESSAGE,
+        bot = Assistant(llm=llm, system_message=system_message,
                         function_list=TOOL_NAMES)
         final = ''
         for chunk in bot.run(messages=msgs):

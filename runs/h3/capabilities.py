@@ -16,6 +16,10 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
+_RUNS_DIR = str(Path(__file__).resolve().parent.parent)
+if _RUNS_DIR not in sys.path:  # book-12：直接运行时自举 runs/ 到 path
+    sys.path.insert(0, _RUNS_DIR)
+
 _FILENAME = "capabilities.json"
 
 
@@ -98,6 +102,75 @@ def markdown_doc(cap: dict) -> str:
 """
 
 
+_WF_BLOCK_MARKERS = ("═══ 工作流（只用本地，不提 api_*） ═══",
+                    "═══ 工作流（只用本地，不提 api_*）═══")
+_WF_DYN_MARKER = "═══ 工作流（注册表动态声明，book-12）═══"
+
+
+def agent_digest(project_dir: Path) -> str:
+    """book-12 A4：注册表当前可用能力摘要（enabled 工作流+参数范围+特性）。失败返回空串。"""
+    try:
+        from h3 import workflow_registry
+        cap = workflow_registry.load_registry(project_dir)
+        return workflow_registry.digest_entries(cap)
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def compose_system_message(sys_msg: str, digest: str) -> str:
+    """把 SYSTEM_MESSAGE 中硬编码工作流清单段替换为注册表 digest 段（A4 动态认知）。
+    digest 为空则原样返回。
+    """
+    if not digest:
+        return sys_msg
+    idx = -1
+    for _mk in _WF_BLOCK_MARKERS:
+        idx = sys_msg.find(_mk)
+        if idx >= 0:
+            break
+    if idx < 0:
+        return sys_msg + "\n\n" + _WF_DYN_MARKER + "\n" + digest
+    nxt = sys_msg.find("\n\n", idx + 1)
+    if nxt < 0:
+        # 块后无空行：取该行行尾，保守保留后续
+        nxt = sys_msg.find("\n", idx + 1)
+        nxt = sys_msg.find("\n", nxt + 1) if nxt > 0 else len(sys_msg)
+        if nxt < 0:
+            nxt = len(sys_msg)
+    return sys_msg[:idx] + _WF_DYN_MARKER + "\n" + digest + sys_msg[nxt:]
+
+
+def write_registry_doc(project_dir: Path) -> Path:
+    """生成 docs/agent-reading/05-workflows-registry.md（agent 可读；自动生成，勿手改）。"""
+    from h3 import workflow_registry
+    cap = workflow_registry.load_registry(project_dir)
+    lines = ["# 工作流注册表（自动生成，勿手改）", "",
+             "> 来源: config/capabilities.json；重新生成: python runs/h3/capabilities.py --registry-doc", ""]
+    entries = [e for e in workflow_registry.local_entries(cap) if e.get("enabled", True)]
+    for e in entries:
+        lines.append(f"## {e.get('id')} (stage={e.get('stage')})")
+        lines.append("")
+        lines.append(f"- 用途: {e.get('purpose', '')}")
+        lines.append(f"- 模板: `{e.get('template')}`（format={e.get('format')}）")
+        slots = workflow_registry.slot_spec(e)
+        img = ", ".join(f"{s.get('role')}x{s.get('count')}" for s in slots["images"]) or "none"
+        lines.append(f"- 槽位: images={img}; videos={len(slots['videos'])}; audios={len(slots['audios'])}")
+        p = e.get("params") or {}
+        sec = p.get("seconds") or {}
+        lines.append(f"- 参数: resolutions={','.join(p.get('resolutions') or [])}; "
+                     f"seconds={sec.get('min')}..{sec.get('max')}; fps={p.get('fps')}; steps={p.get('steps')}")
+        lines.append(f"- 特性: {', '.join(k for k, v in (e.get('features') or {}).items() if v) or 'none'}")
+        lines.append("")
+    lines.append("## 当前全部可用（digest）")
+    lines.append("")
+    lines.append(workflow_registry.digest_entries(cap))
+    lines.append("")
+    dst = project_dir / "docs" / "agent-reading" / "05-workflows-registry.md"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text("\n".join(lines), encoding="utf-8")
+    return dst
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     project_dir = Path(__file__).resolve().parent.parent.parent  # 项目根（runs/h3 → 根）
     cap = load_capabilities(project_dir)
@@ -106,6 +179,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--doc", action="store_true", help="打印并写回 docs/capabilities-ai.md")
     ap.add_argument("--digest", action="store_true", help="打印喂给 LLM 的精简摘要")
     ap.add_argument("--workflow", type=str, default="", help="查询某个 workflow id")
+    ap.add_argument("--registry-doc", action="store_true",
+                    help="生成 docs/agent-reading/05-workflows-registry.md（agent 动态认知文档）")
+    ap.add_argument("--digest2", action="store_true", help="打印注册表动态摘要（A4 用）")
     args = ap.parse_args(argv)
     if args.doc:
         md = markdown_doc(cap)
@@ -115,6 +191,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"\n[written] {dst}")
     elif args.digest:
         print(llm_digest(cap))
+    elif args.digest2:
+        print(agent_digest(project_dir))
+    elif args.registry_doc:
+        dst = write_registry_doc(project_dir)
+        print(f"[written] {dst}")
     elif args.workflow:
         w = workflow_by_id(cap, args.workflow)
         if w:
