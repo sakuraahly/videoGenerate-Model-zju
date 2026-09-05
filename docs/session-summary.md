@@ -850,6 +850,13 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.18 八审炸弹拆除：TTS 钩子两处 UnboundLocalError 回归（2026-09-05）
+- **发现**：八审（外部 AI 复轮）在七审修复（1d3e3bb）与六审（93c1533）中检出**正在生效的功能回归**：① _voice 仅在 fast 分支赋值、else（非合并）分支引用——P1a 前非 fast 是 agent 唯一路径 → 所有带台词提交“有画面无语音无字幕”；② _tj 仅 CLI 未给 tts_text 时赋值、task_folder 为真即引用——P1a 落地后 fast+CLI 台词路径必炸；两者均被宽泛 except 吞掉静默失效。
+- **影响证据**：spark 现行（87f3979 起）含缺陷行 897/908；但所有 tts_done 成功事件（video_22/27/28/29/31，10:26–20:34）均早于回归提交（22:06）→ 尚无生产运行落在缺陷代码上（下次带台词提交即中招）；spark grep 'tts_error err=UnboundLocalError'=0。
+- **修复（待提交）**：钩子抽为 _run_tts_hook()（_voice/_tj 前置共用；except 分类=代码缺陷 NameError/AttributeError→tts_code_error+stdout TTS_CODE_ERROR 标记，环境异常→tts_error；返回解析后 tts_text 保 postprocess 语义）；VOICE_ALIASES 提升 tts.py 公开常量（原 main() 局部 _V_ALIASES 工具侧无法复用，八审方案 A：tools 透传短名不映射）；新单测 7 例（monkeypatch 无 ffmpeg，同时拦住 1.1/1.2+分类）；全套 165 绿。
+- **文档**：§6 判据改短名（--tts-voice yunxi）/记录全名；§2 line 41 “1216→2432”误写更正为 4864×2816（4x）；changelog §19 应答。
+- **真机验收（spark）**：真实 h3_submit 任务通关（video_32=608×352/5.167s/124f）；首跑钩子在 edge-tts 网络抖动处失败（tts_error err=ValueError 正确归环境类）；在真实产物+真实 job.json（风筝真美。/全名 yunxi）上重跑钩子 → 非 fast：video_tts_a.mp4=h264+aac+srt（0→2.064s）✅；fast（CLI 台词）：video_tts_b_pp.mp4=合并单次编码 h264+aac ✅——两处 UnboundLocalError 均真机不复现，声/字俱全。
+
 ### 20.17 新bug修复：任务存档有时只有 workflow_api.json（2026-09-05 用户报告）
 - **根因**：`apply_lora` 注入字符串节点 id（如 `lora_14`）→ `workflow_to_ui` 用 `int(k)` 抛 `ValueError: invalid literal for int() ... 'lora_14'` → `save_workflow_ui` 静默返 None（仅 stderr 警告，被 tools.py 捕获、run log 无痕）→ **所有 4 步 LoRA 任务只有 api 版**（取证：61 api vs 48 ui；13 个 api-only 均为 lora 任务；与 stage 无关）。
 - **修复（commit 96d2188/2c3db4b）**：converter 统一节点 id→确定性 int 映射（数值原样、字符串顺延，含连线引用）；保存失败改 logutil 留痕；`tests/test_workflow_ui_conv.py` 2 例；**13 个历史目录已用修复后转换器回填**（61==61，0 失败）；**真机验收**：新 lora t2v 提交目录= api+ui 俱全。

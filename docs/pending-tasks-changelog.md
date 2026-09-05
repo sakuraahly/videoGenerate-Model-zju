@@ -128,3 +128,23 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **事故与恢复（诚实记录）**：本轮文档批量 PS 替换中主文件一度被写坏（0 行）→ 已从 git（ac87020）恢复，其余七审编辑改用小步 edit 工具重做并核验；**教训：对 100+ 行单文件，避免用 PowerShell ReadAllText/WriteAllText 整写**，改用 edit 工具定位替换。
 
 **其余中低项**：§9 残片/双“实现”清理（单段明确 list/export/search 参数）；§10 bytes 双源→择一（probe_av size）；§2 行号引用→注释标记；§2/§14 表尾粘连、物理顺序（S11→S12）均已处理。
+
+---
+
+## 19. 八审应答（2026-09-05）
+
+**两条严重（线上回归，均已修复并加测试）**：
+① **`_voice` UnboundLocalError**（七审 1d3e3bb 引入）——else（非合并）分支引用仅在 if 分支赋值的 `_voice`；而 P1a 前非 fast 是 agent 唯一路径 → **今天所有带台词 agent 提交“有画面、无语音、无字幕”且不报错**（被宽泛 except 吞掉）；② **`_tj` UnboundLocalError**（六审 93c1533 引入）——仅 CLI 未给 tts_text 时赋值，但 task_folder 为真即引用（P1a 落地后 fast+CLI 台词路径必炸）。
+
+**影响评估（取证）**：spark 现行代码（87f3979 起）确认含缺陷行（897/908）；但 spark 日志全部 `tts_done` 成功事件（video_22/27/28/29/31）均发生于 **22:06（回归提交）之前**（10:26–20:34，运行代码为回归前版本）→ **尚无任何生产任务在缺陷代码下运行**；下次带台词提交即中招。日志 grep：`tts_error err=UnboundLocalError` = 0（spark）；本地 logs 无 tts 事件（非 spark 运行日志）。
+
+**修复（待提交）**：
+- `h3_submit.py`：钩子抽为模块级 `_run_tts_hook()`，`_voice`（任务记录>args>默认）与 `_tj`（无条件初始化，job.json 缺失→{}）移至两分支共用前置；**except 分类**：NameError/AttributeError（含 UnboundLocalError）→ `tts_code_error` 事件 + stdout `TTS_CODE_ERROR:` 显式标记（不再混入“不影响主产物”提示）；ValueError 等环境异常保持 `tts_error`；钩子返回解析后的 tts_text（下方仅-fast 分支历史语义保留）。
+- `tts.py`：新增公开 `VOICE_ALIASES`（短名→全名）；**`_V_ALIASES`（原 main() 局部，§6“tools 侧复用”不可执行）已提升并删除**——八审方案 A：tools 透传短名、不做映射，归一仍由 h3_submit 入口完成；文档判据同步改 `--tts-voice yunxi`（argv 短名）/ `tts_done voice=zh-CN-YunxiNeural`（记录全名）。
+- **测试**：`runs/h3/tests/test_tts_hook_voice.py` 7 例（monkeypatch h3.tts/h3.postprocess，无 ffmpeg）——覆盖 1.1（else 用 voice）、1.2（fast+CLI 文本+task_folder 无 job.json）、无 task_folder、任务记录回读、无台词跳过、代码缺陷 vs 环境异常分类；全套 165 例绿（158+7）。
+
+**真机验收（spark 实测，2026-09-05 22:43）**：① 非 fast 路径——真实 h3_submit 任务（video_32 源）跑通提交/轮询/落盘，钩子失败点为 edge-tts 网络抖动（`tts_error err=ValueError` 正确归类为环境异常）；随后在真实产物+真实任务记录（job.json=风筝真美。/全名 yunxi）上重跑钩子 → `TTS_OUT speech_s=2.06 srt=yes`，产物 video_tts_a.mp4=**h264+aac**，video_tts_a.srt 内容正确（0→2.064s），时长 5.167s 不变——**修复 1.1 + 任务记录回读 + 短名归一（记录=全名）真机通过**；② fast 路径——CLI 台词+无 task_folder → 合并单次编码链输出 video_tts_b_pp.mp4=**h264+aac**（`TTS_OUT`+`POSTPROCESS_OUT` 双标记）——**修复 1.2 真机通过**（单元层面同套件 7 例亦绿）。
+
+**机制补充（第 N 次同型后落地）**：`_run_tts_hook` 之前的主干钩子属“新代码路径零测试”——此轮后**新钩子/新分支必有单测**（无 ffmpeg 也可 via monkeypatch），且“两条路径共用变量”必须前置初始化（而非分支内首次赋值）。
+
+**其余**：§2 line 41 残留误写“（1216→2432）”已更正为“1216×704→4864×2816（4x，与 line 40 口径一致）”；§6 实现/验证按八审 Option A 回填（映射层位置+短名判据+“勿再写 tools 侧复用映射”）。

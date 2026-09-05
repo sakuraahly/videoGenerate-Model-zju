@@ -590,12 +590,78 @@ def _collect_outputs(entry: dict) -> List[dict]:
     return files
 
 
+def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse.Namespace,
+                  local_out: List[Path], gp: Optional[h3params.GenParams]) -> str:
+    """book-14 T2b 完成钩子：中文语音（+字幕）/合并增强。失败不阻断主产物。
+
+    八审修复（原为 main() 内联块，两个 UnboundLocalError 被宽泛 except 吞掉）：
+    1. _voice 在 fast/非 fast 两分支共享，先归一再用（原 if 内赋值→else 引用）；
+    2. _tj 无条件初始化（任何路径都读任务记录；原仅 CLI 未给 tts_text 时才赋值）；
+    3. 代码缺陷（NameError/AttributeError，含 UnboundLocalError）≠环境异常：
+       单独打 tts_code_error 事件并在 stdout 打 TTS_CODE_ERROR 显式标注。
+    """
+    _tts_txt = (getattr(args, "tts_text", "") or "").strip()
+    _tj: dict = {}
+    if task_folder:
+        _tj = jobstate.read_json(jobstate.task_job_path(project_dir, task_folder)) or {}
+        if not _tts_txt:
+            _tts_txt = str(_tj.get("tts_text") or "").strip()
+    if not _tts_txt:
+        return _tts_txt
+    try:
+        from h3 import tts as _tts
+        # 八审：两条路径共用的 voice——任务记录 > args（入口已归一全名）> 默认女声
+        _voice = str(_tj.get("tts_voice") or "") or getattr(args, "tts_voice", "") or _tts.DEFAULT_VOICE
+        _tts_src = local_out[0] if local_out else None
+        if _tts_src is None or not _tts_src.is_file():
+            _log_event("tts_skip (no local output)")
+            return
+        _req_secs = float(getattr(gp, "seconds", 0) or 0)
+        _src_dur = _tts.probe_duration(_tts_src)
+        # v2#2：时长守卫——源视频被截断则拒绝处理（外层重新从远端取原始文件）
+        if _req_secs and _src_dur < _req_secs * 0.8:
+            _log_event(f"tts_guard source_truncated file={_tts_src.name} dur={_src_dur:.2f}s")
+            raise ValueError(f"源视频被截断({_src_dur:.2f}s)")
+        # 二轮审阅：postprocess fast + 台词并存 → 合并单次编码（增强+字幕同 -vf）+ 音轨 copy 替换
+        _need_pp = getattr(args, 'postprocess', '') == 'fast'
+        if _need_pp:
+            from h3 import postprocess as _pp
+            _prep = _tts.prepare_speech(_tts_txt, voice=_voice,
+                                        out_dir=(Path(project_dir) / "workflows"
+                                                 / (task_folder.name if task_folder else "tts_prep")))
+            _dst = _tts_src.with_name(_tts_src.stem + "_pp.mp4")
+            _pp.process(_tts_src, _dst, srt=_prep["srt"])  # 单次编码：增强+字幕
+            _tts.replace_audio_only(_dst, _prep["speech"], _dst, dur=_src_dur)
+            print(f"TTS_OUT: outputs/{_dst.name} speech_s={_prep['speech_dur']:.2f} srt=yes", flush=True)
+            print(f"POSTPROCESS_OUT: outputs/{_dst.name}", flush=True)
+            _log_event(f"tts_done file={_dst.name} voice={_voice} "
+                       f"speech={_prep['speech_dur']:.2f}s srt=yes merged_encode=1")
+        else:
+            # 非合并路径：attach_speech_and_subtitle(voice=...)（P1a 前 agent 唯一路径）
+            _res = _tts.attach_speech_and_subtitle(_tts_src, _tts_txt, voice=_voice)
+            print(f"TTS_OUT: outputs/{_res['path'].name} speech_s={_res['speech_dur']:.2f} "
+                  f"srt={'yes' if _res.get('srt') else 'no'}", flush=True)
+            _log_event(f"tts_done file={_res['path'].name} voice={_voice} "
+                       f"speech={_res['speech_dur']:.2f}s srt={bool(_res.get('srt'))}")
+    except Exception as _te:  # noqa: BLE001 - 环境异常不阻断主产物；代码缺陷必须显式暴露
+        _is_bug = isinstance(_te, (NameError, AttributeError))
+        _log_event(f"{'tts_code_error' if _is_bug else 'tts_error'} err={type(_te).__name__}: {_te}")
+        if _is_bug:
+            print(f"[代码错误] 语音/字幕未生成（不影响主产物，但存在缺陷待修）: "
+                  f"{type(_te).__name__}: {_te}", file=sys.stderr, flush=True)
+            print(f"TTS_CODE_ERROR: {type(_te).__name__}: {_te}", flush=True)
+        else:
+            print(f"[提示] TTS 语音替换失败（不影响主产物）: {_te}", file=sys.stderr, flush=True)
+    return _tts_txt
+
+
 def main(argv: Optional[list] = None) -> int:
     args = build_arg_parser().parse_args(argv)
-    # 七审：短名/全名归一（S6 映射层：LLM/CLI 用短名 xiaoxiao|yunxi，此处归一为全名）
-    _V_ALIASES = {"xiaoxiao": "zh-CN-XiaoxiaoNeural", "yunxi": "zh-CN-YunxiNeural"}
-    args.tts_voice = _V_ALIASES.get(str(getattr(args, "tts_voice", "") or "").lower(),
-                                    getattr(args, "tts_voice", "") or "zh-CN-XiaoxiaoNeural")
+    # 七审+八审：短名/全名归一（LLM/CLI 与 tools 透传短名 xiaoxiao|yunxi；
+    # 映射层 VOICE_ALIASES 已提升至 tts.py 公开常量——原 main() 局部 _V_ALIASES 工具侧无法复用）
+    from h3 import tts as _vmod
+    _v_raw = str(getattr(args, "tts_voice", "") or "").strip()
+    args.tts_voice = _vmod.VOICE_ALIASES.get(_v_raw.lower(), _v_raw or _vmod.DEFAULT_VOICE)
     project_dir = h3params.project_root_from_file(Path(__file__))
     env = h3params.load_environment(project_dir)
 
@@ -873,48 +939,9 @@ def main(argv: Optional[list] = None) -> int:
         if _site(project_dir) == "spark-local":
             _local_out = _finalize_local_outputs(project_dir, all_remote, gp=gp)
             # book-14 T2b：中文语音替换（--tts-text 或任务记录 tts_text；失败不阻断主产物）
-            _tts_txt = ""
-            try:
-                _tts_txt = (getattr(args, "tts_text", "") or "").strip()
-                if not _tts_txt and task_folder:
-                    _tj = jobstate.read_json(jobstate.task_job_path(project_dir, task_folder)) or {}
-                    _tts_txt = str(_tj.get("tts_text") or "").strip()
-                if _tts_txt:
-                    # book-14 T2b v2#1：只用“本次”finalize 产物（返回值），不再全目录 glob-mtime
-                    _tts_src = _local_out[0] if _local_out else None
-                    if _tts_src is not None and _tts_src.is_file():
-                        from h3 import tts as _tts
-                        _req_secs = float(getattr(gp, "seconds", 0) or 0)
-                        _src_dur = _tts.probe_duration(_tts_src)
-                        # v2#2：时长守卫——源视频被截断则重新从远端取原始文件
-                        if _req_secs and _src_dur < _req_secs * 0.8:
-                            _log_event(f"tts_guard source_truncated file={_tts_src.name} dur={_src_dur:.2f}s")
-                            raise ValueError(f"源视频被截断({_src_dur:.2f}s)")
-                        # 二轮审阅：postprocess fast + 台词并存 → 合并单次编码（增强+字幕同 -vf）+ 音轨 copy 替换
-                        _need_pp = getattr(args, 'postprocess', '') == 'fast'
-                        if _need_pp:
-                            from h3 import postprocess as _pp
-                            _voice = (_tj.get("tts_voice") or getattr(args, "tts_voice", "") or _tts.DEFAULT_VOICE) if task_folder else (getattr(args, "tts_voice", "") or _tts.DEFAULT_VOICE)
-                            _prep = _tts.prepare_speech(_tts_txt, voice=_voice, out_dir=(Path(project_dir) / "workflows" / (task_folder.name if task_folder else "tts_prep")))
-                            _dst = _tts_src.with_name(_tts_src.stem + "_pp.mp4")
-                            _pp.process(_tts_src, _dst, srt=_prep["srt"])  # 单次编码：增强+字幕
-                            _tts.replace_audio_only(_dst, _prep["speech"], _dst, dur=_src_dur)
-                            print(f"TTS_OUT: outputs/{_dst.name} speech_s={_prep['speech_dur']:.2f} srt=yes", flush=True)
-                            print(f"POSTPROCESS_OUT: outputs/{_dst.name}", flush=True)
-                            _log_event(f"tts_done file={_dst.name} voice={_voice} "
-                                       f"speech={_prep['speech_dur']:.2f}s srt=yes merged_encode=1")
-                        else:
-                            # 七审：else（非合并）路径同样传 voice + 日志实际值（此前漏修——P1a 前此为唯一路径）
-                            _res = _tts.attach_speech_and_subtitle(_tts_src, _tts_txt, voice=_voice)
-                            print(f"TTS_OUT: outputs/{_res['path'].name} speech_s={_res['speech_dur']:.2f} "
-                                  f"srt={'yes' if _res.get('srt') else 'no'}", flush=True)
-                            _log_event(f"tts_done file={_res['path'].name} voice={_voice} "
-                                       f"speech={_res['speech_dur']:.2f}s srt={bool(_res.get('srt'))}")
-                    else:
-                        _log_event("tts_skip (no local output)")
-            except Exception as _te:  # noqa: BLE001
-                _log_event(f"tts_error err={type(_te).__name__}: {_te}")
-                print(f"[提示] TTS 语音替换失败（不影响主产物）: {_te}", file=sys.stderr, flush=True)
+            # 八审：抽为模块级 _run_tts_hook（双分支可单测；修复 _voice/_tj UnboundLocalError）
+            # 返回值=解析后的台词文本：供下方仅-fast 分支判断“是否已做 TTS”（历史语义保留）
+            _tts_txt = _run_tts_hook(project_dir, task_folder, args, _local_out, gp)
             # book-14 T2：完成后质量增强（--postprocess fast=2x+降噪+锐化；失败不阻断主产物）
             if getattr(args, 'postprocess', '') == 'fast' and not _tts_txt:
                 try:
@@ -929,9 +956,16 @@ def main(argv: Optional[list] = None) -> int:
                         _log_event(f"postprocess_done file={_dst.name}")
                     else:
                         _log_event("postprocess_skip (no local output)")
-                except Exception as _e:  # noqa: BLE001
-                    _log_event(f"postprocess_error err={type(_e).__name__}: {_e}")
-                    print(f"[提示] 后处理失败（不影响主产物）: {_e}", file=sys.stderr, flush=True)
+                except Exception as _e:  # noqa: BLE001 - 环境异常不阻断；代码缺陷显式暴露
+                    _e_bug = isinstance(_e, (NameError, AttributeError))
+                    _log_event(f"{'postprocess_code_error' if _e_bug else 'postprocess_error'} "
+                               f"err={type(_e).__name__}: {_e}")
+                    if _e_bug:
+                        print(f"[代码错误] 后处理未完成（不影响主产物，但存在缺陷待修）: "
+                              f"{type(_e).__name__}: {_e}", file=sys.stderr, flush=True)
+                        print(f"POSTPROCESS_CODE_ERROR: {type(_e).__name__}: {_e}", flush=True)
+                    else:
+                        print(f"[提示] 后处理失败（不影响主产物）: {_e}", file=sys.stderr, flush=True)
         else:
             print(f"\nTo download:")
             print(f"  scp {host}:{remote_path} {args.output}/", flush=True)

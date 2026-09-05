@@ -11,6 +11,13 @@ from pathlib import Path
 
 DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"  # 女声/新闻小说；备选 zh-CN-YunxiNeural(男声)
 
+# 八审：短名→全名映射层（原为 h3_submit main() 局部 _V_ALIASES，工具侧无法复用；
+# 置于此公开常量，S6 tools 透传短名、S13/F5-TTS 音色扩展等处均可复用）
+VOICE_ALIASES = {
+    "xiaoxiao": "zh-CN-XiaoxiaoNeural",
+    "yunxi": "zh-CN-YunxiNeural",
+}
+
 _SRT_TIME = re.compile(r"(\d+):(\d{2}):(\d{2})[.,](\d{3})")
 
 
