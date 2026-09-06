@@ -56,6 +56,8 @@
 **前提链补齐（十八审实测——原"取消成功即清断点"假定建立在不可达的取消路径上）**：CancelTask.call（tools.py:562）此前是 7 工具中唯一不做参数归一的（JSON 字符串参数当整个串送 find_owned 必失败）；且运行中取消 /interrupt 发空 body=**全局中断**（误伤同队列他人任务，与 §0 红线矛盾）。**两条已于十八审修复**（CancelTask 归一；queue_probe.py:68-73 定向中断 body={prompt_id: pid}+服务端未命中 skip；last_job 清断点改 tmp+replace 原子写）——§3 的 mark_cancelled 分层以"CancelTask 能成功"为前提，现已成立。**
 **实现（四审定稿：职责分层，防 add_tasks 覆盖撤销）**：`mark_cancelled(cid, pid)`=权威（负责发『已取消』done 事件并停止该 pid 轮询）；CancelTask 成功后仅调 `mark_cancelled`；**不**在 cancel 时调 `clear_tasks`（send() 每轮开头已清、line~1232 add_tasks 会重新登记——中途 clear_tasks 会被覆盖）；下一轮消息自然清空即止。
 **验证**：单测（mock task_watch 状态）；真实链=取消运行中任务后在会话继续「查询」→ 收到『已取消』而非轮询等待。工作量：小。
+
+> **状态：✅ 已实施（2026-09-06，见 changelog §34 / session §20.46）**——task_watch mark_cancelled 分层（登记+轮询遮蔽+worker 终态化已取消）；CancelTask 成功后调用 mark；真机：提交 720p/15s→立即取消成功（归属校验+断点清理）。
 ## 4. S4 idea2prompts `--segments` 真实验证 + 与 batch 衔接
 
 **现状（已取证）**：`h3_batch submit --prompts-file <json>` **已存在**，格式=按段索引的 JSON 字典 `{"0":"pos...","1":...}`（`runs/h3_batch.py:133-151`）；`idea2prompts --segments N` 已实现（book-13 #5）但**输出为 `video_flf2v.segment_<i>.positive.txt` 文件**（与 batch 期望不匹配），且从未用真实 LLM 跑过。

@@ -125,6 +125,20 @@ def poll_batch(manifest_path: str) -> dict:
 # book-13 C2：任务首次出现时刻（已耗时用；不持久化，重启即清零）
 _first_seen: dict = {}
 # 已发过“提交告知/超时提示”的标志（防刷屏）
+# S3（T9 收尾）：取消任务登记（cid+pid）——取消后 poll 遮蔽 + 轮询终态化
+_cancelled: set = set()
+
+
+def mark_cancelled(cid: str, prompt_id: str) -> None:
+    """S3 权威：登记已取消任务（CancelTask 成功后调用；仅发一次事件并停止轮询）。"""
+    _cancelled.add((str(cid or ""), str(prompt_id or "")))
+    _log_tw("mark_cancelled cid=%s pid=%s" % (cid, str(prompt_id)[:8]))
+
+
+def is_cancelled(cid: str, prompt_id: str) -> bool:
+    return (str(cid or ""), str(prompt_id or "")) in _cancelled
+
+
 _notified: set = set()
 
 
@@ -298,7 +312,12 @@ def _monitor_worker(cid: str, turn_id: int, out_queue: queue.Queue, stop_event: 
             for task in tasks:
                 if task['type'] == 'single':
                     pid = task['prompt_id']
-                    result = poll_single(pid)
+                    if is_cancelled(cid, pid):
+                        # S3：已取消任务不再轮询（等待接口结论），直接终态化
+                        result = _emit('single', pid, {'status': 'cancelled',
+                                                       'progress': '❌ 已取消'})
+                    else:
+                        result = poll_single(pid)
                     results[pid] = result
                     el = _elapsed(pid)
                     status_parts.append(f"任务 {pid[:8]}: {result['progress']}（已用 {int(el // 60)} 分 {int(el % 60)} 秒）")
@@ -339,15 +358,20 @@ def _monitor_worker(cid: str, turn_id: int, out_queue: queue.Queue, stop_event: 
                 _notified.add('eta')
                 note_md = note_md + ('；若持续无进展，检查 ComfyUI 队列（dev.py queue）或联系管理员。' if note_md else '')
             
+            any_cancelled = any(r.get('status') == 'cancelled' for r in results.values())
             if any_failed:
                 status_html = '<div class="status-bar error">部分任务失败</div>'
-                note_md = ' ⚠️ 有任务失败，请检查日志'
+                note_md = ' ⚠️ 有任务失败，请检查日志' + ('；有任务已取消' if any_cancelled else '')
                 out_queue.put({'type': 'update', 'status_html': status_html, 'note_md': note_md})
                 break
-            
+
             if all_completed:
-                status_html = '<div class="status-bar success">✅ 所有任务已完成</div>'
-                note_md = ' ✅ 本轮完成'
+                if any_cancelled:
+                    status_html = '<div class="status-bar success">✅ 任务完成（含已取消）</div>'
+                    note_md = ' ✅ 本轮完成（含已取消任务）'
+                else:
+                    status_html = '<div class="status-bar success">✅ 所有任务已完成</div>'
+                    note_md = ' ✅ 本轮完成'
                 out_queue.put({'type': 'done', 'status_html': status_html, 'note_md': note_md})
                 break
             

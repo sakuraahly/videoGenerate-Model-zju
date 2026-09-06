@@ -623,6 +623,12 @@ class CancelTask(BaseTool):
         pid = str(params.get('prompt_id') if isinstance(params, dict) else params or '').strip()
         res = _qp.cancel_owned_task(pid)
         if res.get('ok'):
+            # S3：取消成功 → 登记（任务表轮询停止，会话后续查询收到"已取消"而非继续等待）
+            try:
+                from runs.agent.task_watch import mark_cancelled as _mc
+                _mc(CURRENT_SESSION or '', pid)
+            except Exception:  # noqa: BLE001
+                pass
             return f'已取消任务 {pid}（归属校验通过）。{res.get("msg", "")}'
         return f'[取消被拒] {res.get("msg", "")}'
 
