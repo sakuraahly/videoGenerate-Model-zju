@@ -850,6 +850,12 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.29 现场事故复盘（2026-09-06 · 多参考素材上传/提交链）——四现象→根因→修复→遗留
+- **现象 1 上传卡顿**：5-6 张图同时上传慢→根因：逐张串行 PIL 缩略图（大图解码）+ dup 图重复镜像复制。**已修**：>3 张缩略图并行生成（ThreadPoolExecutor 4）；dup 素材不再重复镜像（_mir.exists() 检查）。
+- **现象 2 资源池紊乱（母亲/接待员混入、眼镜“消失”）**：取证 uploads/log.jsonl——01:48:12 同 batch 收录 父亲/母亲/沙朗(dup)/接待员(dup)（用户在文件选择器中多选含历史/非分镜文件——系统如实收录但**无文件名回显**导致不可辨）。**已修**：上传摘要回显清单（已收录 N 个：xxx…/跳过：yyy…）；dup 不再重复镜像；**遗留**：浏览器多选含旧文件=客户端行为，用户应以摘要为准并可用 list_references 核对；眼镜首次列表缺失=时间线（先前 list 早于眼镜上传），模型在“已上传”后须重新 list_references——SYSTEM_MESSAGE 铁律待下轮实施。
+- **现象 3 agent 中断“等待输入”**：① 频控 call_comfyui 1 次/轮与 3 段分镜冲突（“镜头二提交被频控拦截”）；② 模型同轮重复陈述“镜头一已提交成功”（复读型）；③ **gradio InvalidPathError（Cannot move uploads/20260905/沙朗.png…）**——上传组件值携带非用户上传对象（历史归档路径/脚本直调）→ preprocess 失败→事件链断。**已修**：demo.load 即清空 up_btn 值（防恢复态/历史值回传）；**客户端警示**（故障字典登记：脚本直调 API 传归档路径会被 gradio 拒；请用浏览器上传）；**遗留**：多段提交策略=用 batch_submit 一次提交多段（agent 已尝试但被模型打断）；SYSTEM_MESSAGE“不重述已完成段/多段用 batch_submit”待下轮实施；InvalidPathError 的“历史值”前端成因未 100% 定位（防御已覆盖可控路径，故障字典给了排障入口）。
+- **现象 4 i2v 首帧偏离**：**取证=绑定正确**（workflow_api.json 114 LoadImage=14307486_破旧公寓客厅.png→133 MiniMaxH3ImageToVideo first_frame=[114,0]）——首帧后立即偏离=**H3 i2v 首帧锚定弱（模型特性，非绑定 bug）**。**方案**：提示词加“首帧延续”约束词（书-18 风格）；需强保真→flf2v（双帧）/参考视频；边界已写入故障字典。
+- **修复文件**：runs/agent/ui_app.py（ingest 清单+镜像去重+并行缩略图+demo.load 清空 up_btn）；文档=reference-2026-09-04.md 故障字典 5 条 + 本记录；同步 spark；166→（165 基线）全绿。
 ### 20.28 十九审闭环：tools.py CallComfyUI 全链专项（2026-09-05）
 - **代码修复 4 处（tools.py）**：① CallComfyUI 字符串参数先 json.loads（修 _coerce_fields 非确定性：dict 路径强转/字符串路径裸 jsonschema 拒——违反"同 payload 同命运"）；② _coerce_fields 元组扩为 seconds/seed/dry_run/wait_until_done（docstring motivating case 补上；BatchSubmit 同受益）；③ :806 avail vs fallback[stage] str/list 恒真比较修正；④ _apply_registry_derived_schema except:pass→stderr 告警（导入期 enum 归 fallback 不再静默）。COMPILE_OK+165 绿。
 - **§7a 命名空间定案（原"新 stage video_ref2v"废弃）**：两套命名（id=video_X/stage=X）下两读法均缺陷（A=resolve 遮蔽+enum 重复；B=default_lora_for_stage 不匹配→加速 LoRA 静默消失≈5×GPU）——**定稿=扩展现有 video_r2v 条目**（id/slot 不变、slots 3/3、features.reference_videos=True、params 增 ref_image_size；lora.stages 已覆盖）；7a 一级判据补"agent 进程内打印 stage enum 实际值"。

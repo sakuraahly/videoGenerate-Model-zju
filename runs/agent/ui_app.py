@@ -834,6 +834,8 @@ def ingest_upload(paths, cid='') -> tuple:
     kinds = []
     seen = _known_shas()
     previews = []
+    added_names: list = []
+    dup_names: list = []
     invalid_details = []
     batch_id = 'b_' + secrets.token_hex(4)
     for raw in paths or []:
@@ -869,6 +871,7 @@ def ingest_upload(paths, cid='') -> tuple:
                                        ensure_ascii=False) + '\n')
                 seen.add(sha)
                 added += 1
+                added_names.append(p.name)
             except OSError:
                 err += 1
                 continue
@@ -891,17 +894,21 @@ def ingest_upload(paths, cid='') -> tuple:
                 # book-11 bugfix：镜像名带 sha8 前缀——同名不同图不再互相覆盖
                 # （旧镜像为原名，仍可被 _resolve_input_image 递归命中，兼容）
                 mir_name = f'{sha[:8]}_{p.name}'
-                shutil.copy2(p, input_mirror / mir_name)
+                _mir = input_mirror / mir_name
+                if not _mir.exists():  # 现场故障修复：dup 素材不再重复镜像（重复上传事件的 I/O 与混乱源）
+                    shutil.copy2(p, _mir)
             except OSError:
                 err += 1
             # book-13 S14：ingest 不再生成缩略图（耗时步骤移到 _upload 分段状态内），返回 (源文件, sha)
             previews.append((str(p), sha))
     parts = []
     if added:
-        parts.append(f'✅ {added} 个新素材已加入本会话素材池')
+        _names = '、'.join(added_names[:8]) + ('…' if len(added_names) > 8 else '')
+        parts.append(f'✅ 已收录 {added} 个素材：{_names}（本会话专属）')
     if dup:
+        _dn = '、'.join(dup_names[:4]) + ('…' if len(dup_names) > 4 else '')
         if added:
-            parts.append(f'⏩ {dup} 个重复已跳过')
+            parts.append(f'⏩ {dup} 个重复已跳过（已在池中）：{_dn}')
         else:
             # book-16：文案含本会话池总数（防“只有 1 个”误解；实际池=历史+本次）
             parts.append(f'⏩ {dup} 个素材已在本会话池中（可直接使用）')
@@ -1409,11 +1416,22 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                             f'{msg}</div>')
                     # book-13 S14：预览强耦合拆分——先归档/镜像，再逐张生成缩略图并逐步报状态
                     _thumbs = []
-                    for i, (src, sha) in enumerate(previews, 1):
-                        yield (_pill(f'⏳ 正在生成预览 {i}/{len(previews)}（{Path(src).name[:24]}）…',
+                    if len(previews) > 3:
+                        yield (_pill(f'⏳ 正在生成 {len(previews)} 张缩略图（并行）…',
                                      '#8a6d1a', '#fff8e1', '#e7d492'), gr.update())
-                        th = _make_thumb(Path(src), sha) if Path(src).exists() else None
-                        _thumbs.append(str(th) if th else str(src))
+                        import concurrent.futures as _cf
+                        def _th(kv):  # 现场故障修复：多素材上传卡顿——缩略图并行生成（大图 PIL 解码并行）
+                            src, sha = kv
+                            th = _make_thumb(Path(src), sha) if Path(src).exists() else None
+                            return str(th) if th else str(src)
+                        with _cf.ThreadPoolExecutor(max_workers=4) as _ex:
+                            _thumbs = list(_ex.map(_th, previews))
+                    else:
+                        for i, (src, sha) in enumerate(previews, 1):
+                            yield (_pill(f'⏳ 正在生成预览 {i}/{len(previews)}（{Path(src).name[:24]}）…',
+                                         '#8a6d1a', '#fff8e1', '#e7d492'), gr.update())
+                            th = _make_thumb(Path(src), sha) if Path(src).exists() else None
+                            _thumbs.append(str(th) if th else str(src))
                     _gal_by_cid[cid] = (_gal_by_cid.get(cid) or []) + list(_thumbs)
                     yield html, _gal_by_cid[cid]
                 except Exception as e:  # noqa: BLE001
@@ -1453,6 +1471,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         box.submit(send, [hist_state, cid_state, box], send_out,
                    concurrency_limit=1)
         demo.load(_auto_new, None, new_out)
+        demo.load(lambda: gr.update(value=None), None, up_btn)  # 现场故障修复：页面加载即清空上传组件值（防恢复态携带非上传对象引发 Gradio InvalidPathError）
 
     print(f'Qwen-Agent 调度器 Web UI: http://127.0.0.1:{port}')
     print(f'项目根目录: {PROJECT_ROOT}')
