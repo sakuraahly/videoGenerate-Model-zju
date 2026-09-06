@@ -67,7 +67,7 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 | 任务 | 工作量 | 真机 GPU 预算（每次=提交+等待+取片） | 备注 |
 |---|---|---|---|
 | S1/S9/S10/S14 | 小 | 0（无 GPU） | 纯 UI/文件 |
-| S2-v2 | 中 | 生成链已有（默认 4 步）；超分走 ComfyUI 单次请求≈数十秒×N 次验证 | 超分模型本地就位 |
+| S2-v2 | 中 | 生成链已有（默认 4 步）；超分走 ComfyUI 单次请求（**作用域=单帧**：实测 ~11.8s/帧 → 124 帧≈24min；单卡并发路数/显存上限未测——勿按"数十秒×N"估算） | 超分模型本地就位 |
 | S3/S8 | 小-中 | 0 | 依赖修复已在场 |
 | S5 | 小 | SGLang 冷启 1-3 分钟×1（授权+队列空闲窗口） | |
 | S6 | 小 | ~1 次验证 | |
@@ -86,9 +86,9 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 
 ### 15.5 仍待核实的清单（实施第一步逐项确认，确认后再动工）
 
-1. ComfyUI `/object_info`：ImageUpscaleWithModel / SaveImage / Min v（v2 超分工作流 schema）；
+1. ~~ComfyUI `/object_info`：ImageUpscaleWithModel / SaveImage / Min v（v2 超分工作流 schema）~~（**已闭合（十六审 spark 实测）**：三者存在；**更正节点名**：spark 1317 个 class 中无 Min v，真名=**MinNode**（display_name Min，custom_nodes.comfyui-logicutils，Category Math，input1/input2 通配→输出通配——S2-v2 这条依赖属 logicutils 而非 §0 所记 KJNodes）；ImageUpscaleWithModel required={upscale_model, image}→IMAGE；SaveImage required={images, filename_prefix}）
 2. 魔搭模型真实 ID：RIFE、SD1.5/SDXL-Inpaint、Wav2Lip(含 S3FD)、FunASR/Paraformer、F5-TTS（下一条=下载时长与大小登记）；
-3. Ref2VA 节点/模板（spark `/object_info` + 同事模板目录——未确认前 S7 只做 7a 探测）；
+3. ~~Ref2VA 节点/模板（spark `/object_info` + 同事模板目录）~~（**已闭合（九十六审全部取证）**：MiniMaxH3ReferenceToVideo 四 AUTOGROW 槽位 9/3/3/3、ref_videos=IMAGE 帧序列、LoadVideo/LoadAudio/GetVideoComponents 存在且输出槽序一致、双模板树定案=remote_workflows 权威——§7 十～十六审定稿）
 4. ~~混音扩展 mix_audio 双轨音量配比~~（**已由三审完成并回填**：mix_tracks 新建+接线+dB 修正+spark 测试通过）；**新增**：ESRGAN 批处理并行的**单卡并发路数与显存上限实测**（3-6min=待验证目标，非承诺）；**新增（五审）**：**建立 requirements/lock 文件口径**——仓库无任何依赖 pin 文件，S13/P2-P6 将引入 modelscope/FunASR/Wav2Lip/F5-TTS 等多套新依赖（独立 venv），无 lock 会快速产生依赖漂移与 venv 边界问题。
 
 **审核闭环**：以上即对审阅意见的完整应答；如审核方复轮，仅需针对 §15.1 未接受项说明理由。
@@ -262,3 +262,20 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **五、【低】测试套需从仓库根运行**：确认（runs/ 下 discover → 3 个 ModuleNotFoundError: No module named runs；仓库根 → 165 OK）；**已采纳**：handoff §2 单测命令补"必须从仓库根运行"；本应答记录（含十四审自述"第一次误判"的复现路径）。
 
 **机制**：本轮改动=代码/配置 2 处小修（tools.py:159 描述、pipeline.example.json 值+注释；均无行为面扩大：描述与 allowlist 一致化/example 默认值向运行配置对齐）+文档（§7/§7a/§7c/§13 回填）+changelog/session/handoff；单测基线 165 例重跑确认。
+---
+
+## 26. 十六审应答（2026-09-05 · spark 全量只读取证 + 分辨率/模板真相）
+
+**一、正面确认**：§0/§7/§13 的 spark 断言逐条实测为真（魔搭 302+1.39.1、torch 2.13.0+cu130、超分三文件+UpscaleModelLoader COMBO 确认、LoadVideo/LoadAudio 单 COMBO、GVC 输出槽序、AUTOGROW 9/3/3/3、ref_videos=IMAGE、templates_dir 一致）；**ref_image_size 口径更正**：required COMBO（options=[match,max]，default=match）而非 optional——API dict 必须始终携带该键（§7 引用已按此表述）。§15.5 第 1/3 项闭合（1 更正节点名=MinNode/comfyui-logicutils，非 Min v/KJNodes）。
+
+**二、高——768p 上限已查实（结论强于待探测）**：模型本体不施加 768p（width/height max=16384 step=32、ResolutionSelector megapixels max=16.0）；768p=项目侧硬编码 6 处（workflow.py:18-24 RESOLUTION_PRESETS/tools.py:260/792/capabilities.json 四 workflow params.resolutions/workflow_registry.py:193/h3_text2img.py:40）；**探测无需改代码**：params.py:200-204 逃生口（width+height 同时给出→绕预设表，%8、64-4096）+ h3_submit.py:285-286 --width/--height；**CLI-only**（tools.py 全文 width/height 0 命中，agent 路径够不着）；**口径冲突**：逃生口 %8 vs 节点 step=32 → 正确探测值=**1920×1088**（朴素 1920×1080 会通过项目校验但违反节点约束）；项目上限 4096 < 节点 16384。→ §13 已改写（含三合一探测提交方案=1920×1088+--lora none 一次定三事，**待用户授权队列空闲窗口**；若原生成立 P1b 立论消失、S2-v2 优先级重排）。
+
+**三、高——孤儿模板与设计 B 边界**：① `video_minimax_h3_flf2v.json`=孤儿（capabilities.json:262 在用 / §8 line 59 批量目标，但 sync 脚本 $names 与 pipeline.example remote_workflow_templates 均 6 项缺它——无 spark 源、不可追溯；解释"7 vs 6"差值；flf2v=本地扩展）→ §7 双树段补充；② 设计 B 边界：注入在转换后发生故不受 flatten 重排影响，但任何跨转换预置节点 id 逻辑不可用；设计 A 作用于子图模板会出现第二个 stale 簿记源（subgraph.py:243-246 只换 nodes/links；与十一审 ⑤ 同类）——§7 已补适用边界（A 仅适用 r2v 开放图）。
+
+**四、中**：§0 转换链行补完整链（convert→flatten→ui_to_api）与子图事实（4 份 video_ 中仅 r2v 开放图）；§15.3 S2-v2 预算行修正（作用域=单帧：11.8s/帧→124 帧≈24min，非"数十秒×N"）；ref_images tooltip 2048 短边封顶（downscaled to 2048 short edge if larger, never upscaled）→ §13 Inpaint/参考图增强记录（修复产物有效分辨率封顶 2048）。
+
+**五、低**：length 量化式（length ≡ 5 mod 17；5s→124、15s→362）→ §0 新增事实行+§2/§6 判据引用该式；三时长上限并存（60.0 仅警告/15s 能力上限/scheduler 冲突口径）→ §0 登记（事实口径=15s）；capabilities 工具级 schema /tools/1/params/seconds 无数值界 → §0 登记低项；pipeline.example.json:2 自相矛盾（追加修正未改正，字符串内仍写 config/templates）→ **已修**（改为 templates_dir 下模板文件名）；RealESRGAN_x4plus.safetensors 权限 600（同属主，ComfyUI 已正常读入）→ 仅记录。
+
+**六、唯一待真机项（不单方执行）**：1920×1088 + --lora none（20 步）探测提交（定：墙钟/显存、LoRA 768p+ 可用性、服务端 step 强制）——已登记 §13 + §15.5 对应更新（项 5 待用户授权队列窗口）；§15.5 第 2 项（魔搭真实模型 ID）仍未闭合（本轮=通道级验证 ≠ 模型可得）→ §13 三项"可行"维持通道级结论。
+
+**机制**：本轮文档/配置修订（§0/§7/§13/§15.3/§15.5 + pipeline.example.json 注释修正）；零行为面扩大；165 例单测基线重跑确认。

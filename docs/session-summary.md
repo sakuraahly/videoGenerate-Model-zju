@@ -850,6 +850,11 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.25 十六审闭环：spark 全量只读取证 + 768p 真相 + 孤儿模板/设计B边界（2026-09-05）
+- **正面确认**：§0/§7/§13 spark 断言全部实测为真；ref_image_size 口径更正（required COMBO [match,max]，API 必须携带）；§15.5 项 1/3 闭合（节点名更正=MinNode/comfyui-logicutils）。
+- **768p 真相（高·强于待探测）**：模型本体不施加（width/height max=16384 step=32 / ResolutionSelector megapixels max=16.0）；768p=项目侧硬编码 6 处列出；**探测无需改代码**（params.py:200-204 width+height 逃生口 + h3_submit --width/--height；CLI-only——tools.py 无 width/height，agent 够不着）；**口径冲突**：逃生口 %8 vs 节点 step=32 → 正确值=1920×1088；§13 已改写（三合一探测：1920×1088+--lora none，待队列窗口；若原生成立 P1b 立论消失、S2-v2 重排）。
+- **孤儿模板与设计 B 边界**：flf2v=本地扩展孤儿（capabilities 在用但无 sync 源——解释 7 vs 6）；B 不受 flatten 重排影响（转换后注入）但跨转换预置 id 不可用；A 作用于子图模板=第二个 stale 簿记源（subgraph.py:243-246）。
+- **其他**：§0 补完整链/子图事实/length 量化式（≡5 mod 17；5s→124）/三时长上限并存；§15.3 S2-v2 预算修正（作用域=单帧 11.8s/帧≈24min）；ref_images tooltip 2048 短边封顶（参考图增强上限）；pipeline.example.json:2 自相矛盾注释已修；§15.5 项 2（魔搭真实模型 ID）未闭合（通道级≠模型级）；唯一待真机=1920×1088 探测（不单方执行）。
 ### 20.24 十四审闭环：changelog 核验（正面）+ 双模板树分叉定案 + 模板内嵌官方文档三条回填（2026-09-05）
 - **changelog 抽查正面**：簿记四值精确/165 例绿可复现（仓库根）/官方 tag 原文命中/两处自我归因完整——§18 落地的 grep 落点机制确证生效。
 - **双模板树定案（ssh 实测）**：win+spark 的 config/pipeline.json（机器配置不入库）templates_dir 均=workflows/remote_workflows；sync 脚本目标=remote_workflows → **权威=remote_workflows**；config/templates 为历史副本（r2v 32KB/29 节点/8 图槽 vs 28KB/23 节点/3 图槽，5 个共享文件全部分叉、缺 flf2v）；处置=零副作用（不改 config/templates 内容；pipeline.example.json 默认值修正 + tools.py:159 描述与 allowlist 一致化）；§7a 补 pipeline.json 注册（stages/remote_workflow_templates/templates_dir 三处，不留则 7a 登记后 stage 不可提交）。

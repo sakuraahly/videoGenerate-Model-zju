@@ -1,5 +1,5 @@
 {
-  "_comment": "pipeline.json 公开示例（本机真实配置 config/pipeline.json 不入库）。复制为 config/pipeline.json 后，把 <用户名> 替换为远程主机上的实际用户名。流水线/多工作流注册表：default_stage 决定 run.bat/menu 默认阶段；template 为 config/templates 下模板文件名（扁平 API 直接提交；ComfyUI UI 格式由引擎在线转扁平 API）；builtin=h3_t2v 为内置本地生成器。手动/界面使用说明见 docs/manual-use-6-workflows.md。注意：文件是否能“本地模型”跑，以你的 ComfyUI 实例实际执行为准（若节点弹出登录/Unauthorized 属该节点插件实现，非本程序限制）。",（十四审：templates_dir 示例值改为 workflows/remote_workflows——与 win/spark 现行配置一致；config/templates 为历史副本树，仅当显式指定时才生效）
+  "_comment": "pipeline.json 公开示例（本机真实配置 config/pipeline.json 不入库）。复制为 config/pipeline.json 后，把 <用户名> 替换为远程主机上的实际用户名。流水线/多工作流注册表：default_stage 决定 run.bat/menu 默认阶段；template 为 templates_dir 下模板文件名（扁平 API 直接提交；ComfyUI UI 格式由引擎在线转扁平 API）；builtin=h3_t2v 为内置本地生成器。手动/界面使用说明见 docs/manual-use-6-workflows.md。注意：文件是否能“本地模型”跑，以你的 ComfyUI 实例实际执行为准（若节点弹出登录/Unauthorized 属该节点插件实现，非本程序限制）。",（十四审：templates_dir 示例值改为 workflows/remote_workflows——与 win/spark 现行配置一致；config/templates 为历史副本树，仅当显式指定时才生效）
   "default_stage": "t2v",
   "templates_dir": "workflows/remote_workflows",
   "remote_workflow_templates": {

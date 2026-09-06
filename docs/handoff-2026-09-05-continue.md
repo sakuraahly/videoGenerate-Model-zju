@@ -2,7 +2,7 @@
 
 > 用途：**让新 Agent 无缝接手规划任务**（不依赖原会话上下文）。本档自包含；
 > 与 `docs/handoff-2026-09-05-L-tasks.md`（book-14 L1–L5，已完成）互不覆盖。
-> 现状时间点：**十四轮外部审核闭环**（八轮=代码修复+真机验收；九-十一审=S7 规格专项；十二审=S1 专项+§7b 上传链；十三审=S12 专项；十四审=changelog 核验+双模板树分叉定案+模板内嵌官方文档回填——权威见 changelog §20-§25 与 pending-tasks-implementation §1/§7/§12 最新审定稿）；仓库双端干净。
+> 现状时间点：**十六轮外部审核闭环**（八轮=代码修复+真机验收；九-十一审=S7 规格专项；十二审=S1 专项+§7b 上传链；十三审=S12 专项；十五审（代码/验证轮）；十六审=spark 全量只读取证+768p 真相+孤儿模板/设计B边界——权威见 changelog §20-§26 与 pending-tasks-implementation §1/§7/§12 最新审定稿）；仓库双端干净。
 >
 > 一句话现状：规划书 `docs/pending-tasks-implementation.md`（S1–S13 + P2–P6）经 **10 轮审核**定稿（十审=S7 计数修正 + 主案改 API 层注入（apply_lora 同型）/GetVideoComponents 链/登记补全/两级验证判据），
 > 唯二被审出的**代码回归**（TTS 钩子两处 UnboundLocalError、workflow UI 存档缺失）已修复；
@@ -127,6 +127,9 @@ python runs/dev.py logs view -N / check / clean [--yes]
 | 上传链（十二审定稿） | `/upload/image` 端点：字段名 name="image"（与类型无关，:52）/Content-Type: application/octet-stream（:53）/type=input（:42）/subfolder 非空才追加→默认落 input/ 根目录（:58）；**ComfyClient.upload_image 可直接复用于视频/音频**（唯一未验证项=服务端是否校验扩展名/MIME——S7 7a 复核清单已加 curl .mp4 验证）；提交链=本地源文件上传→API 返回名 bind，input/user_uploads 镜像仅服务 refimage 列举（LoadImage 不认子目录，六审实测；ui_app.py:825 注释已修正） |
 | 模板树（十四审定案） | **权威=workflows/remote_workflows**（win+spark 的 config/pipeline.json templates_dir 均指它；sync_remote_workflows.bat 同步目标；capabilities/refimage 基准）；config/templates=历史副本（6 文件全分叉、缺 flf2v，仅显式指定才生效；未清理）——S7 只认 remote_workflows；pipeline.example.json 默认值已改正 |7a 除 capabilities.json 外必须注册 config/pipeline.json（机器配置不入库，spark 就地改：stages/remote_workflow_templates/templates_dir 三处） |
 | 官方模板文档（MarkdownNote id 116，模板内嵌） | Sampler=res_multistep；**BasicScheduler 模板值 simple**（官方建议参考密集用 beta/normal）；**ref_image_size 固定 match**（max=2048px short edge 更强身份保真、速度代价）；模型**原生 up to 2K**（链路上限 768p 来源待查，原生 1080p 待探测）；tag 契约原文=按连接顺序引用、精确匹配标签效果最佳 |
+| 分辨率真相（十六审） | 模型本体不施加 768p（width/height max=16384 step=32；ResolutionSelector megapixels max=16.0）；768p=项目侧硬编码 6 处（workflow.py:18-24/tools.py:260/792/capabilities.json×4/workflow_registry.py:193/h3_text2img.py:40）；**原生探测无需改代码**：params.py:200-204 width+height 逃生口（%8、64-4096）+ h3_submit --width/--height（**CLI-only，tools.py 无 width/height**）；**正确探测值=1920×1088**（逃生口 %8 与节点 step=32 冲突：1920×1080 会过项目校验但违规） |
+| 长度/图上限（十六审） | length 量化式（节点 131）：length ≡ 5 (mod 17)——5s→124、15s→362（勿用 seconds×24 推算）；ref_images tooltip：downscaled to 2048 short edge if larger never upscaled——参考图修复/增强产物有效分辨率封顶 2048 短边 |
+| 孤儿模板（十六审） | video_minimax_h3_flf2v.json=本地扩展孤儿：capabilities.json:262 在用（§8 --stage flf2v 目标）但 sync_remote_workflows.ps1 $names 与 pipeline.example remote_workflow_templates 均 6 项无它——无 spark 源、不可追溯，仅本地镜像（解释 7 vs 6） |
 | ffmpeg | volume dB 语义：`0.0`=-91dB 静音、`-12.0`=0dB 削波、`-12dB`=正确衰减；amix 需 `normalize=0`；`-shortest` 会截断（用 apad+`-t duration`）；音轨替换用 tmp+rename（原地写会 EIO） |
 | argparse | `--rate -8%` 会被当旗标 → 必须 `--rate=-8%`；`--tts-voice` choices=[xiaoxiao,yunxi,两全名] |
 | TTS | edge-tts 经 CLI 子进程调用（`_edge_tts_cmd` 三路探测 qwen-agent-venv）；**偶发 NoAudioReceived 网络抖动**（会以 `tts_error err=ValueError` 落日志，主产物不受影响——这不是代码缺陷，重试即好） |
