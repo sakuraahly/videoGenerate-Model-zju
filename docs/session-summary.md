@@ -850,6 +850,10 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.23 十三审闭环：S12 专项——五项定案（独立文件/魔术值接口/对话确认轮签发/轮末失效/宽路径保留收窄）（2026-09-05）
+- **五项定案（零代码改动，S12 待实施）**：① token 存独立 `<cid>.grants.json`（meta.json 每轮被 ui_app.py:160-163 w 模式 3 键覆写=静默丢失）+tmp+replace 原子写（仿 tts.py:194），**不改会话保存热路径**；② 接口=魔术值 `session=shared-<target>`（normalize_session 增前缀识别，禁止原样透传——现状会静默空结果+反向引导 --scope-all），--scope-shared 作废；③ 签发者=对话显式确认轮（新白名单工具 grant_refs + 本轮用户消息含授权声明启发式；禁止模型/自动签发；audit 兜底；UI 弹窗=可选增强）；④ 生命周期=轮末失效（绑 turn_id，一轮内可重复读=LLM 重试安全；increment_turn_id ui_app.py:1099 后自动失效）——"用后即焚"语义从"一次调用"改为"轮末"；⑤ session=all 保留但登记收窄（不退役/不要求 token；工具描述优先引导 shared-<target>；S12 不改变 --scope-all 暴露面，收窄需另立项）。
+- **自我归因接纳**：签发者缺口部分源自审查者一轮建议（"用户点名→生成 token→用后即焚"未指定签发者）——已补齐。
+- **登记下一轮覆盖**：changelog 本身（~227 行，唯一从未完整核验的事实性容器）→ S13 模型可得性 → §15.3 GPU 预算表。
 ### 20.22 十二审闭环：S1 专项（两处前提性错误）+ §7b 上传链确证（2026-09-05）
 - **S1 前提更正 x2（均高）**：① _known_shas（ui_app.py:755-774）是 log.jsonl 的 sha 集合（"曾上传过"），非存在性判定→_asset_available 必须做文件系统存在性检查（_known_shas 仅候选集）；② 可用性判据只在本地——提交链=本地源 upload_image（h3_submit.py:468→comfy.py /upload/image subfolder="" → input/ 根 → API 返回名 bind :486）；input/user_uploads 镜像仅服务 refimage 列举（refimage.py:105 递归扫）；ui_app.py:825 "LoadImage 立即可见"注释错误（LoadImage 仅认 input/ 根目录）→ 判据="本地可重新上传即可用"，spark 镜像不作判据。
 - **S1 补第三改动点**：ui_app.py:1411-1417（_thumbs 裸字符串+回退 str(src)）元组化+回退路径 caption 兜底；gallery 4 写点中 :1376 无需改。

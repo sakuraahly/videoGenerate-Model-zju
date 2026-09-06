@@ -128,8 +128,14 @@ S11=§3.2 图片解析收敛（assets.py 重构）：价值/风险比低，登�
 
 ## 12. S12 跨会话「显式共享区」选项
 
-**设计（定稿=一次性 token，七审回填——原 CheckboxGroup+shared_from[] 持久授权方案已于首轮审核否决）**：用户点名『用第 X 会话的素材』→ 系统生成一次性 token 写入目标会话 `logs/agent_chats/<cid>.meta.json`（`grant_tokens:[]`，含来源会话/一次性/过期）→ `list_references --session shared-<target>` 校验 token（存在且未用）→ **用后即焚**（token 从 meta 移除）；无 token 一律拒绝（默认不授权，与 book-05 边界一致）。
-**实现**：`refimage.py`（token 生成/校验/销毁 + `--scope-shared` 仅对持 token 目标生效）+ `tools.py list_references` 透传 `session=shared-<target>`（**UI 无需新增控件**——用户自然语言点名即触发，token 由调试点写入）。**风险**：token 生命周期（一次性+过期+来源校验）；实现排在 S9 之后。工作量：中。
+**设计（十三审定稿——五项全部定案；原"写入 meta.json / --scope-shared flag / 调试点签发 token"三处设计废止后重写）**：用户点名『用第 X 会话的素材』→ 系统生成一次性 token 写入**独立文件** `logs/agent_chats/<target>.grants.json`（**不写入 meta.json**——该文件被 ui_app.py:160-163 以 3 键字面字典每轮 w 模式无条件覆写，写入即静默丢失；独立文件避开热路径、无需回合话保存逻辑）；grants 文件**必须 tmp+replace 原子写**（仿 tts.py:194 先例；meta.json 是仓库少数非原子写持久化点、三写者无锁，本项目不复用该模式）→ `list_references --session shared-<target>`（**接口定稿=复用 session 魔术值 shared-<target>，不新增 CLI flag**；`--scope-shared` 方案作废——两方案改动面差异见实现 3）校验 token → **轮末失效**（生命周期绑定 turn_id：grant 时记录 turn；一轮内可重复读——LLM 重试安全；下一轮 `increment_turn_id`（ui_app.py:1099）后自动失效，无需持久的"焚毁"状态机）。
+**实现（十三审定稿——五处触发点齐列）**：
+1. **存放与签发存储**：`refimage.py` 增 `grant <target> <turn_id> [--ttl]`（token 生成/原子写/校验/失效回调；会话删除时随 jsonl/meta 一并清 grants，`session_cleanup` 加一行）；token 字段={target_cid, src_cid, turn_id, expires, used:false}。
+2. **签发者=对话显式确认轮（人类弱在环定稿）**：`tools.py` 增白名单工具 `grant_refs(target, reason)`——**仅当当前轮用户消息含明确授权声明**（启发式：用户消息含"允许/可以/同意/用…素材"且指明目标会话）时放行；**模型自行签发/自动签发=禁止**（与"默认不授权"一致；audit 留痕；更强在环=UI 瞬态确认弹窗列为可选增强，不阻塞）。scheduler.py:55 情形②（素材授权询问）/scheduler.py:121/123 铁律（须用户明确授权并指明）已有落点。**代价登记**：弱在环（启发式可被绕过，纵深防御下有 audit；显式弹窗为后续增强）。
+3. **接口与解析（magic 值定稿）**：`normalize_session`（refimage.py:259-269）增 shared- 前缀识别（拆出 target，返回特殊标记，禁止原样透传——现状 shared-X 会按 cid 过滤→静默空结果且提示语反向引导）；`cmd_list`（:309-317）增 shared 分支（校验 token→通过则按 target 过滤；失败=区分"未签发/过期/已失效"三种提示——含"注：token 若写入 meta.json 会被会话保存覆写"的排障提示）；`tools.py:441-448` 分派点增第三分支；**同节提示语反引导修正**（:306/:313 "如需全部素材请用 --scope-all"→改为指向 shared-<target> 精授权路径；--scope-all 仅保留用户显式授权语义）。
+4. **宽路径定稿（session=all 去留=保留但登记收窄）**：不退役、不要求 token（既有功能+工具描述已要求"用户明确授权"）；**收窄引导**=list_references 工具描述升级（"单会话共享请用 shared-<target>（精授权，需用户确认后签发）；确需全部素材（--scope-all）仍要求用户明确授权并明示暴露面"）。**登记**：S12 不改变 --scope-all 的暴露面（若未来收窄 --scope-all 需另立项，非 S12 范围）——这是 S12 安全收益的上限，如实标注。
+5. **与重试交互定稿**：token 一轮内可重复读（"用后即焚"语义=轮末失效，非一次调用焚毁）——杜绝"LLM 重试→token 已焚→空结果→模型回退 --scope-all"的退化（十三审 §四，比一次性调用更优）。
+**风险**：token 生命周期（轮末失效+过期+来源校验+与重试交互——一轮内重复读安全）；弱在环（对话确认+启发式，audit 兜底）；--scope-all 暴露面未收窄（登记）；实现排在 S9 之后。工作量：中。
 
 ## 13. S13 远期池（**当前结论**；演变见 changelog）
 

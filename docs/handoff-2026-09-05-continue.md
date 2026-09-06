@@ -2,7 +2,7 @@
 
 > 用途：**让新 Agent 无缝接手规划任务**（不依赖原会话上下文）。本档自包含；
 > 与 `docs/handoff-2026-09-05-L-tasks.md`（book-14 L1–L5，已完成）互不覆盖。
-> 现状时间点：**十二轮外部审核闭环**（八轮=代码修复+真机验收；九/十/十一审=S7 规格专项修订；十二审=S1 专项+§7b 上传链确证——权威见 changelog §20-§23 与 pending-tasks-implementation §1/§7 十二审定稿）；仓库双端干净。
+> 现状时间点：**十三轮外部审核闭环**（八轮=代码修复+真机验收；九-十一审=S7 规格专项；十二审=S1 专项+§7b 上传链；十三审=S12 专项——权威见 changelog §20-§24 与 pending-tasks-implementation §1/§7/§12 最新审定稿）；仓库双端干净。
 >
 > 一句话现状：规划书 `docs/pending-tasks-implementation.md`（S1–S13 + P2–P6）经 **10 轮审核**定稿（十审=S7 计数修正 + 主案改 API 层注入（apply_lora 同型）/GetVideoComponents 链/登记补全/两级验证判据），
 > 唯二被审出的**代码回归**（TTS 钩子两处 UnboundLocalError、workflow UI 存档缺失）已修复；
@@ -107,7 +107,7 @@ python runs/dev.py logs view -N / check / clean [--yes]
 | S6（§6） | tools.py schema `tts_voice`（enum=**短名** xiaoxiao|yunxi，工具透传短名不映射——八审 Option A）、`tts_font_size`、SYSTEM 台词规则一句 | 归一已在 h3_submit 入口；判据=`start argv 含 --tts-voice yunxi` 且 `tts_done voice=zh-CN-YunxiNeural`（全名） |
 | S9（§9） | dev.py `sessions list/export/search`（glob `*.jsonl`，复用 `session_cleanup.CHATS_DIR`） | 新增 CLI 子命令 |
 | S10（§10） | `quality.py`（质量评估）+ `dev.py quality-report` | 用 `probe_av()`（单 ffprobe 不限流按 codec_type 分拣）；src 源 |
-| S12（§12） | 一次性访问 token 设计（grant_tokens:[]、用后即焚、来源校验、UI 无需新控件） | 七审定稿；勿回归 CheckBoxGroup 旧设计 |
+| **S12**（§12） | 一次性访问 token（跨会话精授权；**十三审定稿**：token 存独立 `<cid>.grants.json` 原子写——meta.json 每轮被覆写不可存；接口=`session=shared-<target>` 魔术值；签发=对话确认轮+grant_refs 白名单工具（禁止模型自签）+本轮用户消息授权声明守卫；生命周期=轮末失效（绑 turn_id，一轮内可重复读=重试安全）；--scope-all 保留但登记收窄 | 定稿；勿回归 CheckBoxGroup 旧设计/勿写 meta.json/grant_tokens；S12 不改变 --scope-all 暴露面（收窄需另立项） |
 | S11（§11） | 空（无任务） | — |
 | S13（§13） | 当前结论表（F5-TTS/音色扩展等远期） | 音色映射复用 `tts.VOICE_ALIASES` |
 
