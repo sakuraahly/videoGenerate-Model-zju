@@ -852,6 +852,11 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 
 
 
+
+### 20.61 队列空闲监听+复检（用户指示）+ S7 二级真机提交——2026-09-06
+- 用户指示：先监听队列状态，得到空闲结果后**复检**确认再入队；任务可插入等待队列（--submit-only），运行结果用项目工具（h3_submit --resume / task_watch）监听收取。
+- 新工具 `runs/h3/queue_watch.py`（idle 状态机：连续 N 次探测全空才 QUEUE_IDLE_CONFIRMED；busy/不可达重置 streak；不可达=忙失败安全；once 快照）；7 单测绿。
+- 实测：用户任务结束后队列空闲 → `idle --confirm 3` 复检通过（14:19:30/40/50 三连 idle）→ 插入 S7 二级任务：r2v 360p/5s/ref2v_4step + 参考图×2（模板 2 槽已接线，绑定同一客厅图×2+<Picture 1>/<Picture 2> 双 tag）+ 参考视频 分镜视频-#1.mp4 + 参考音频 老人缓慢讲述.mp3（<Video 1>/<Audio 1>）→ TASK_SUBMITTED `df684e84-d48e-48fe-86dc-fa5e2a197200`（提示：媒体注入 3 节点视频 1+音频 1；LoRA ref2v_4step 注入 3 处）→ `h3_submit --resume` 轮询中（后台 pwsh-33）。
 ### 20.60 S7 参考视频/音频原生支持（book-19 最大工程）——2026-09-06 实施（二级待真机）
 - 7a 登记（十九审定稿=扩展现有 video_r2v）：capabilities slots.videos/audios=reference×3 + features.reference_videos=true + reference_media note；object_info 在线复核四节点全绿（ref_videos/ref_video_audios/ref_audios=AUTOGROW_V3 max=3、prefix=ref_video_/ref_video_audio_/ref_audio_、子输入 IMAGE/AUDIO；LoadVideo file/LoadAudio audio=COMBO input 根；GVC 输出 images/audio）；add_local 扩展 slots=/features= kw；template_health 设计 B 分型（videos/audios 不数模板行，仅复核注入目标前缀节点存在——取 inject_spec.class_prefix）。
 - 7b 主案（API 层注入，循 apply_lora 先例）：stage.inject_media_refs——LoadVideo(file)→GetVideoComponents(video) 拆帧拆声→ref_videos.ref_video_i=[gvc,0]+ref_video_audios.ref_video_audio_i=[gvc,1]；LoadAudio→ref_audios.ref_audio_j=[la,0]；数字串 id>现有 max（避开 apply_lora 字符串 id 脆弱史）；守卫（无目标/超 3 报错）；h3_submit --videos/--audios（复用 upload_image 落 input 根）+ 引擎层 tag 契约校验（--no-check-media-tags 降级）+ job 持久化/resume 恢复；dry-run 仅打印计划。

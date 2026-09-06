@@ -465,3 +465,10 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **一、实现**：7a 登记（capabilities video_r2v slots.videos/audios 3+3、features.reference_videos=true；add_local slots=/features= kw；template_health 设计 B 分型+注入前缀校验；object_info 四节点在线复核全绿——ref_videos/ref_video_audios/ref_audios 均 AUTOGROW_V3 max=3，prefix=ref_video_/ref_video_audio_/ref_audio_）；7b 引擎（stage.inject_media_refs API 层注入 LoadVideo+GetVideoComponents→ref_videos.ref_video_i [gvc,0]+ref_video_audios.ref_video_audio_i [gvc,1]、LoadAudio→ref_audios.ref_audio_j；数字串 id>146；h3_submit --videos/--audios+upload_image 复用+引擎 tag 校验+dry-run 短路+job 持久化/resume 恢复）；7c 工具/提示词（CallComfyUI videos/audios schema+拼装前双通道校验；SYSTEM_MESSAGE 媒体 tag 规范；prompts media_tag_set/missing_media_tags）。
 **二、验证**：8 单测（test_s7_media.py：注入字段/槽位键/GVC 输出槽 0=images 1=audio/守卫/0-based 多槽/tag 正反/注册表扩展）+ 全套 249 绿；一级在线 PASS（spark convert 20 节点+注入 5 节点断言）；二级真机=待队列窗口（用户任务占用）。
 
+
+## 44. 队列空闲监听+复检 queue_watch（2026-09-06 用户指示）
+
+**需求**：共享队列纪律——加入长任务前先监听队列，得到空闲结果后**复检**（连续 N 次探测全空）确认真的空闲再入队；监听工具复用项目工具收取运行结果。
+**实现**：uns/h3/queue_watch.py——once（单次快照 QUEUE_STATE=idle/busy/unreachable）/idle（轮询状态机：streak=连续 idle 探测次数，busy/不可达重置，streak≥--confirm（默认 2）→ QUEUE_IDLE_CONFIRMED exit 0；超时 → QUEUE_BUSY_TIMEOUT exit 2；**不可达视为忙=失败安全**）；复用 comfy.ComfyClient.queue_pids（低重试 1/超时 5s 适合轮询）；7 单测（状态机重置/复检/超时/CLI）。
+**应用**：S7 二级真机前置——用户任务结束后先 idle --confirm 3 复检通过 → 提交 r2v 任务（--submit-only 入队不阻塞）→ h3_submit --resume <prompt_id> 轮询结果（本项目工具）。
+
