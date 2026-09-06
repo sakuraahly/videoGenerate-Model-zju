@@ -114,6 +114,10 @@ SYSTEM_MESSAGE = """\
   并必须包含固定语义句："The reference images (scene/character/props) are locked
   throughout the whole shot; they are NOT first-frame/last-frame keyframes; keep every
   frame consistent."；严禁把参考图当作首帧/尾帧关键帧描述。
+- **参考媒体 tag（S7）**：提交 videos/audios 时，提示词必须用 <Video N>/<Audio N> 引用
+  每个参考视频/音频（<Video 1>=第 1 个连接参考视频、<Audio 1>=第 1 个连接参考音频，
+  与 videos/audios 列表顺序一一对应）；并显式说明哪个参考驱动哪部分镜头
+  （视频=动作/运动参考、音频=氛围参考）；缺 tag 或顺序错位=静默错配，引擎会拒绝提交。
 - **r2v 生成后校验（强制）**：提交前核对提示词中 <Picture 1..N> tag 数量==参考图数
   （N=images 数量）；缺失即**不提交**，补 tag/重写提示词后再提交（改用
   --no-check-ref-tags 属已登记的降级，非默认）。

@@ -220,6 +220,57 @@ def apply_lora(wf: dict, lora_id: str, lora_map: dict) -> int:
     return changed
 
 
+def inject_media_refs(wf: dict, video_names, audio_names) -> int:
+    """S7 设计 B：API 层注入参考视频/音频（循 apply_lora 先例）。
+
+    - 视频 i（0-based，≤3）：新建 LoadVideo（file=<input 根远端名>）→
+      GetVideoComponents（VIDEO→images/audio 拆帧拆声）→ 写槽位键
+      `ref_videos.ref_video_i`=[gvc,0]（24fps 帧序列 IMAGE）、
+      `ref_video_audios.ref_video_audio_i`=[gvc,1]（同编号视频声轨 AUDIO）；
+    - 音频 j（≤3）：新建 LoadAudio（audio=<远端名>）→ `ref_audios.ref_audio_j`=[la,0]；
+    - 目标节点 = class_type 前缀匹配（AUTOGROW 子键注入，生产实证 12 次提交被服务端接受）；
+    - 守卫：目标节点缺失 / 视频>3 / 音频>3 抛 ParamError（dry-run 由调用方短路不调用）；
+    - 返回注入节点数（视频 2 节点/个 + 音频 1 节点/个）。
+    """
+    videos = [str(v) for v in (video_names or []) if str(v).strip()]
+    audios = [str(a) for a in (audio_names or []) if str(a).strip()]
+    if not videos and not audios:
+        return 0
+    if len(videos) > 3:
+        raise ParamError(f"参考视频最多 3 个（节点 AUTOGROW max=3），收到 {len(videos)}")
+    if len(audios) > 3:
+        raise ParamError(f"参考音频最多 3 个（节点 AUTOGROW max=3），收到 {len(audios)}")
+    targets = [(nid, n) for nid, n in wf.items()
+               if isinstance(n, dict) and str(n.get("class_type") or "").startswith("MiniMaxH3")]
+    if not targets:
+        raise ParamError("参考媒体注入目标节点未找到（class_type 前缀 MiniMaxH3）")
+    _tgt = targets[0][1]
+    ins = _tgt.setdefault("inputs", {})
+    # 注入 id 用数字字符串且 > 现有最大数字 id（避开 apply_lora 字符串 id 的 UI 存档脆弱史）
+    max_id = 0
+    for nid in wf:
+        try:
+            max_id = max(max_id, int(str(nid)))
+        except (TypeError, ValueError):
+            pass
+    cur = max_id + 1
+    added = 0
+    for i, vname in enumerate(videos):
+        lv = str(cur); cur += 1
+        gv = str(cur); cur += 1
+        wf[lv] = {"class_type": "LoadVideo", "inputs": {"file": vname}}
+        wf[gv] = {"class_type": "GetVideoComponents", "inputs": {"video": [lv, 0]}}
+        ins[f"ref_videos.ref_video_{i}"] = [gv, 0]
+        ins[f"ref_video_audios.ref_video_audio_{i}"] = [gv, 1]
+        added += 2
+    for j, aname in enumerate(audios):
+        la = str(cur); cur += 1
+        wf[la] = {"class_type": "LoadAudio", "inputs": {"audio": aname}}
+        ins[f"ref_audios.ref_audio_{j}"] = [la, 0]
+        added += 1
+    return added
+
+
 def text_token_map(gp: Any) -> Dict[str, str]:
     """把生成参数转为占位符映射（不含图片 token）。"""
     return {

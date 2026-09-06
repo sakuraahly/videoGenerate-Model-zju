@@ -128,6 +128,14 @@ def template_health(project_dir: Path, entry: dict) -> Tuple[bool, list]:
     got = sum(1 for n in nodes if n.get("type") == "LoadImage")
     if need and got < need:
         issues.append(f"LoadImage 槽位不足: 期望 {need} 实际 {got}")
+    # S7（设计 B）：videos/audios 在 API 层注入（convert 后），模板不预置节点——
+    # 不数模板行；本地侧只复核注入目标节点存在（能力线上复核=code-fact-registry）。
+    feat = entry.get("features") or {}
+    if feat.get("reference_videos"):
+        prefix = (entry.get("inject_spec") or {}).get("class_prefix") or "MiniMaxH3"
+        if not any(isinstance(n, dict) and str(n.get("type") or "").startswith(str(prefix))
+                   for n in nodes):
+            issues.append(f"参考媒体注入目标节点未找到: class_prefix={prefix}")
     return (len(issues) == 0), issues
 
 
@@ -175,29 +183,37 @@ def set_enabled(cap_path: Path, key: str, enabled: bool) -> tuple:
 
 
 def add_local(cap_path: Path, wid: str, template: str, **kw) -> tuple:
-    """新增一个 local 工作流条目（最小声明；随后用 validate 补齐字段）。
-    返回 (ok, 说明)。
+    """新增一个 local 工作流条目（最小声明；可用 slots=/features= 覆盖默认；
+    其余随后用 validate 补齐字段）。返回 (ok, 说明)。
     """
     cap = _load_capfile(cap_path)
     if any(w.get("id") == wid for w in cap.get("workflows") or []):
         return False, f"id 已存在: {wid}"
+    slots = kw.get("slots")
+    features = kw.get("features")
+    if not (isinstance(slots, dict) and isinstance(slots.get("images"), list)
+            and isinstance(slots.get("videos"), list) and isinstance(slots.get("audios"), list)):
+        slots = {"images": [], "videos": [], "audios": []}
+    if not (isinstance(features, dict) and "reference_videos" in features):
+        features = {"reference_videos": False, "per_segment": False, "audio": False,
+                    "negative_support": True}
     entry = {
         "id": wid, "engine": "local", "stage": str(kw.get("stage") or wid),
         "purpose": str(kw.get("purpose") or "待填: 用途说明"),
         "needs_images": str(kw.get("needs_images") or "unknown"),
         "slot": wid, "enabled": True,
         "template": template, "format": kw.get("format") or "ui",
-        "slots": {"images": [], "videos": [], "audios": []},
+        "slots": slots,
         "prompt_inject": {},
         "inject_spec": {},
         "params": {"resolutions": kw.get("resolutions") or ["360p", "480p", "540p", "720p", "768p"],
                     "seconds": {"min": 5, "max": 15}, "fps": 24, "steps": 20, "seed": "12345"},
-        "features": {"reference_videos": False, "per_segment": False, "audio": False,
-                     "negative_support": True},
+        "features": features,
     }
     cap.setdefault("workflows", []).append(entry)
     _save(cap_path, cap)
-    return True, f"已登记 {wid} (stage={entry['stage']})；请补全 slots/inject_spec 并 validate"
+    need = "需补全" if not slots.get("images") and not slots.get("videos") else "已带 slot 声明"
+    return True, f"已登记 {wid} (stage={entry['stage']})；{need}；请补全 inject_spec 并 validate"
 
 
 def swap_template(cap_path: Path, key: str, new_template: str, record_sha: bool = True) -> tuple:

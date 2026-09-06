@@ -216,8 +216,18 @@
             "count": 8
           }
         ],
-        "videos": [],
-        "audios": []
+        "videos": [
+          {
+            "role": "reference",
+            "count": 3
+          }
+        ],
+        "audios": [
+          {
+            "role": "reference",
+            "count": 3
+          }
+        ]
       },
       "prompt_inject": {
         "node_type": "PrimitiveStringMultiline",
@@ -245,10 +255,13 @@
             "match"
           ],
           "note": "max=<=2048px short edge, strong identity fidelity, slower (ref tokens per step); match=scaled to gen resolution, faster, weaker fidelity"
+        },
+        "reference_media": {
+          "note": "S7: videos/audios via inject_media_refs (API layer); <=3 each; ref_videos ref_video_N (24fps frames 2-15s), ref_video_audios ref_video_audio_N (same-numbered video soundtrack), ref_audios ref_audio_N (standalone)"
         }
       },
       "features": {
-        "reference_videos": false,
+        "reference_videos": true,
         "per_segment": false,
         "audio": true,
         "negative_support": true,

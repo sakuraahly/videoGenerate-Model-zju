@@ -295,6 +295,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-check-ref-tags", action="store_true",
                    help="book-19 §10 P1.5 校验开关: 关闭 r2v 参考 tag 契约校验"
                         "（默认开启: 提示词必须含 <Picture 1..N> 与参考数一致，缺失即拒绝）")
+    p.add_argument("--videos", type=str, action="append", default=None,
+                   help="S7 参考视频(本地路径/素材名; ≤3): 上传到 ComfyUI input/ 根后按连接顺序"
+                        "注入 ref_videos.ref_video_N 与 ref_video_audios.ref_video_audio_N；"
+                        "提示词须含 <Video N> tag 与列表一一对应")
+    p.add_argument("--audios", type=str, action="append", default=None,
+                   help="S7 参考音频(本地路径/素材名; ≤3): 注入 ref_audios.ref_audio_N；"
+                        "提示词须含 <Audio N> tag 与列表一一对应")
+    p.add_argument("--no-check-media-tags", action="store_true",
+                   help="S7 校验开关: 关闭参考媒体 tag 契约校验（<Video N>/<Audio N>；降级登记）")
     p.add_argument("--postprocess", type=str, default=None, choices=["none", "fast"],
                    help="book-14 T2: 完成后质量增强 none(默认)/fast(2x+降噪+锐化)")
     p.add_argument("--font-size", type=int, default=None,
@@ -485,6 +494,21 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
         else:
             image_names[f"image{i}"] = client.upload_image(img)
 
+    # S7：参考视频/音频解析+上传（复用 upload_image，落 input/ 根供 LoadVideo/LoadAudio COMBO；
+    # dry_run 不上传（随后注入短路，仅打印计划））
+    _vids = [str(x) for x in (getattr(args, "videos", None) or []) if str(x).strip()]
+    _auds = [str(x) for x in (getattr(args, "audios", None) or []) if str(x).strip()]
+    if len(_vids) > 3 or len(_auds) > 3:
+        raise h3params.ParamError(
+            f"参考视频/音频最多各 3 个（收到 videos={len(_vids)} audios={len(_auds)}）")
+    vids_remote: list = []
+    auds_remote: list = []
+    if not dry_run:
+        for v in _vids:
+            vids_remote.append(client.upload_image(h3stage._resolve_input_image(project_dir, v)))
+        for a in _auds:
+            auds_remote.append(client.upload_image(h3stage._resolve_input_image(project_dir, a)))
+
     tpath = Path(args.template).resolve() if args.template else \
         h3stage.template_path(pcfg, project_dir, stage)
 
@@ -575,6 +599,32 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
                         "[警告] r2v 提示词缺少\"参考图贯穿全片、非首帧/尾帧关键帧\"固定语义句"
                         "（tag 已通过校验；建议补句以加强身份/场景保真）。",
                         file=sys.stderr, flush=True)
+        # S7：参考媒体 tag 契约校验（<Video N>/<Audio N> 按连接顺序与列表一一对应；
+        # 双通道硬约束——防"tag 与槽位顺序错位=静默错配"）
+        if (_vids or _auds) and not used_builtin and not getattr(args, "no_check_media_tags", False):
+            _mv = h3prompts.missing_media_tags(prompt, len(_vids), "video")
+            _ma = h3prompts.missing_media_tags(prompt, len(_auds), "audio")
+            if _mv or _ma:
+                _parts = []
+                if _mv:
+                    _parts.append("<Video " + "、".join(str(i) for i in _mv) + ">"
+                                  + f"（应含 1..{len(_vids)}，与 videos 列表顺序一致）")
+                if _ma:
+                    _parts.append("<Audio " + "、".join(str(i) for i in _ma) + ">"
+                                  + f"（应含 1..{len(_auds)}，与 audios 列表顺序一致）")
+                raise h3params.ParamError(
+                    "参考媒体 tag 契约校验失败：提示词缺少 " + "；".join(_parts)
+                    + "。请按连接顺序引用（<Video 1>=第 1 个参考视频、<Audio 1>=第 1 个参考音频），"
+                    + "或显式 --no-check-media-tags 关闭（降级登记）。")
+        # S7：参考媒体注入（设计 B：API 层；dry-run 仅打印计划）
+        if _vids or _auds:
+            if dry_run:
+                print(f"[提示] 将注入 {len(_vids)} 参考视频 + {len(_auds)} 参考音频"
+                      f"（dry-run 未实际注入）", flush=True)
+            else:
+                _media_n = h3stage.inject_media_refs(wf, vids_remote, auds_remote)
+                print(f"[提示] 参考媒体已注入工作流（{_media_n} 节点；"
+                      f"videos={len(_vids)} audios={len(_auds)}）", flush=True)
         # book-12 B1：加速 LoRA 注入（LoraLoaderModelOnly + steps 4/8 覆写 + 日志同步）
         if getattr(args, 'lora', '') and args.lora != 'none':
             _lmap = {}
@@ -590,6 +640,12 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
         # book-11 bugfix：把解析后的参考图名挂到 args（main 的 submitted 行需要，防 NameError）
         try:
             args.resolved_images = [img.name for img in images]
+        except Exception:  # noqa: BLE001
+            pass
+        # S7：参考视频/音频清单挂到 args（main 持久化/冲对口径）
+        try:
+            args.resolved_videos = list(_vids)
+            args.resolved_audios = list(_auds)
         except Exception:  # noqa: BLE001
             pass
         return wf, gp, stage_id, used_builtin
@@ -768,6 +824,13 @@ def main(argv: Optional[list] = None) -> int:
             _jfs = (_job or {}).get("font_size")
             if _jfs and getattr(args, "font_size", None) is None:
                 args.font_size = int(_jfs)
+            # S7：resume 恢复参考媒体清单（CLI 显式优先）
+            _jv = (_job or {}).get("videos") or []
+            if _jv and not getattr(args, "videos", None):
+                args.videos = list(_jv)
+            _ja = (_job or {}).get("audios") or []
+            if _ja and not getattr(args, "audios", None):
+                args.audios = list(_ja)
             _p = (_job or {}).get("params") or {}
             if _p.get("width"):
                 gp = argparse.Namespace(width=int(_p["width"]), height=int(_p["height"]),
@@ -859,6 +922,9 @@ def main(argv: Optional[list] = None) -> int:
                 "postprocess": getattr(args, "postprocess", "") or "",
                 # S6：字幕字号持久化（resume 恢复；None/0=等比）
                 "font_size": getattr(args, "font_size", None),
+                # S7：参考视频/音频持久化（resume 恢复，供产物对冲）
+                "videos": list(getattr(args, "resolved_videos", None) or []),
+                "audios": list(getattr(args, "resolved_audios", None) or []),
                 "params": gp.workflow_dict() if gp else {},
                 "log_file": os.path.basename(run_log) if run_log else "",
                 "prompt_files": {

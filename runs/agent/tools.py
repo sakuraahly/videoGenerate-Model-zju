@@ -312,6 +312,14 @@ class CallComfyUI(BaseTool):
                 'type': 'string',
                 'description': '逗号分隔的参考图（文件名或素材 id）。i2v/flf2v 传入即绑定模板首帧/末帧槽位；r2v 按顺序绑定；不传则要求模板已用 refimage use 设好（否则报错）',
             },
+            'videos': {
+                'type': 'string',
+                'description': '逗号分隔的参考视频（S7；≤3；仅 r2v 生效；按连接顺序注入 ref_videos 槽位；提示词必须含 <Video N> tag 与列表一一对应——<Video 1>=第 1 个参考视频，驱动动作/运动参考）',
+            },
+            'audios': {
+                'type': 'string',
+                'description': '逗号分隔的参考音频（S7；≤3；仅 r2v 生效；按连接顺序注入 ref_audios 槽位；提示词必须含 <Audio N> tag 与列表一一对应——<Audio 1>=第 1 个参考音频，驱动氛围参考）',
+            },
             'lora': {
                 'type': 'string',
                 'enum': ['none', 'fl2v_4step', 'ref2v_4step', 'ref2v_8step'],
@@ -382,6 +390,31 @@ class CallComfyUI(BaseTool):
         if params.get('images'):
             for _img in [x.strip() for x in str(params['images']).split(',') if x.strip()]:
                 cmd.extend(['--image', _img])
+        # S7 双通道硬约束：提示词 <Video N>/<Audio N> tag 集合 == 列表索引集合（防静默错配）
+        try:
+            from h3 import prompts as _pr
+            _vs = [x.strip() for x in str(params.get('videos') or '').split(',') if x.strip()]
+            _au = [x.strip() for x in str(params.get('audios') or '').split(',') if x.strip()]
+            if len(_vs) > 3 or len(_au) > 3:
+                return f'错误：参考视频/音频最多各 3 个（videos={len(_vs)}, audios={len(_au)}）'
+            _pt = str(params.get('prompt') or '')
+            if _pt:
+                for _kind, _vals in (('video', _vs), ('audio', _au)):
+                    if _vals:
+                        _miss = _pr.missing_media_tags(_pt, len(_vals), _kind)
+                        if _miss:
+                            return (f'错误：提示词缺少 <{_kind.capitalize()} {_miss}> tag'
+                                    f'（videos/audios 必须与提示词一一对应：'
+                                    f'<Video 1..{len(_vs)}>/<Audio 1..{len(_au)}>；'
+                                    f'参考媒体按连接顺序引用，缺 tag 引擎层也会拒绝）')
+        except Exception:  # noqa: BLE001
+            pass
+        if params.get('videos'):
+            for _v in [x.strip() for x in str(params['videos']).split(',') if x.strip()]:
+                cmd.extend(['--videos', _v])
+        if params.get('audios'):
+            for _a in [x.strip() for x in str(params['audios']).split(',') if x.strip()]:
+                cmd.extend(['--audios', _a])
         if params.get('lora') and params['lora'] != 'none':
             cmd.extend(['--lora', params['lora']])
         if params.get('ref_image_size'):

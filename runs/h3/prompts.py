@@ -171,6 +171,8 @@ def write_slot_texts(
 # 映射：<Picture N>（1-based，N=按连接顺序第 N 张参考图）
 #   ↔ ref_images.ref_image_(N-1)（0-based 槽位键）。
 _REF_TAG_RE = re.compile(r"<\s*picture\s*(\d+)\s*>", re.IGNORECASE)
+_VIDEO_TAG_RE = re.compile(r"<\s*video\s*(\d+)\s*>", re.IGNORECASE)
+_AUDIO_TAG_RE = re.compile(r"<\s*audio\s*(\d+)\s*>", re.IGNORECASE)
 
 # 固定语义句（契约要求：参考图贯穿全片、非首帧/尾帧关键帧）。
 # 校验只强制 tag 数量==参考数；本句缺失以警告登记（模型措辞允许微调）。
@@ -191,6 +193,21 @@ def missing_reference_tags(prompt: str, n_refs: int) -> List[int]:
         return []
     have = reference_tag_set(prompt)
     return [i for i in range(1, n + 1) if i not in have]
+
+
+def media_tag_set(prompt: str, kind: str) -> set:
+    """提取 <Video N>/<Audio N> tag 集合（kind=video/audio；大小写不敏感）。"""
+    rex = _VIDEO_TAG_RE if str(kind).lower() == "video" else _AUDIO_TAG_RE
+    return {int(m) for m in rex.findall(str(prompt or ""))}
+
+
+def missing_media_tags(prompt: str, n: int, kind: str) -> List[int]:
+    """按连接顺序 1..n 检查缺失的 <Video/Audio N> tag 序号（n<=0 返回空）。"""
+    m = int(n or 0)
+    if m <= 0:
+        return []
+    have = media_tag_set(prompt, kind)
+    return [i for i in range(1, m + 1) if i not in have]
 
 
 def has_ref_persist_sentence(prompt: str) -> bool:

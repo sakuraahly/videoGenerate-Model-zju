@@ -22,9 +22,9 @@
 
 - 用途: reference-to-video: multiple reference images (character/scene/props; local template has 8 slots, grow-able via refimage grow)
 - 模板: `workflows/remote_workflows/video_minimax_h3_r2v.json`（format=ui）
-- 槽位: images=referencex8; videos=0; audios=0
+- 槽位: images=referencex8; videos=1; audios=1
 - 参数: resolutions=360p,480p,540p,720p,768p; seconds=5..15; fps=24; steps=20
-- 特性: audio, negative_support, ref_tag_required
+- 特性: reference_videos, audio, negative_support, ref_tag_required
 
 ## video_flf2v (stage=flf2v)
 
@@ -38,5 +38,5 @@
 
 - video_t2v (stage=t2v): images=none resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=negative_support
 - video_i2v (stage=i2v): images=first_framex1 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=negative_support
-- video_r2v (stage=r2v): images=referencex8 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=audio,negative_support,ref_tag_required
+- video_r2v (stage=r2v): images=referencex8 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=reference_videos,audio,negative_support,ref_tag_required
 - video_flf2v (stage=flf2v): images=first_framex1, last_framex1 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=negative_support
