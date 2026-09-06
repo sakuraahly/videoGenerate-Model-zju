@@ -1,7 +1,7 @@
 # 待做任务·具体实现规格（供外部 AI 审核）
 
 > 文档性质：把「甜点/待做任务」的具体实现方案（含现状复用、文件级步骤、验证方法、风险取舍）写清，供**另一位 AI 审核**；审核者只需审本文件+抽查引用代码（所有路径相对项目根 `D:/MY_CODING_PROGRAM/videoGenerate-Model-zju`，spark 同构 `~/videoGenerate-Model-zju`）。
-> 版本：2026-09-05 · 关联计划书：book-13 §6（S1-S14 总览）、book-14、book-15、book-18。
+> 版本：2026-09-06 · **19 轮审核定稿**（changelog §14-§29）· 执行入口=docs/planbook/book-19-execution-ready.md · 关联计划书：book-13 §6（S1-S14 总览）、book-14、book-15、book-18。
 > 审核者请注意：文档中「待核实」= 需实施期探测确认；「不承诺」= 结论性取舍，若不同意请批注理由。
 
 ---

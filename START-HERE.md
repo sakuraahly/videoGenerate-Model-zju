@@ -39,6 +39,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 | 10b | `docs/planbook/book-17-model-fabrication-defense.md` | **计划·待批准**：模型伪造工具调用纵深防御（白名单/Schema 前置校验/修复重试/钩子/幂等/审计/人在回路）+ 流程自动化合规（必用 dev.py + spark 项目文件口径）+ LoRA/低参验证策略 + T2b 语音链联动 | 批准后实施负责人 |
 | 10c | `docs/planbook/book-18-quality-prompts-and-clarity.md` | **已实施完成**：质量提示词固化（Q+/Q- 每轮注入+防漂移断言）+ 语音/文字清晰度加强（取舍表已定；听测通过） | 已归档 |
 | 10d | `docs/pending-tasks-implementation.md` | **待做任务·实现规格（当前定稿）**：S1-S13 各任务现状/实现/验证/风险/回滚 + 约束事实表（供外部 AI 审核与实施；审核应答演变见 `docs/pending-tasks-changelog.md`） | 待实施 |
+| 10d′ | `docs/planbook/book-19-execution-ready.md` | **执行就绪计划书（19 审后）**：执行总纲/打开门禁/执行顺序与规格索引/统一验收判据/资源纪律/回滚/执行记录模板 | 实施执行者（按序动工前必读） |
 | 10e | `docs/pending-tasks-changelog.md` | **审核应答与修订历史（§14-§19 及后续轮次）**：仅供追溯，不指导实施 | 存档 |
 | 10f | `docs/handoff-2026-09-05-L-tasks.md` | **book-14 L1–L5 交接（已完成批次）**：独立执行 Agent 规格与坑速查 | 已归档 |
 | 11 | `docs/dev-workflow.md` / `skills/dev-workflow.md` | **变更与交付工作流**：执行→修改→测试→自测通过→写入文档→双端核对→git 提交（含如何操作） | 所有改动者（改任何文件前必读） |
@@ -133,6 +134,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 | 日期 | 变更 |
 |---|---|
 | 2026-09-04 工具模块化计划 | 新增 docs/planbook/book-12-agent-tool-modular.md：Agent 工具自动化/模块化/通用化 + 多工作流配置驱动与便捷更换（注册表+适配器+动态 digest） |
+| 2026-09-06 执行就绪 | 19 轮审核闭环；新增 book-19 执行就绪计划书（打开门禁/执行顺序/统一验收/回滚/执行记录模板）；现场事故修复（上传清单回显/dup 去重镜像/缩略图并行/up_btn 清空）→ 进入执行阶段 |
 | 2026-09-04 待做池 | 新增 docs/planbook/book-13-backlog.md：实施状态总览 + P0-P2 待办 + 架构优化任务（绑定统一/解析收敛/单源/轮询成本）+ 新观察 |
 | 2026-09-04 日志计划 | 新增 docs/planbook/book-11-logging-system.md：日志系统治理与升级（全场景稳定/无垃圾/不错失 agent 行为与参数，含 dev.py logs 子命令规划） |
 | 2026-09-04 EIO经验 | docs/dev-workflow.md §10 记录 Windows ReplaceFileW EIO(1175) 根因与处置（重试/WriteAllText/读写顺序/转义教训）；skills 同步一行 |
