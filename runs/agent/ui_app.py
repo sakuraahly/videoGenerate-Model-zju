@@ -595,6 +595,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                                              {'role': 'user', 'content': f'[工具 {fname} 返回]\n{out}'}]
                                 cur.append({'role': 'user', 'content': '（任务已在队列中，直接查询取回即可，不要再提交）'})
                                 continue
+                        out = _run_tool(fname, fc.get('arguments'))
                         _tool_count[fname] = _tool_count.get(fname, 0) + 1
                         _LAST_TOOL = (fname, str(out or '')[:180])  # P0 受控续接：供 should_continue 与续接消息（进度摘要）
                         _tool_call_cache[tkey] = out
