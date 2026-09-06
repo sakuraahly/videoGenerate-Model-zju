@@ -481,3 +481,11 @@ uns/h3/queue_watch.py——once（单次快照 QUEUE_STATE=idle/busy/unreachable
 **产物**：spark outputs/video_42.mp4 → win outputs/video_46.mp4（567KB）；PROBE 608×352/24fps/124f/5.167s + AAC 32kHz/2ch/5.167s；抽帧 0.5s/4.5s 目检：场景锁定（与参考图一致）+ 推近运镜（参考视频驱动采纳）。
 **剩余判据**：音频是否确为参考声（老人声）采用——听测待用户/ASR（P 链④ FunASR 落地后自动判）；如实标注，不视为本批未通过。
 
+
+## 46. P 链④ ASR 客观验收冒烟记录（2026-09-06）
+
+**动机**：用户反馈④「人物语音不清晰、疑似胡言乱语」需要客观判据（原来只有听测）。
+**实现**：spark 独立 venv ~/ai/asr-venv（funasr-onnx 0.4.2 + modelscope 1.39.1；**未动 ai/venv**——期间 numpy 曾被降级 1.26.4，已恢复 2.5.2 防 ComfyUI opencv 冲突）；模型 iic/SenseVoiceSmall-onnx（model_quant.onnx 241MB + config/am.mvn/bpe.model，bpe 从 iic--SenseVoiceSmall 复制）；新工具 
+uns/h3/asr_check.py（ffmpeg 16k wav→SenseVoiceSmall(quantize)→ASR_TEXT/VERDICT；返回形态兼容 list[str]）。
+**首测（S7 二级产物 video_46 音轨）**：ASR_TEXT=you are and a seminal brings the blood on that is to serated it（英文乱语）；VERDICT=has-speech (human review)。**结论**：① 参考媒体音频被模型采纳（音轨有语音）但不复刻语义/节奏——与用户「很快的讲述声」反馈同源；② **用户反馈④得到 ASR 客观证据**（乱语）；③ 可辨析语音=项目 tts_text 链（已有，替代音轨）；P 链④判据=人工可复核文本（后续语义模型自动判）。
+

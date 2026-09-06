@@ -164,6 +164,7 @@
 - 超分-插帧：`AI-ModelScope/RIFE`（插帧；备注：Real-ESRGAN 4x-UltraSharp 在 ComfyUI 模板链已有，见 utility-gan_upscaler）；
 - 重绘：`AI-ModelScope/stable-diffusion-inpainting`；
 - 口型：Wav2Lip 魔搭无官方（iic/wav2lip、AI-ModelScope/Wav2Lip 均不存在）→ 用 GitHub 官方权重 + sglang-venv torch 推理（计划书 13 可行性路线标注）；SF3D 同理登记待查（不阻塞 P2/P3）。
+**P 链④ ASR 冒烟（2026-09-06 落地）**：`iic/SenseVoiceSmall-onnx`(ONNX 量化 241MB，模型+tokenizer 缓存于 spark ~/.cache/modelscope) + funasr-onnx(独立 asr-venv，**未污染 ai/venv**——numpy 已恢复 2.5.2)；新工具 `runs/h3/asr_check.py`（ffmpeg 提取 16k wav→SenseVoiceSmall→ASR_TEXT/VERDICT）。对 S7 二级产物 video_46 音轨首测：`ASR_TEXT: you are and a seminal brings the blood on that is to serated it`（英文乱语）——**印证用户反馈④「语音不清晰、疑似胡言乱语」**（模型以参考媒体音轨为氛围参考生成旁白，节奏速率不受控=「很快的讲述声」同源）；**处置**：可辨析语音=项目 tts_text 链（已有，替代音轨）；参考媒体音频语义边界=已登记（§13 音频行）；本判据=「人力可复核的客观文本」而非自动 pass/fail（人工判读/后续语义模型）。
 
 
 ## 12. 断点自动清理（2026-09-06 用户反馈：新任务总被断点拦）
