@@ -199,7 +199,8 @@ def replace_audio_only(input_video: Path, audio: Path, out: Path, dur: float = 0
 
 
 def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
-                               voice: str = DEFAULT_VOICE, srt_path: Path = None) -> dict:
+                               voice: str = DEFAULT_VOICE, srt_path: Path = None,
+                               fontsize: int = 0) -> dict:
     """book-14 T2b v2#3：合成中文语音 → 整句 SRT(0→语音时长) → 烧录字幕 → 替换音轨(apad 保时长)。
     返回 {'path', 'speech_dur', 'srt'}；全部失败即抛（不产半成品）。"""
     from h3.postprocess import render_subtitle
@@ -213,7 +214,7 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
         spd = synthesize(text, speech, voice=voice)
         srt = Path(srt_path) if srt_path else dest.with_name(dest.stem + ".srt")
         srt.write_text(f"1\n00:00:00,000 --> {_srt_time(spd)}\n{text}\n", encoding="utf-8")
-        render_subtitle(input_video, with_sub, srt)
+        render_subtitle(input_video, with_sub, srt, fontsize=fontsize)
         cmd = ["ffmpeg", "-y", "-i", str(with_sub), "-i", str(speech),
                "-map", "0:v", "-map", "1:a", "-c:v", "copy",
                "-filter:a", "apad,afftdn=nf=-25,loudnorm=I=-14:TP=-1.0:LRA=11", "-c:a", "aac", "-b:a", "192k"]

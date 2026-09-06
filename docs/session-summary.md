@@ -850,6 +850,10 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.47 S6 男/女声可选 + 字幕字号参数化（2026-09-06 实施，真机待队列空闲窗）
+- **实现**：tools.py CallComfyUI schema 增 tts_voice（enum 短名 xiaoxiao/yunxi/aria；八审 Option A：透传短名、归一在 h3_submit 入口）+ tts_font_size（integer）并转发 --font-size；h3_submit 增 --font-size（默认 None=等比 0.07x高）+ job 持久化 + resume 恢复；tts.attach_speech_and_subtitle 增 fontsize 透传；钩子两条路径（合并链 process/非合并 attach）均传 fontsize；SYSTEM_MESSAGE 台词规则补音色句（默认女声，用户指定男声 yunxi、英文 aria）。
+- **测试**：tests/test_s6_voice.py 4 例；165+27 绿。
+- **☆真机（队列空闲窗补验）**：指定 yunxi → argv 含 yunxi、tts_done voice=zh-CN-YunxiNeural、TTS_OUT 出现。
 ### 20.46 S3 T9 收尾（取消后任务表残留）——2026-09-06
 - **实现**：task_watch 增 mark_cancelled/is_cancelled 分层（(cid,pid) 登记；poll_single 前遮蔽→轮询立即终态化“已取消”；worker 完成判定含已取消→状态条“任务完成（含已取消）”）；CancelTask 取消成功后调用 mark_cancelled（不 clear_tasks——send 每轮开头已清、add_tasks 会重新登记，中途清会被覆盖）。
 - **测试**：tests/test_s3_mark_cancelled.py 4 例（登记/未登记/cid 命名空间/幂等）；165+53 绿。

@@ -290,6 +290,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         "（默认开启: 提示词必须含 <Picture 1..N> 与参考数一致，缺失即拒绝）")
     p.add_argument("--postprocess", type=str, default=None, choices=["none", "fast"],
                    help="book-14 T2: 完成后质量增强 none(默认)/fast(2x+降噪+锐化)")
+    p.add_argument("--font-size", type=int, default=None,
+                   help="S6 字幕字号(像素; 0/缺省=随分辨率等比 0.07x高; 建议不传)")
     p.add_argument("--width", type=int, default=None)
     p.add_argument("--height", type=int, default=None)
     p.add_argument("--seconds", type=float, default=None)
@@ -662,7 +664,8 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
                                         out_dir=(Path(project_dir) / "workflows"
                                                  / (task_folder.name if task_folder else "tts_prep")))
             _dst = _tts_src.with_name(_tts_src.stem + "_pp.mp4")
-            _pp.process(_tts_src, _dst, srt=_prep["srt"])  # 单次编码：增强+字幕
+            _pp.process(_tts_src, _dst, srt=_prep["srt"],
+                      fontsize=int(getattr(args, "font_size", 0) or 0))  # 单次编码：增强+字幕
             _tts.replace_audio_only(_dst, _prep["speech"], _dst, dur=_src_dur)
             print(f"TTS_OUT: outputs/{_dst.name} speech_s={_prep['speech_dur']:.2f} srt=yes", flush=True)
             print(f"POSTPROCESS_OUT: outputs/{_dst.name}", flush=True)
@@ -670,7 +673,9 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
                        f"speech={_prep['speech_dur']:.2f}s srt=yes merged_encode=1")
         else:
             # 非合并路径：attach_speech_and_subtitle(voice=...)（P1a 前 agent 唯一路径）
-            _res = _tts.attach_speech_and_subtitle(_tts_src, _tts_txt, voice=_voice)
+            _res = _tts.attach_speech_and_subtitle(
+                _tts_src, _tts_txt, voice=_voice,
+                fontsize=int(getattr(args, "font_size", 0) or 0))
             print(f"TTS_OUT: outputs/{_res['path'].name} speech_s={_res['speech_dur']:.2f} "
                   f"srt={'yes' if _res.get('srt') else 'no'}", flush=True)
             _log_event(f"tts_done file={_res['path'].name} voice={_voice} "
@@ -752,6 +757,10 @@ def main(argv: Optional[list] = None) -> int:
             _jpp = (_job or {}).get("postprocess") or ""
             if _jpp and getattr(args, "postprocess", None) is None:
                 args.postprocess = _jpp
+            # S6：resume 恢复字幕字号（CLI 显式优先）
+            _jfs = (_job or {}).get("font_size")
+            if _jfs and getattr(args, "font_size", None) is None:
+                args.font_size = int(_jfs)
             _p = (_job or {}).get("params") or {}
             if _p.get("width"):
                 gp = argparse.Namespace(width=int(_p["width"]), height=int(_p["height"]),
@@ -841,6 +850,8 @@ def main(argv: Optional[list] = None) -> int:
                 "tts_voice": getattr(args, "tts_voice", "") or "",
                 # S2-P1a：postprocess 持久化——resume(无参)时恢复，防增强参数丢失
                 "postprocess": getattr(args, "postprocess", "") or "",
+                # S6：字幕字号持久化（resume 恢复；None/0=等比）
+                "font_size": getattr(args, "font_size", None),
                 "params": gp.workflow_dict() if gp else {},
                 "log_file": os.path.basename(run_log) if run_log else "",
                 "prompt_files": {

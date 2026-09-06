@@ -273,6 +273,15 @@ class CallComfyUI(BaseTool):
                 'type': 'string',
                 'description': '中文台词/旁白文本（如“再见了，故乡。”）。用户要求说话/台词/配音时必须填写；任务完成后该文本会被 edge-tts 合成中文语音并替换视频音轨（T2b）。不填则保留原音轨。',
             },
+            'tts_voice': {
+                'type': 'string',
+                'enum': ['xiaoxiao', 'yunxi', 'aria'],
+                'description': '台词音色（S6：短名 xiaoxiao=女声(默认)/yunxi=男声/aria=英文美音女声；用户指定男声时用 yunxi；英文台词建议 aria）',
+            },
+            'tts_font_size': {
+                'type': 'integer',
+                'description': '字幕字号（像素，可选；缺省=随分辨率等比 0.07×高；一般不传）',
+            },
             'dry_run': {
                 'type': 'boolean',
                 'description': '仅验证参数不实际生成',
@@ -372,6 +381,10 @@ class CallComfyUI(BaseTool):
             cmd.extend(['--ref-image-size', str(params['ref_image_size'])])
         if params.get('tts_text'):
             cmd.extend(['--tts-text', str(params['tts_text'])])
+        if params.get('tts_voice'):
+            cmd.extend(['--tts-voice', str(params['tts_voice'])])
+        if params.get('tts_font_size'):
+            cmd.extend(['--font-size', str(int(params['tts_font_size']))])
 
         tool_timeout = 600 if params.get('wait_until_done') else 180
 

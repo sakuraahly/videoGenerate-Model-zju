@@ -399,3 +399,11 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **一、实现**：task_watch mark_cancelled/is_cancelled（cid+pid 登记，poll 遮蔽→已取消终态，worker 完成判定含 cancelled）+ CancelTask 成功路径调 mark（四审定稿：不 clear_tasks，防 add_tasks 覆盖）。
 
 **二、验证**：test_s3_mark_cancelled 4 例；165+53 绿；真机=720p/15s 提交后立即取消成功（归属校验+断点清理+工具链闭环）。
+
+---
+
+## 35. S6 男/女声可选 + 字幕字号参数化实施记录（2026-09-06）
+
+**一、实现**：tools CallComfyUI schema（tts_voice 短名enum/tts_font_size）+ 转发；h3_submit --font-size + job/resume 持久化；tts.attach fontsize 透传；SYSTEM_MESSAGE 音色句。
+
+**二、验证**：test_s6_voice 4 例；165+27 绿。真机=待队列空闲窗（当前 5 pending/1 running 未占）。
