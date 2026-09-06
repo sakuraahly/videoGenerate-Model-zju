@@ -850,6 +850,9 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.58 SGLang 存活保障守护（用户提议整合）——2026-09-06
+- sglang_guard.py（once/loop；健康探测/Comfy 阈值 32GB/自动拉起低耗参数/验证/防抖）+ start 脚本 MAX_RUN 引号修复；5 单测；tmux guard 常驻启动；book-19 §14 更新。S5 演练 FAIL 的恢复依赖不变（Comfy 释放），guard 将自动接管恢复。
+
 ### 20.57 S5 演练（授权执行·失败）——2026-09-06
 - 执行：队列空闲→nap（SGLang 本不在运行）→wake×3 档超时；手动 0.50/0.40/0.30 重启全失败=Not enough GPU memory（total_rest -1.4~-7.3GB）。
 - 根因：ComfyUI CUDA 池驻留 ~40GB（含 reserve 12+驻留模型）；SGLang 需 ≥~49GB；GB10 池不足。**SGLang 当前 DOWN，agent LLM 暂不可用**；ComfyUI/引擎正常。

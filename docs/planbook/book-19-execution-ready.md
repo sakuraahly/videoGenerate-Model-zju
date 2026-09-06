@@ -140,6 +140,7 @@
 **恢复尝试**：手动 tmux 重启 0.50/0.40/0.30（spec off）全部 RuntimeError=Not enough GPU memory for hybrid state cache（total_rest_memory 恒负：-1.4~-7.3GB）。
 **根因**：ComfyUI 当前 CUDA 池驻留 ~40GB（nvidia-smi compute apps 1672180=40.7GB；含 --reserve-vram 12+驻留模型栈），GB10 统一内存池不足以同时容纳 SGLang（需≥~49GB）。12:30 前 SGLang 可运行=当时 Comfy 占用更低。
 **影响**：agent 的 LLM（SGLang 8000）当前 DOWN；ComfyUI/工具链正常。**恢复依赖**：ComfyUI 侧驻留释放（用户工作流结束/模型重载；ComfyUI systemd 纪律=不重启、不代为操作）。
+**工具（用户提议整合）**：runs/agent/sglang_guard.py——自动监控+自动修复一体化守护（端口/v1/models 健康探测→ComfyUI 占用阈值判定→低占用自动拉起（mem=0.40/spec off/max_run=1，含引号修复）→验证→防抖 10min；once/loop 两模式；tmux guard 会话常驻；5 决策单测；日志 logs/sglang_guard.log。同期修复 start_sglang_coexist.sh MAX_RUN 引号 bug（echo 带 " 进值）。
 **llm_mem 档位缺陷登记**：wake 降额档（0.25/0.20/0.15）实际无法满足 SGLang 最小需求（≥~0.40 且需 Comfy 空闲），自适应降额区间错误——修复项（档位下限/与 Comfy 共享预算检测，后续实施）。
 
 ## 12b. 产物对照说明（用户疑问登记 2026-09-06）

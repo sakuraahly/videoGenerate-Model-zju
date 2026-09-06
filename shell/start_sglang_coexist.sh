@@ -73,7 +73,7 @@ exec "$VENV/bin/python" \
     --chunked-prefill-size "$CHUNK_SIZE" \
     --disable-prefill-cuda-graph \
     --trust-remote-code \
-    $( [ -n "$MAX_RUN" ] && echo --max-running-requests \"$MAX_RUN\" ) \
+    $( [ -n "$MAX_RUN" ] && echo --max-running-requests "$MAX_RUN" ) \
     $( [ "$PROFILE" = "nvfp4" ] && [ "$SPEC" = "on" ] && echo \
         --speculative-algorithm NEXTN \
         --speculative-num-steps 3 \
