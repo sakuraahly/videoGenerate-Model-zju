@@ -302,5 +302,25 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **九、低**：① 死重量三节点=comfyui-logicutils（§0 已补；KJNodes 表述精确化）；② ref_images tooltip 2048 短边（§13 Inpaint 已登记）；③ capabilities.json lora.dir=spark 绝对路径入库（与 pipeline.json 不入库口径不一致；Windows 恒无效）→ **登记低项**（机器相关值不该入库；下次涉及 capabilities 改动时一并回退为相对/注释——本轮不动避免行为面）。
 
 **十、仍不可验证**（不单方执行）：1920×1088+--lora none 探测（定：2.1MP 墙钟/显存、服务端 step=32 强制、原生画质）；**ref2v_4step v0.1 无标签=探测最不确定环节**（验证档 768p+ 行为未声明）；§15.5 项 2（魔搭真实模型 ID）未闭合（通道级≠模型级）。
+---
+
+## 28. 十八审应答（2026-09-05 · §3/§4/§5/§8/§9/§10 专项 + 共享队列安全）
+
+**一、【最高·已修代码】取消运行中任务=全局中断（与 §0 红线矛盾）→ 定向中断化**：
+- 取证成立：queue_probe.py:70 `Request(/interrupt, data=b"")` 空 body→server.py:1160-1189（0.34.3）`await request.json()` 抛 JSONDecodeError→`json_data={}`→走 `Global interrupt (no prompt_id specified)`→`nodes.interrupt_processing()`（进程级、不携带身份）；TOCTOU（:60 读队列/:67 判 running/:81 POST）+归属校验对中断无效+无条件清断点——三步全坏。
+- **已修**：`/interrupt` 改带 `{"prompt_id": pid}` body+Content-Type（服务端定向分支 `item[1]==prompt_id`→interrupt；未命中→skip 不误伤）；docstring/注释同步；last_job 清断点改 **tmp+replace 原子写**（:86-93；非原子写与 §12 meta.json 同类，补入清单）；py_compile+165 例全绿。
+- 对照（正面）：`/queue {"delete":[pid]}` 传 prompt_id 正确（server.py:1152-1156 `a[1]==id_to_delete`，item structure=(number,prompt_id,…)）——十八审自查"我怀疑传队列序号"不成立，如实记录。
+
+**二、【高·已修代码】CancelTask=7 工具中唯一缺参数归一（取消链必失败）**：tools.py:562 无 `_verify_json_format_args`（6/7 工具都有）+签名缺 Union 标注——JSON 字符串到达时 `isinstance(params,dict)` 为假→pid=整个 JSON 串→find_owned 必失败→"取消被拒"。**已修**（统一路径：`params = self._verify_json_format_args(params)`）；§3 前提链随之成立（mark_cancelled 分层设计以"CancelTask 能成功"为前提）。
+
+**三、【高·§4 规格修正】--segments 三处缺陷**（默认路径不可达：:292 `slot=="flf2v"` vs slot_list 返回 video_flf2v 等 8 槽+blueprints 键名不一致；段索引 1-based vs 0-based 静默错位+`:216-217` 不强制数量；验证 dry-run 不打 prompt+字面 `?` 残留）→ §4 已补"前提更正（十八审定稿）"段（双向对齐/0-based 统一/段数守卫/验证读落盘 manifest JSON）；工作量 小→小-中。
+
+**四、中**：§9 CHATS_DIR 双定义（session_cleanup.py:36+ui_app.py:40 同值独立定义——"唯一权威"表述更正+实施时抽公共常量；thumbs/ 子目录在 CHATS_DIR 下✓）+**§9 标 spark-only**（Windows 无 logs/agent_chats/）；§10 probe_av timeout=30 vs probe=60（低，备注已补）；config/llm.json `_comment` 编辑残片（"llm)；2)"孤立尾巴——**已修**（本机机器配置，不入库不同步；§4 line 60"已当场修正"实际留了残片——changelog §18 同型失败模式再现，记录）。
+
+**五、正面确证（勿再重查）**：§8 全部属实——queue_pids()（comfy.py:266-271）返回 Tuple[set,set]（running+pending 双集合；**十八审自查上轮"只返回 running"记述有误，更正**）；queue() 仅计数✓；history() 未知 id 返回 {}✓；类名 ComfyClient✓；retries/request_timeout 可构造✓；h3_batch 未引用 queue_pids/history（item 5 确为待做）✓。§5 三处行号精确（svc_main.py:3/117/118-129）✓。§10 quality.py 不存在/probe 只用 v:0 流/probe_av 已存在且 size 同源✓。§9 dev.py 无 sessions 子命令✓。§3 mark_cancelled 全仓 0 命中（待建）✓；clear_tasks/add_tasks=session_state.py:37/43、调用 ui_app.py:1098/1232 ✓（行号精确）。
+
+**六、优先级执行**：第一条已独立于 S3 立即修复（影响共享 GPU 他人任务、修复面极小——携 body 即用服务端定向分支）；二~四条=取消链/规格修正全部落地；§4 实施前置已并入规格。
+
+**机制**：本轮**代码修复 2 文件**（queue_probe.py 定向中断+原子写、tools.py CancelTask 归一）+配置文件（llm.json 残片，不入库）+文档（§3/§4/§9/§10/§12 清单补充）；断言双抽查后落地（16 份生产 BasicScheduler 键集）；165 例全绿。
 
 **机制**：本轮全部文档修订（§0/§7/§13/§15.3/§15.5/handoff），零代码改动；关键断言本地双抽查（16 份生产 BasicScheduler 键集、snap_length 111 点对比）后落地；决策与正文同步（回应"决策记录必须实际修改"）。

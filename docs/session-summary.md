@@ -850,6 +850,12 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.27 十八审闭环：§3-§5/§8-§10 专项 + 共享队列安全（2026-09-05）
+- **代码修复（生产安全，独立于 S3 立即处理）**：① queue_probe.py /interrupt 空 body=全局中断（server.py 0.34.3 实证：JSONDecodeError→Global interrupt→进程级 nodes.interrupt_processing；TOCTOU+归属校验对中断无效+无条件清断点=三步全坏）→ **定向中断化**（body={prompt_id:pid}，未命中服务端 skip 不误伤）+last_job 清断点改 tmp+replace 原子写；② CancelTask（tools.py:562）补齐 _verify_json_format_args 归一（7 工具中唯一缺失；不归一=参数当整个串送 find_owned 必失败）——§3 mark_cancelled 分层前提自此成立。
+- **§4 三处高**（--segments 默认路径不可达：slot=="flf2v" 裸名 vs slot_list 8 槽/blueprints 键名不一致；段索引 1-based vs h3_batch 0-based 静默错位+数量不强制；验证按字面不可执行+抓不到错位）→ §4 补十八审前提更正段（双向对齐/0-based/段数守卫/验证读落盘 manifest）；工作量 小→小-中。
+- **中**：§9 CHATS_DIR 双定义（session_cleanup.py:36/ui_app.py:40）"唯一权威"更正+实施抽公共常量；§9 补 spark-only；§10 probe_av timeout=30 vs probe=60 备注；config/llm.json _comment 残片已修（本机配置不入库；§4"已当场修正"实留残片——同型失败模式再现记录）。
+- **正面确证**：§8 全部属实（queue_pids 双集合——上轮"只返回 running"记述更正）；§5 行号精确；§10/§9 各项；§3 mark_cancelled 待建+行号精确；/queue delete 传 prompt_id 正确（十八审自查队序号怀疑不成立）。
+- **对照**：/queue delete 正确（server.py a[1]==id_to_delete）；/interrupt 已修。
 ### 20.26 十七审闭环：高爆炸半径专项（BasicScheduler键名勘误/连线覆写/设计B生产证据/768p=LoRA定案）（2026-09-05）
 - **键名勘误（最高影响）**：BasicScheduler 实际键=scheduler（required=[model,scheduler,steps,denoise]；COMBO options 含 simple/beta/normal）；16 份生产提交键集一致、全仓 scheduler_name 0 命中——§7 line 84 已改（stage.py:292 同点覆写 scheduler 键 + "scheduler" in ins 守卫），杜绝"决策记录无落地"与"无守卫直写每次 400"双失败。
 - **连线输入被标量覆写（最高影响）**：node 136 width/height/length=连线输入（115 ResolutionSelector/131 ComfyMathExpression），提交时被 apply_generation_params 覆写（608/352/124 实证）；node 115/131/132=零下游死重量（prune 早于覆写）；**length 侧等价**（snap_length vs 厂商表达式 111 点 0 差异，5s→124/15s→362——覆写安全）；**分辨率侧不等价：megapixels 杠杆不可达**（被 PRESETS 覆盖）→ §13 修正（唯一杠杆=预设表/--width/--height 逃生口）；§0 补输入链+死重量依赖（comfyui-logicutils 三节点，缺包提交 400）。

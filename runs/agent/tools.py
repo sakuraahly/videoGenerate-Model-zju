@@ -559,8 +559,9 @@ class CancelTask(BaseTool):
         'required': ['prompt_id'],
     }
 
-    def call(self, params, **kwargs) -> str:
+    def call(self, params: Union[str, dict], **kwargs) -> str:
         from h3 import queue_probe as _qp
+        params = self._verify_json_format_args(params)  # 十八审：7 工具中唯一的归一缺失——JSON 字符串参数此前被当整个串找 id（取消链必失败）
         pid = str(params.get('prompt_id') if isinstance(params, dict) else params or '').strip()
         res = _qp.cancel_owned_task(pid)
         if res.get('ok'):

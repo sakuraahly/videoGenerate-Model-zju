@@ -51,7 +51,7 @@ def find_owned(prompt_id: str) -> str:
 
 def cancel_owned_task(prompt_id: str, reason: str = "") -> dict:
     """book-14 T9：仅取消【归属校验通过】的任务。
-    运行中 → POST /queue {"interrupt":true}（仅当运行中的就是本任务时安全）；
+    运行中 → POST /interrupt（**定向中断 body={"prompt_id": pid}**——十八审修复：空 body 会被 ComfyUI 当作全局中断误伤同队列他人任务；定向中断未命中时服务端 skip 不误伤）；
     排队中 → POST /queue {"delete":[qid]}；不在队列 → 明确说明。"""
     who = find_owned(prompt_id)
     if not who:
@@ -65,9 +65,11 @@ def cancel_owned_task(prompt_id: str, reason: str = "") -> dict:
     pid = str(prompt_id)
     target = None
     if pid in running:
-        # 实测（ComfyUI 0.34.3）：/queue {"interrupt":true} 被接受但惰性；POST /interrupt 才是真中断
+        # 实测（ComfyUI 0.34.3）：/queue {"interrupt":true} 被接受但惰性；POST /interrupt 才是真中断；
         target = "运行中→中断"
-        req = urllib.request.Request(COMFY + "/interrupt", data=b"", method="POST")
+        req = urllib.request.Request(COMFY + "/interrupt",
+                                       data=json.dumps({"prompt_id": pid}).encode(),
+                                       headers={"Content-Type": "application/json"}, method="POST")
         _send = req
     elif pid in pending:
         target = "排队中→移除"
@@ -85,8 +87,10 @@ def cancel_owned_task(prompt_id: str, reason: str = "") -> dict:
         try:
             rj = ROOT / "last_job.json"
             if rj.exists() and str(json.loads(rj.read_text(encoding="utf-8")).get("prompt_id") or "") == pid:
-                rj.write_text(json.dumps({"schema": 1, "prompt_id": "", "remote_path": "",
-                                          "created_at": "", "updated_at": ""}), encoding="utf-8")
+                _tmp = rj.with_name(rj.name + ".tmp")
+                _tmp.write_text(json.dumps({"schema": 1, "prompt_id": "", "remote_path": "",
+                                             "created_at": "", "updated_at": ""}), encoding="utf-8")
+                _tmp.replace(rj)  # 原子写（十八审：last_job 非原子写与 §12 meta.json 同类）
         except Exception:  # noqa: BLE001
             pass
         return {"ok": True, "msg": f"已取消（{who}；{target}，断点已清）。{reason}", "resp": resp}

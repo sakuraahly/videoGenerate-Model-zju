@@ -52,13 +52,15 @@
 ## 3. S3 T9 收尾（取消后任务表残留）
 
 **现状**：`cancel_task` 取消成功即清 last_job 断点；但 `send()` 里 `all_pending_tasks/add_tasks(cid)` 登记仍在，`task_watch` 会继续轮询已取消 pid。
+**前提链补齐（十八审实测——原"取消成功即清断点"假定建立在不可达的取消路径上）**：CancelTask.call（tools.py:562）此前是 7 工具中唯一不做参数归一的（JSON 字符串参数当整个串送 find_owned 必失败）；且运行中取消 /interrupt 发空 body=**全局中断**（误伤同队列他人任务，与 §0 红线矛盾）。**两条已于十八审修复**（CancelTask 归一；queue_probe.py:68-73 定向中断 body={prompt_id: pid}+服务端未命中 skip；last_job 清断点改 tmp+replace 原子写）——§3 的 mark_cancelled 分层以"CancelTask 能成功"为前提，现已成立。**
 **实现（四审定稿：职责分层，防 add_tasks 覆盖撤销）**：`mark_cancelled(cid, pid)`=权威（负责发『已取消』done 事件并停止该 pid 轮询）；CancelTask 成功后仅调 `mark_cancelled`；**不**在 cancel 时调 `clear_tasks`（send() 每轮开头已清、line~1232 add_tasks 会重新登记——中途 clear_tasks 会被覆盖）；下一轮消息自然清空即止。
 **验证**：单测（mock task_watch 状态）；真实链=取消运行中任务后在会话继续「查询」→ 收到『已取消』而非轮询等待。工作量：小。
 ## 4. S4 idea2prompts `--segments` 真实验证 + 与 batch 衔接
 
 **现状（已取证）**：`h3_batch submit --prompts-file <json>` **已存在**，格式=按段索引的 JSON 字典 `{"0":"pos...","1":...}`（`runs/h3_batch.py:133-151`）；`idea2prompts --segments N` 已实现（book-13 #5）但**输出为 `video_flf2v.segment_<i>.positive.txt` 文件**（与 batch 期望不匹配），且从未用真实 LLM 跑过。
+**前提更正（十八审实测——原"已实现但格式不匹配"低估了问题）**：① **默认路径下 --segments 不可达**：idea2prompts.py:292 判定 `slot == "flf2v"`（裸名），而 slot_list()（:154-157）实际返回 `default, api_flf2v, api_r2v, api_t2v, video_flf2v, video_i2v, video_r2v, video_t2v`——无任何槽名等于 "flf2v" → `_write_segments` 永不执行（--segments 3 静默什么都不做、无警告；且 `--workflow flf2v` 强指时 blueprints 键是 video_flf2v → build_messages 取不到 label/extra → 丢失 flf2v 专属指导）；② **段索引基准差一且静默**：idea2prompts.py:220 1-based（segment_1..N）vs h3_batch.py:118/123 0-based（idx）→ --segments-json 若沿用 1-based 产出 {1..N}，h3_batch 查 "0"/"1"/"2"：idx0 静默回退、第 N 段永不被消费（批量照常成功、每段画面配错位提示词——与 §7c tag 硬约束同型静默错配，§4 无守卫）；③ **段数关系未声明**：h3_batch flf2v=N 图→N-1 段（range(len-1)）vs idea2prompts --segments n 写 n 段（且 :216-217 不强制数量、以 LLM 返回数为准）→ 调用方必须传 --segments (图数-1)；④ **验证方法抓不到错位**：h3_batch.py:161 dry-run 只打 SEG {idx}: images=，不打 prompt → 必须读落盘 manifest JSON 逐段比对 idx↔提示词；⑤ 验证命令含残留占位符 `--workflow video_r2v?`（字面 ?）且 video_r2v 既非 flf2v 也不能产出 flf2v 段——按字面跑得到 0 段。**实施前置（十八审定稿）**：双向槽名对齐（比较侧 slot=="flf2v"→改为匹配 video_flf2v 或 slot_list 内成员 + blueprints 查表侧用真实键）；idx 基准统一（建议 --segments-json 沿用 h3_batch 0-based 键）；段数守卫（--segments 不匹配时报错而非以 LLM 为准）；**以上为 §4 实现步骤 ① 的前置，工作量小 → 小-中（含对齐+守卫+验证改造）**。
 **实现（四审事实更正）**：① 改 `idea2prompts._write_segments`：追加 `--segments-json`（与 h3_batch `--prompts-file` 的 `{"0":..}` 结构对齐）；② 真实 LLM 验证：**`config/llm.json` 当前 enabled 已为 true**（非“临时启用”）；**base_url 归 `deploy.py --set` 管理**（四审实测:文件为 `:8011`（Windows 隧道形态；spark-local 下 deploy.py 切为 `:8000`）——**不得手改 base_url**）；验证=**在 spark 本机执行**（或先 `deploy.py --set spark-local`、事后还原形态）；跑 1 次 3 段校验 parse/写文件。**附**：`config/llm.json` `_comment` 误导（vLLM/tmux vllm）已当场修正为 SGLang/tmux sglang。
-**验证**：dry-run `python runs/h3/idea2prompts.py --idea ... --workflow video_r2v?`（flf2v 段）→ 打印 JSON；用 `h3_batch submit --stage flf2v --image a,b,c ... --prompts-file <json> --dry-run` 断言 manifest 携带每段提示词。工作量：小。
+**验证（十八审修正——按字面命令不可执行+抓不到错位）**：① 关键对齐后：`python runs/h3/idea2prompts.py --idea ... --workflow video_flf2v --segments N --segments-json`（**N=图数-1**）→ 打印/写入 0-based JSON（`{"0":..,"N-1":..}` 结构，与 h3_batch 键一致）；② `h3_batch submit --stage flf2v --image a,b,c ... --prompts-file <json> --dry-run`；③ **断言必须读落盘 manifest JSON 逐段比对 idx↔提示词**（dry-run 输出不含 prompt，仅看 dry-run 会漏错位）；④ 真实 LLM 验证在 spark 本机（llm.json 口径见上）。工作量：小-中。
 
 ## 5. S5 SGLang 销毁性自愈演练（selfcheck --llm）
 
@@ -122,11 +124,13 @@
 ## 9. S9 会话历史导出/搜索
 
 **现状（审核修订）**：`dev.py` **无 sessions 子命令**（零命中；`list_chats` 在 ui_app，非 dev.py）——**全新建**。**实现（七审清理回填）**：① `list` 须 `glob '*.jsonl'`（`logs/agent_chats/` 下有 `thumbs/` 子目录，遍历目录条目会把 thumbs 当会话）；② 路径常量**复用 `session_cleanup.CHATS_DIR`**（唯一权威）；③ 子命令=`dev.py sessions list` / `export <cid> [--out docs/exports/<cid>.md]` / `search <kw> [--cid]`（纯文件读）。
+**十八审更正**："唯一权威"表述不成立——`session_cleanup.py:36` 与 `ui_app.py:40` 各自独立定义同值 CHATS_DIR（ui_app.py:41 另有 THUMBS_DIR=CHATS_DIR/thumbs），今日同值但属典型漂移点；S9 实施时抽公共常量（或保持引用并注明双定义）；thumbs/ 子目录确实在 CHATS_DIR 下（glob 必要性成立）。**§9 标注 spark-only**：logs/agent_chats/ 在 Windows 克隆不存在（与 §1 同病），验证只能在 spark 做。
 **验证**：对真实会话 export（md 完整：用户/助手分段+UTC+8 时间戳）→ 目检；search '水墨' 命中既有会话。工作量：小。
 
 ## 10. S10 质量看板（quality-report）
 
 **现状（审核修订）**：`runs/h3/quality.py` **不存在**（零命中）——**全新建**。**实现（五审字段缺口修正）**：① `runs/h3/quality.py`（新建）：`append(path, prompt_id='')`——**四值来源明确**：ts=append 时自生成；prompt_id=调用点传参（h3_submit 在 PROBE 处持有）；bytes=`probe_av()` 返回的 size（与其余字段同源，**择一**；不另用 Path.stat）**audio 需 `postprocess.probe_av()`（五审新增：视频+音频双流探测——原 probe() 用 `-select_streams v:0`，音频结构性缺失）**；video 字段=PROBE/probe() 既有；② `compare(a,b)`（ffmpeg ssim）、`report()`；③ `dev.py quality-report`（新建）；④ h3_submit PROBE 后自动 append（probe_av）。工作量：小-中（含 probe_av 扩展与传参路径）。
+**十八审备注（低）**：probe_av 超时比 probe 紧（postprocess.py:38 timeout=30 vs :72 timeout=60）——§10 以 probe_av 为主取值源，大文件更易超时；实施时对齐超时或按文件大小选择探针。
 **验证**：对比命令在 video_19/24（已知 SSIM 0.864）复算一致性；report 输出含该记录。工作量：小-中（与 §10 实现估值一致）。
 
 ## 11. S11（不建议近期项）——规格留空
