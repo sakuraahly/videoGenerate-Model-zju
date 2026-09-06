@@ -48,6 +48,7 @@
 3. 增强滤镜链（现有 `process()`，纯 ffmpeg，无 GPU）：`scale=iw*2:ih*2:flags=lanczos` → `hqdn3d=1.0` → `unsharp=5:5:0.4`（各向异性 lanczos 放大；降噪=时域去低步伪影；锐化恢复边缘；参数均可 `--postprocess fast` 固定）。
 **超分方案（六审定稿——回填已确定事实，删除已撤回/未核实措辞）**：① v1 lanczos 保留兜底；② **v2 真实超分=本机已就位零下载**（§0 实测：`upscale_models/` 有 `RealESRGAN_x4plus.pth(+safetensors)` 与 `4x-UltraSharp.pth`）；**schema 已实测**（changelog 登记）：`UpscaleModelLoader` 输入键=**model_name**、`ImageUpscaleWithModel`=**upscale_model**、`LoadImage` 需 **input/ 根目录**（user_uploads 子目录不被解析）；工作流=`UpscaleModelLoader+ImageUpscaleWithModel+SaveImage`（经 `/prompt` 独立请求，不等 H3 生成队列）；**默认模型=4x-UltraSharp**（锐利/纹理优）；③ **倍率口径（六审更正）**：两模型均 **4x**——源 608×352→**2432×1408**；测试帧 1216×704→**4864×2816**（此前“1216→2432/2x”系误写）；按目标分辨率配合 lanczos 下采样即可得 720p/1080p/2K 档（如实标注=超分合成非原生）；④ 可选 RIFE 插帧（`frame_interpolation/` 为空→魔搭下载；`--interp 60fps`）；⑤ 顺序仍=增强→字幕/语音（合并单次编码）。**验证**：真实链 gen 一次（4 步 360p）：产物=1216×704、时长/帧数不变、字幕抽帧清晰、音轨 AAC 且时长=视频；`PROBE` 断言宽高。
 **风险**：**二轮审阅修正（撤回“已遵守”声明）**：旧链 process+render_subtitle 曾为两次 CRF18；现已重构为合并单次编码（process 支持 srt 并入同一 -vf；run_full 同步；钩子 fast+tts 并存走合并链）——实测：video_31 离线合并链 2.4s，产物 1216×704/5.167s，字幕比例字号（0.07×704≈49px，旧绝对 20px 已废）帧目检清晰。P1 拆分：**P1a=默认 lanczos fast（单次编码，即时收益）**；**P1b=--esrgan 交付档可选（单帧实测 ~11.8s，测试帧 1216×704→**4864×2816**（4x，与 line 40 口径一致）；串行 124 帧≈24min——成本一个数量级，仅精品/交付显式启用；先做批处理并行优化，目标 3-6min，未优化前禁默认）**。工作量：P1a 小-中；P1b 中。
+> **P1a 状态：✅ 已实施（2026-09-06，见 changelog §33）：tools.py 默认 --postprocess fast + postprocess job 持久化 + resume 恢复补丁。**
 
 ## 3. S3 T9 收尾（取消后任务表残留）
 

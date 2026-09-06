@@ -383,3 +383,11 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **二、验证**：test_p1_notify 10 例；165 基线+全套绿；spark watcher tick 周期确认（17 条）；正常链抑制正确（send 已展示不重复）；注入分支=低概率场景未复现，单测+代码覆盖，如实登记待自然观察。
 
 **三、顺带登记**：submit-only 链的 last_job 残留（任务完成后断点未清）——低优先增强候选。
+
+---
+
+## 33. S2-P1a agent 默认 T2 增强实施记录（2026-09-06）
+
+**一、实现**：tools.py 默认 --postprocess fast（dry_run 不带）；补丁=postprocess 持久化到 job + resume 恢复（防无参续传丢增强参数；CLI 显式优先，args 默认 None 区分显式 none）。
+
+**二、验证**：164+1skip 绿；spark job.json postprocess=fast 实证；增强产物（1216×704）真机判据=后台等待 cc8adc87 完成后 resume 回填。

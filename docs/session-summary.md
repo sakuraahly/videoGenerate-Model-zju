@@ -850,6 +850,13 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.44 S2-P1a agent 默认 T2 增强（lanczos fast 单次编码）——2026-09-06 实施
+- **实现**：tools.py CallComfyUI 提交参数默认追加 --postprocess fast（dry_run 不带；submit-only/等待均带）；**必要补丁（实施发现）**：提交参数不持久化→resume 无参续传时 args.postprocess 回默认 none→增强丢失——已修：job 记录增 postprocess 字段 + resume 恢复（CLI 显式优先；args 默认 None 区分显式 none）。
+- **验证（已证）**：164+1skip 全绿；spark 实证=agent 驱动提交的新任务 job.json postprocess=fast（持久化生效）；**判据待回填**：任务 cc8adc87 完成后 resume→产物 1216×704（后台等待/watch 回填）。
+- **回滚**：--postprocess none（CLI 显式优先于 job 值）。
+### 20.43 UI 时间显示缺陷登记（2026-09-06 用户反馈）
+- 历史会话下拉条目时间=日期对、时分错 → 已登记 book-19 §11b（后续再做；实施时查 _choices() 时间来源/格式化，加单测）。
+
 ### 20.42 P1 事件驱动完成通知（监听→模型，零轮询）——2026-09-06 实施
 - **实现**：task_watch 通知原语（watcher_beat/health 心跳 90s、notify_key 去重键、build_notify_message 四类文案=完成/失败/队列超时 30min/运行超时 2h + 监听异常降级、describe_output=history→产物路径+ffprobe 参数）；session_state.list_cids；ui_app 常驻 _notify_watcher（15s 周期；P1_NOTIFY_EVENTS=off 回滚；_active_turn 互斥=仅 idle 注入；stop_event 置位=用户已接管不注入；p1_was 共享标记=send 正常展示过不重复；_inject_notify 复用 send 全链（消息写会话档+模型总结），任务表注入保守合并防丢监控）。
 - **测试**：tests/test_p1_notify.py 10 例（四类文案含真实 pid/路径、去重键、心跳新鲜/过期/初始不新鲜）；165 基线+全套绿。

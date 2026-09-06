@@ -288,7 +288,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-check-ref-tags", action="store_true",
                    help="book-19 §10 P1.5 校验开关: 关闭 r2v 参考 tag 契约校验"
                         "（默认开启: 提示词必须含 <Picture 1..N> 与参考数一致，缺失即拒绝）")
-    p.add_argument("--postprocess", type=str, default="none", choices=["none", "fast"],
+    p.add_argument("--postprocess", type=str, default=None, choices=["none", "fast"],
                    help="book-14 T2: 完成后质量增强 none(默认)/fast(2x+降噪+锐化)")
     p.add_argument("--width", type=int, default=None)
     p.add_argument("--height", type=int, default=None)
@@ -748,6 +748,10 @@ def main(argv: Optional[list] = None) -> int:
         # book-12 B2：resume 也恢复请求参数（供产物 verify 对冲；缺失时不校验）
         try:
             _job = jobstate.read_json(jobstate.task_job_path(project_dir, task_folder)) if task_folder else None
+            # S2-P1a：resume 恢复 postprocess（CLI 显式传入优先；默认 None 时用任务记录值）
+            _jpp = (_job or {}).get("postprocess") or ""
+            if _jpp and getattr(args, "postprocess", None) is None:
+                args.postprocess = _jpp
             _p = (_job or {}).get("params") or {}
             if _p.get("width"):
                 gp = argparse.Namespace(width=int(_p["width"]), height=int(_p["height"]),
@@ -835,6 +839,8 @@ def main(argv: Optional[list] = None) -> int:
                 "stage": stage_id,
                 "tts_text": getattr(args, "tts_text", "") or "",
                 "tts_voice": getattr(args, "tts_voice", "") or "",
+                # S2-P1a：postprocess 持久化——resume(无参)时恢复，防增强参数丢失
+                "postprocess": getattr(args, "postprocess", "") or "",
                 "params": gp.workflow_dict() if gp else {},
                 "log_file": os.path.basename(run_log) if run_log else "",
                 "prompt_files": {

@@ -351,11 +351,13 @@ class CallComfyUI(BaseTool):
         if params.get('dry_run'):
             cmd.append('--dry-run')
             env = {**os.environ, 'H3_CONCISE': '1'}  # 精简输出：防长 JSON 撑爆对话
-        elif not params.get('wait_until_done'):
-            # 提交/等待分离：默认提交即返回，任务后台运行（不阻塞、不误报超时）
-            cmd.append('--submit-only')
-            env = None
         else:
+            if not params.get('wait_until_done'):
+                # 提交/等待分离：默认提交即返回，任务后台运行（不阻塞、不误报超时）
+                cmd.append('--submit-only')
+            # S2-P1a：agent 出片默认走 T2 增强（超分/降噪/锐化，lanczos fast 单次编码）；
+            # dry_run 不带；回滚=显式 --postprocess none（用户/后续调用方覆盖）
+            cmd.extend(['--postprocess', 'fast'])
             env = None
         if params.get('force_new'):
             cmd.append('--force-new')
