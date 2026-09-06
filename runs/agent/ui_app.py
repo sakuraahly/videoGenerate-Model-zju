@@ -441,6 +441,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     from runs.agent.scheduler import LLM_CFG, TOOL_NAMES, get_system_message
     system_message = get_system_message()  # book-12 A4：注册表动态工作流段
     from runs.agent import turn_state
+    _last_tool = None  # P0 受控续接：本轮最后工具（名, 摘要）
     global _pending_batch_id
     turn_state.begin_turn(batch_id=_pending_batch_id)
     _pending_batch_id = None
@@ -595,6 +596,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                                 continue
                         _tool_count[fname] = _tool_count.get(fname, 0) + 1
                         out = _run_tool(fname, fc.get('arguments'))
+                        _last_tool = (fname, str(out or '')[:180])  # P0 受控续接：供 should_continue 与续接消息（进度摘要）
                         _tool_call_cache[tkey] = out
                         if out.startswith('[错误]') or out.startswith('提交失败') or out.startswith('错误：'):
                             # 现场修缮（2026-09-06）：失败不占用频控名额——模型修正参数后重试合法
@@ -1012,14 +1014,24 @@ _TASK_KEYWORDS = ('视频', '生成', '图片', '转场', '参考', '图生', '�
 _TERMINAL = ('。', '！', '？', '!', '?', '.', '"', '”', '）', ')', '」', '>')
 
 
-def should_continue(user_text, final_text, prompt_ids) -> bool:
+def should_continue(user_text, final_text, prompt_ids, last_tool: str = '', last_tool_hint: str = '') -> bool:
     """判别是否自动续接（book-04）。
 
     已有 prompt_id / 无输出 / 熔断标记 → 不续（交由监控/用户）；
+    P0 目标驱动：提交类工具后按结果继续（成功→查询取片；失败→修正重试；批量成功后由监控接管→不续）
     截断嫌疑（超长且无终止符号结尾）→ 续；
     用户意图含生成类关键词（模型尚未提交）→ 续一次推进；
     其余（寒暄/已完整回答）→ 不续（修「你好续接两次」）。
     """
+    # P0 受控续接：提交类工具结果驱动（在 prompt_ids 一刀切之前判——单段成功需要续查取片）
+    if last_tool in ('call_comfyui', 'batch_submit') and last_tool_hint:
+        if ('错误' in last_tool_hint or '失败' in last_tool_hint or '找不到' in last_tool_hint
+                or '被拒' in last_tool_hint or '校验失败' in last_tool_hint):
+            return True  # 失败修正重试（失败不占频控）——否则批处理失败后模型无法继续
+        if last_tool == 'call_comfyui' and ('TASK_SUBMITTED' in last_tool_hint or 'prompt_id' in last_tool_hint):
+            return True  # 单段已提交：续接查询进度/取片汇报（工作到完成）
+        if last_tool == 'batch_submit' and 'BATCH_MANIFEST' in last_tool_hint:
+            return False  # 批量已提交：监控接管，不再空转
     if prompt_ids:
         return False
     if not final_text:
@@ -1067,12 +1079,12 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 for m in msgs if m.get('role') in ('user', 'assistant')]
 
     def send(chat_hist, cid, user_text):
-        """重构版 send()：集成 auto-continue + 任务监控。"""
+        MAX_AUTO_CONTINUE = 5  # P0：2→5（任务延续需要；超出即停提示，防无限空转）
         from runs.agent.session_state import (
             get_stop_event, clear_tasks, add_tasks, increment_turn_id, check_turn_valid
         )
 
-        MAX_AUTO_CONTINUE = 2
+        MAX_AUTO_CONTINUE = 5  # P0 受控续接：2→5（目标驱动后需要；超出即停提示，防无限空转）
         ABORT_MARKERS = ('⛔', '不可恢复', '熔断')
 
         user_text = (user_text or '').strip()
@@ -1225,7 +1237,8 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                         all_pending_tasks.append({'manifest': d, 'type': 'batch'})
 
                     needs_continuation = should_continue(
-                        user_text, final_text, prompt_ids)
+                        user_text, final_text, prompt_ids,
+                        last_tool=(_last_tool or ('', ''))[0], last_tool_hint=(_last_tool or ('', ''))[1])
 
                     # book-16: spin-stop (empty-progress repeat)
                     if _prev_final and (final_text.startswith(_prev_final[:80])
@@ -1237,7 +1250,8 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     if not needs_continuation or attempt >= MAX_AUTO_CONTINUE:
                         break
 
-                    msgs.append({"role": "user", "content": '[系统自动续接] 请继续完成当前任务。'})
+                    msgs.append({"role": "user", "content": '[系统自动续接] 请继续完成当前任务。'
+                                 + (('[上一步] ' + ((_last_tool or ('', ''))[1])[:140]) if _last_tool else '') + '（重试/继续需按真实工具结果；不得虚构提交结果）'})
                     user_text = None
                     yield (shown, BUSY_HTML('自动续接中...'), ' 自动续接中...', noop, cid, msgs, noop)
 

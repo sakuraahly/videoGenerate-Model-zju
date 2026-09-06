@@ -113,7 +113,7 @@ python runs/dev.py logs view -N / check / clean [--yes]
 
 **P 链（远期管线，动工前先做 §15.5 前置验证）**：P2 ASR 客观验收（FunASR/Paraformer，魔搭）→ P3 Wav2Lip 口型（**先冒烟**）→ P4 参考图 Inpaint 修复（文字正确度）→ P5 F5-TTS/CodeFormer → P6 RIFE 插帧+伪 1080p（4x 下采样）。
 
-**推荐实施顺序（评审建议）**：S2-P1a → S3 → S8（先修链上 3 件小改），然后 S1/S4/S5/S6/S9/S10/S12；P 链按前置验证逐项批准。**已就绪（2026-09-06）：执行入口=docs/planbook/book-19-execution-ready.md（门禁/顺序/验收/回滚）；下一步=S2-P1a 动工**。
+**推荐实施顺序（评审建议）**：**P0 受控续接（book-19 §8，已实施）** → S2-P1a → S3 → S8（先修链上 3 件小改），然后 S1/S4/S5/S6/S9/S10/S12；P 链按前置验证逐项批准。**已就绪（2026-09-06）：执行入口=docs/planbook/book-19-execution-ready.md（门禁/顺序/验收/回滚）；下一步=S2-P1a 动工**。
 
 ---
 
