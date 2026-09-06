@@ -31,6 +31,7 @@
 | 2 | **S3**：取消后任务表残留（mark_cancelled 分层） | §3 | 小 | ☆1 次 | 取消链已修（定向中断+参数归一）；mark_cancelled 全仓 0 命中=待建；单测 mock task_watch 状态 |
 | 0 | **P0 受控续接**（先于 S 序列） | §8（本书） | 小 | ☆1 次 | 目标驱动+上限 5+轮空熔断+尊重用户；修复"多段任务第一段成功后中断/失败重试后自熄" |
 | 0.5 | **P1 事件驱动完成通知**（先于 S8；与 S8 复用任务状态） | §9（本书） | 中 | ☆1 次 | 监听脚本→模型（零轮询）；模型侧校验监听健康+超时分型；去重防重复注入 |
+| 0.6 | **P1.5 参考语义修复**（用户首验发现·当前最高优先） | §10（本书） | 中 | ☆1 次×3 抽检 | tag 契约缺失=参考图被当首尾帧；ref_image_size 默认改 max；实施< P1
 | 3 | **S8**：批量状态重写（queue_pids+决策树） | §8 | 中 | ☆1 次 | 前置=task_watch.poll_batch 缺 pathlib 修复已在场须确认；cancelled/never-queued 不可区分如实标注 |
 | 4 | **S6**：男/女声+schema tts_voice/tts_font_size+SYSTEM 一句 | §6 | 小 | ☆1 次 | 引擎已预接通（VOICE_ALIASES）；tools 透传短名不映射；判据=argv 短名+tts_done 全名 |
 | 5 | **S1**：gallery caption/可用性 | §1 | 小-中 | ☆（spark-only） | _asset_available=文件系统存在性（非 _known_shas）；第三改动点 :1411-1417 元组化+回退兜底 |
@@ -101,4 +102,14 @@
 文档：spec §# 已改"已实施"；changelog §X；session §Y；commit <hash>；
 证据：<关键 grep/日志行>；
 状态：✅ 完成 / 🔲 回滚（原因）。
+## 10. P1.5 参考语义修复（tag 契约 + ref_image_size 保真）——2026-09-06 用户首验发现（当前最高优先）
+
+**现象（用户首验 3 段 r2v 产物）**：每段都是"参考图=首帧+尾帧"（镜头1：首帧=客厅/尾帧=男主；镜头2：首帧=男主/尾帧=父亲；镜头3：首帧=父亲/尾帧=道具），中间帧仅"人物/道具"部分参考、**场景参考未发挥作用**（除首尾帧外）。
+**归因（取证定案）**：3 段任务 workflow_api.json **`<Picture` tag 计数 = 0**——提示词未按官方契约引用参考图（官方："reference the inputs by tag, in the exact order they were connected…matching the reference tags precisely…tends to work best"）；无 tag 时模型把参考图按注入顺序解读为**首→尾关键帧**；且模板 `ref_image_size` 固定 `match`（官方：match=缩到生成分辨率=快但**弱身份保真**；max=2048px 短边=**强身份保真**、代价=参考 token 随每个采样步）。**非绑定/脚本 bug**（绑定此前取证正确）——归属提示词契约缺失（§7c/书-18 的参考 tag 规范未实施）。
+**方案**：
+- ① **提示词契约强制**（根治）：SYSTEM_MESSAGE（agent 提示词生成规则）与 idea2prompts 提示词模板强制：r2v 提示词必须含 `<Picture N>`（1-based=连接顺序，<Picture 1>=第一个连接参考）**且**固定语义句"参考图（场景/角色/道具）贯穿全片锁定，**不是首帧/尾帧**；每帧保持一致"；生成后**校验**（tag 数量==参考数，缺失即拒绝重生成/补 tag）；
+- ② **ref_image_size 默认 max**（身份保真优先；速度代价登记：参考 token 随采样步，验证档亦 max 会略慢；提供 `--ref-image-size match` 可选与 params/CLI/capabilities 开关）；
+- ③ **验证判据**：☆真机 3 段→每段抽 3 帧（首/中/尾）目检：人物身份/场景空间/道具外观**全程一致**（不再首尾帧化）；无 tag 契约时的"首尾帧化"登记为**已知限制**（用户侧临时缓解=提示词手工加 `<Picture N>`）。
+**实现（实施期细化）**：runs/agent/scheduler.py（SYSTEM_MESSAGE 参考引用规则+校验）、runs/h3/idea2prompts.py（模板）、runs/h3_submit.py/params/capabilities（ref_image_size 开关+默认 max）、配置：模板 node 136 第 5 widget match→max（本地镜像）。
+**回滚**：SYSTEM 语句与校验开关删除；ref_image_size 回 match；模板 widget 回滚。工作量：中。**实施序**：P1.5（当前最高优先，先于 P1/S2-P1a）。
 ```
