@@ -76,6 +76,7 @@
 - H3 四件套（spark `~/ai/ComfyUI/models/`）：diffusion `*_pruned_int8_convrot.safetensors`(21GB)、text_encoder `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`(16GB)、video VAE `fp16`(5.2GB)、audio VAE `fp32`(0.6GB)；清单 sha 见 `config/minimax_h3_models.json`。
 - 模板族：`video_minimax_h3_{t2v,i2v,r2v,flf2v}.json`（本地推理；flf2v 为本地扩展双帧变体）；`api_minimax_h3_*`（Comfy 云通道，不使用）。
 - 分辨率预设：360p(608×352)/480p/540p/720p(1280×736,推荐)/768p(1344×768)；帧数须满足 17k+5 网格。
+- **S13/P 链魔搭模型 ID（2026-09-06 魔搭 API Code:200 验证）**：人声 TTS=`AI-ModelScope/F5-TTS`、`iic/CosyVoice2-0.5B`（推荐冒烟）；字幕 ASR=`iic/SenseVoiceSmall`（短语音/多语）、`iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch`（简体长文本）；超分/插帧=`AI-ModelScope/RIFE`；重绘=`AI-ModelScope/stable-diffusion-inpainting`；**Wav2Lip 魔搭无官方**（iic/wav2lip / AI-ModelScope/Wav2Lip 均不存在）→ GitHub 官方权重；SF3D 待查。
 - **S7 参考媒体（2026-09-06 object_info 在线复核定案）**：`MiniMaxH3ReferenceToVideo` 四组 AUTOGROW_V3——ref_images（prefix=ref_image_,max=9,IMAGE）/ref_videos（prefix=ref_video_,max=3,IMAGE=24fps 帧 2-15s）/ref_video_audios（prefix=ref_video_audio_,max=3,AUDIO=同编号视频声轨）/ref_audios（prefix=ref_audio_,max=3,AUDIO=独立参考音频）；槽位键=组名.子键（0-based），注入点在 API 层（`stage.inject_media_refs`）；`LoadVideo.file`/`LoadAudio.audio`=COMBO（options=input/ 根文件列表,video_upload/audio_upload=true）；`GetVideoComponents` 输出=[images,audio,fps,bit_depth,color_space]（images=槽0/audio=槽1）。
 
 ---

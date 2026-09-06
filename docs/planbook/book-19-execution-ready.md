@@ -20,7 +20,7 @@
 | 2   | Ref2VA 探测（S7 7a）                                                                                                                         | ✅ 已完成（九~十七审 all-spark 取证）          | 模板树权威=remote_workflows；节点/槽位/id>146 均已定案                 |
 | 3   | 上传复用 upload_image                                                                                                                        | ✅ 服务端源码级确证                            | server.py 无类型校验/重传安全；curl .mp4 抽验可选                      |
 | 4   | 768p 上限来源                                                                                                                                | ✅ 定案=加速 LoRA（非模型）                    | 原生 1080p 探测=1920×1088+`--lora none`（☆待授权队列窗口；不阻塞主链） |
-| 5   | 模型真实 ID（魔搭：RIFE/SD-Inpaint/Wav2Lip+SF3D/FunASR/F5-TTS）                                                                              | 🔲 未闭合（通道级已验证）                      | 仅阻塞 S13/P 链；S1-S12 不依赖                                         |
+| 5   | 模型真实 ID（魔搭：RIFE/SD-Inpaint/Wav2Lip+SF3D/FunASR/F5-TTS）                                                                              | ✅ 已闭合（2026-09-06；魔搭 API Code:200 验证） | 见 §13 表：F5-TTS/CosyVoice/SenseVoice/Paraformer/RIFE/SD-Inpainting；Wav2Lip 魔搭无官方→GitHub 权重；S13/P 链可开工          |
 | 6   | config/pipeline.json（机器配置）                                                                                                             | ✅ win/spark 均 templates_dir=remote_workflows | S7a 双注册提醒已知                                                     |
 
 ## 3. 执行顺序与每项规格索引
@@ -157,6 +157,14 @@
 ② 字幕：SRT 生成与烧录本地化（当前 ffmpeg 本地已用；ASR/文本对齐可下沉魔搭 FunASR 等）；
 ③ 集成形态评估：ComfyUI 工作流内节点化（如 ComfyUI-TTS 节点）vs 引擎管线化（现 h3_submit 钩子链）——实施前评估取舍（登记，不预设）；
 ④ 现有链（edge-tts/ffmpeg）=过渡方案，保留直至替代就绪；与 S13/P 链（魔搭 ID 闭合）联动排期。
+**S7 二级实测登记（2026-09-06）**：参考音频《老人缓慢讲述.mp3》被模型采纳（产物含人声音轨），但生成声为**快速讲述**、不复刻原声语速/音色——模型把参考音频当氛围语义参考而非音频复刻；如需精确复刻=音效链（独立音效轨+混音，§11 ②③ 同链）或参考音频上传为模板/后续 TTS 链（登记，不阻塞）。ASR 客观验收（P 链④）落地后自动判可辨析。
+**魔搭真实 ID 闭合（2026-09-06，API Code:200 逐项验证）**：
+- 人声-TTS：`AI-ModelScope/F5-TTS`、`iic/CosyVoice-300M`、`iic/CosyVoice2-0.5B`（推荐 2-0.5B 优先冒烟；edge-tts 过渡保留）；
+- 字幕-ASR：`iic/SenseVoiceSmall`（短语音/多语/可辨析验收首选）、`iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch`（长文本简体）；
+- 超分-插帧：`AI-ModelScope/RIFE`（插帧；备注：Real-ESRGAN 4x-UltraSharp 在 ComfyUI 模板链已有，见 utility-gan_upscaler）；
+- 重绘：`AI-ModelScope/stable-diffusion-inpainting`；
+- 口型：Wav2Lip 魔搭无官方（iic/wav2lip、AI-ModelScope/Wav2Lip 均不存在）→ 用 GitHub 官方权重 + sglang-venv torch 推理（计划书 13 可行性路线标注）；SF3D 同理登记待查（不阻塞 P2/P3）。
+
 
 ## 12. 断点自动清理（2026-09-06 用户反馈：新任务总被断点拦）
 
