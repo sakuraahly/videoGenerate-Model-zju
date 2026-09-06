@@ -1260,6 +1260,27 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             finally:
                 stop_hb.set()
 
+            # P1：send 正常走完监控（完成/失败已由状态条展示）→ 标记，watcher 不重复注入；
+            # 仅当 send 提前断开/未走完时 watcher 接管注入通知。
+            try:
+                from runs.agent import task_watch as _twm
+                for _t in all_pending_tasks:
+                    _tk = str(_t.get('prompt_id') or _t.get('manifest') or '')
+                    try:
+                        if _t.get('type') == 'single':
+                            _st = _twm.poll_single(_t['prompt_id']).get('status')
+                        elif _t.get('type') == 'batch':
+                            _st = _twm.poll_batch(str(_t.get('manifest') or '')).get('status')
+                        else:
+                            _st = None
+                    except Exception:  # noqa: BLE001
+                        _st = None
+                    # 只 mark 已被状态条展示的终态任务；进行中任务保留给 watcher 接管
+                    if _st in ('completed', 'failed'):
+                        _twm.p1_mark(cid, _tk)
+            except Exception:  # noqa: BLE001
+                pass
+
             add_tasks(cid, all_pending_tasks)
 
             if all_pending_tasks and check_turn_valid(cid, current_turn_id):
@@ -1488,6 +1509,142 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         if getattr(up_btn, 'select', None):
             up_btn.select(_up_select, up_btn, up_status)
         up_btn.upload(_upload, [up_btn, cid_state], [up_status, gallery], concurrency_limit=1)  # P0：上传串行（并发上传曾致预览竞态丢失/异常图标）
+        def _inject_notify(cid: str, text: str) -> None:
+            """P1：把通知文本以用户消息注入会话（复用 send 全链；_active_turn 互斥保证仅 idle）。
+
+            消费 send 生成器：消息写入会话档+触发模型总结；用户回合中 send 会自拒（不打扰）。
+            """
+            try:
+                msgs = load_chat(cid)
+                if not msgs:
+                    return
+                # 保守：send 会 clear_tasks(cid)（其尾部 add_tasks 提取新 pid）——
+                # 注入前备份本会话任务表，注入后合并回写（防同会话多任务时丢失监控）
+                try:
+                    from runs.agent import session_state as _ss2
+                    _before = list(_ss2.get_tasks(cid) or [])
+                except Exception:  # noqa: BLE001
+                    _before = []
+                for _ in send(msgs, cid, text):
+                    pass
+                if _before:
+                    try:
+                        from runs.agent import session_state as _ss3
+                        _after = list(_ss3.get_tasks(cid) or [])
+                        _ss3.add_tasks(cid, _before + [t for t in _after if t not in _before])
+                    except Exception:  # noqa: BLE001
+                        pass
+                from runs.agent import task_watch as _tw
+                _tw._log_tw("p1_inject cid=%s text=%s" % (cid, text[:60]))
+            except Exception as e:  # noqa: BLE001
+                try:
+                    from runs.agent.task_watch import _log_tw as _l
+                    _l("p1_inject_error cid=%s err=%s" % (cid, type(e).__name__))
+                except Exception:  # noqa: BLE001
+                    pass
+
+        def _notify_watcher(stop_evt=None):
+            """P1：常驻结果通知 watcher（book-19 §9；P1_NOTIFY_EVENTS=off 回滚）。
+
+            每 15s：心跳→遍历会话任务→S8/poll 判定→四类事件/降级→去重→idle 时注入。
+            同任务同类目仅通知一次；用户回合进行中(_active_turn)跳过(下轮再试)。
+            """
+            from runs.agent import task_watch as _tw
+            notified = set()
+            QUEUE_AGE = 1800   # 排队超阈值(30min)→队列超时文案
+            RUN_AGE = 7200     # 运行超阈值(2h)→运行超时文案
+            while True:
+                try:
+                    time.sleep(15)
+                except BaseException:  # noqa: BLE001
+                    break
+                if str(os.environ.get("P1_NOTIFY_EVENTS", "on")).strip().lower() in ("0", "false", "off", "no"):
+                    continue
+                try:
+                    _tw.watcher_beat()
+                    if _active_turn.locked():
+                        continue  # 仅 idle 注入；用户回合进行中不打断
+                    from runs.agent import session_state as _ss
+                    cids = _ss.list_cids()
+                    if cids:
+                        _tw._log_tw("p1_watch tick cids=%s" % cids)
+                    for cid in cids:
+                        tasks = _ss.get_tasks(cid) or []
+                        if not tasks:
+                            continue
+                        health_ok, _age = _tw.watcher_health()
+                        for task in tasks:
+                            try:
+                                if task.get("type") == "single":
+                                    pid = str(task.get("prompt_id") or "")
+                                    r = _tw.poll_single(pid)
+                                    st = r.get("status")
+                                    ekey = None
+                                    if st == "completed":
+                                        ekey = "done"
+                                        text = _tw.build_notify_message(
+                                            "completed", pid, detail=_tw.describe_output(pid))
+                                    elif st == "failed":
+                                        ekey = "fail"
+                                        text = _tw.build_notify_message(
+                                            "failed", pid, detail=r.get("progress", ""))
+                                    elif st in ("queued", "pending"):
+                                        el = _tw._elapsed(pid)
+                                        if el > QUEUE_AGE:
+                                            ekey = "qtimeout"
+                                            text = _tw.build_notify_message(
+                                                "queue_timeout", pid, elapsed=el)
+                                    elif st == "running":
+                                        el = _tw._elapsed(pid)
+                                        if el > RUN_AGE:
+                                            ekey = "rtimeout"
+                                            text = _tw.build_notify_message(
+                                                "run_timeout", pid, elapsed=el)
+                                    if ekey and not _tw.p1_was(cid, pid):
+                                        # 用户已停止/切换会话（stop_event 置位）→ 不注入（用户已接管）
+                                        try:
+                                            from runs.agent import session_state as _ss4
+                                            if _ss4.get_stop_event(cid).is_set():
+                                                continue
+                                        except Exception:  # noqa: BLE001
+                                            pass
+                                        key = _tw.notify_key(cid, pid, ekey)
+                                        if key not in notified:
+                                            notified.add(key)
+                                            _tw._log_tw("p1_inject_single cid=%s pid=%s ev=%s" % (cid, pid[:8], ekey))
+                                            _inject_notify(cid, text)
+                                elif task.get("type") == "batch":
+                                    r = _tw.poll_batch(str(task.get("manifest") or ""))
+                                    st = r.get("status")
+                                    ekey = None
+                                    if st == "completed":
+                                        ekey = "done"
+                                        text = _tw.build_notify_message(
+                                            "completed", "batch", detail=r.get("progress", ""))
+                                    elif st == "failed":
+                                        ekey = "fail"
+                                        text = _tw.build_notify_message(
+                                            "failed", "batch", detail=r.get("progress", ""))
+                                    if ekey and not _tw.p1_was(cid, str(task.get("manifest") or "")):
+                                        key = _tw.notify_key(cid, str(task.get("manifest")), ekey)
+                                        if key not in notified:
+                                            notified.add(key)
+                                            _inject_notify(cid, text)
+                                if not health_ok:
+                                    key = _tw.notify_key(cid, str(task.get("prompt_id") or task.get("manifest") or ""), "health")
+                                    if key not in notified:
+                                        notified.add(key)
+                                        _inject_notify(cid, _tw.build_notify_message("watch_health"))
+                            except Exception as _e:  # noqa: BLE001
+                                _tw._log_tw("p1_watch_task_err cid=%s err=%s" % (cid, _e))
+                                continue
+                except BaseException as _e:  # noqa: BLE001
+                    try:
+                        _tw._log_tw("p1_watch_cycle_err err=%s" % _e)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    continue
+
         def _continue(hist, cid):
             yield from send(hist, cid, '继续')
         send_btn.click(send, [hist_state, cid_state, box], send_out,
@@ -1505,6 +1662,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
     # 预览白名单：Gradio 默认只服务临时目录文件，需放行素材镜像/归档目录
     allowed = [str(THUMBS_DIR), str(_comfy_input_dir() / 'user_uploads'),
                str(UPLOADS_DIR)]
+    threading.Thread(target=_notify_watcher, daemon=True, name="p1-notify-watcher").start()
     demo.queue(default_concurrency_limit=16)
     demo.launch(server_name='0.0.0.0', server_port=port, share=share,
                 show_error=True, quiet=True, allowed_paths=allowed)

@@ -373,3 +373,13 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **二、验证**：test_s8_decision 9 例；165 基线+顶层 unittest OK；spark 真机：已完成批瞬时 3/3（旧 3×30s）、失败批如实 4 failed。
 
 **三、遗留**：task_watch.poll_batch 的 pathlib 修复确认在场（P1 前置）；cancelled 不可区分已按规格如实标注（P1 事件文案沿用）。
+
+---
+
+## 32. P1 事件驱动完成通知实施记录（2026-09-06 · book-19 §9）
+
+**一、实现**：task_watch 原语（heartbeat 90s / notify_key / build_notify_message 四类+降级 / describe_output ffprobe）+ session_state.list_cids + ui_app 常驻 watcher（15s；开关 P1_NOTIFY_EVENTS=off；仅 idle 注入；stop_event=用户接管不注入；p1_was 防重复；_inject_notify 复用 send）。回滚=环境变量 off（默认 on；与规格默认关差异已登记）。
+
+**二、验证**：test_p1_notify 10 例；165 基线+全套绿；spark watcher tick 周期确认（17 条）；正常链抑制正确（send 已展示不重复）；注入分支=低概率场景未复现，单测+代码覆盖，如实登记待自然观察。
+
+**三、顺带登记**：submit-only 链的 last_job 残留（任务完成后断点未清）——低优先增强候选。

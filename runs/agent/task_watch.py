@@ -146,6 +146,118 @@ def _eta_hint(status: str) -> str:
     return ""
 
 
+# ---------------------------------------------------------------------------
+# P1 事件驱动完成通知（book-19 §9）：原语——心跳/去重键/四类文案（纯函数，可单测）
+# ---------------------------------------------------------------------------
+_notify_hb = {"ts": 0.0, "count": 0}
+
+
+def watcher_beat() -> None:
+    """通知 watcher 心跳（每次处理周期调用；供健康校验与降级判定）。"""
+    _notify_hb["ts"] = time.monotonic()
+    _notify_hb["count"] += 1
+
+
+def watcher_health(max_age: float = 90.0) -> tuple:
+    """心跳新鲜度：(ok, age_seconds)。从未 beat 视为不新鲜（ok=False）。"""
+    if not _notify_hb["ts"]:
+        return False, -1.0
+    age = time.monotonic() - _notify_hb["ts"]
+    return age <= max_age, age
+
+
+def notify_key(cid: str, task_key: str, event: str) -> str:
+    """通知去重键：cid+任务标识+事件类目（同任务同类目仅一次）。"""
+    return "%s|%s|%s" % (cid, task_key, event)
+
+
+_p1_notified = set()  # P1：已处理事件键（send 正常走完时 mark；watcher 只接管未处理键）
+
+
+def p1_mark(cid: str, task_key: str) -> None:
+    """send 正常完成监控（完成或失败已展示）时标记：watcher 不再重复注入。"""
+    _p1_notified.add(notify_key(cid, task_key, "any"))
+
+
+def p1_was(cid: str, task_key: str) -> bool:
+    """该任务是否已被 send 正常展示过（是→watcher 跳过）。"""
+    return notify_key(cid, task_key, "any") in _p1_notified
+
+
+def build_notify_message(state: str, prompt_id: str = "", detail: str = "",
+                         elapsed: float = 0.0) -> str:
+    """四类事件文案（book-19 §9）。文案含真实 pid/路径——模型可再查证，
+    不得仅凭消息声称产物存在（模型侧校验在 SYSTEM_MESSAGE 既有铁律覆盖）。
+    state: completed / failed / queue_timeout / run_timeout / watch_health
+    """
+    pid = (prompt_id or "")[:8]
+    if state == "completed":
+        return ("[任务完成] prompt_id=%s 产物=%s。请按真实产物向用户总结（无需再次查询）。"
+                % (prompt_id or "?", detail or "见任务日志"))
+    if state == "failed":
+        return ("[任务失败] prompt_id=%s 原因=%s。请如实向用户汇报失败并询问是否重试。"
+                % (prompt_id or "?", detail or "ComfyUI 执行失败"))
+    if state == "queue_timeout":
+        return ("[任务长时间排队] prompt_id=%s 已排队 %d 分钟仍未开始（共享队列正常现象）。"
+                "请告知用户仍在排队，不要重复提交。" % (pid or "?", int(max(0.0, elapsed) // 60)))
+    if state == "run_timeout":
+        return ("[任务长时间运行] prompt_id=%s 已运行 %d 分钟仍未完成。"
+                "请使用查询工具确认真实状态后再汇报。" % (pid or "?", int(max(0.0, elapsed) // 60)))
+    return ("[监听异常] 结果通知可能丢失（watcher 心跳过期）。"
+            "请使用查询工具确认任务真实状态后再向用户汇报。")
+
+
+def describe_output(prompt_id: str) -> str:
+    """完成事件的产物描述：history->输出文件->远程路径+ffprobe（分辨率/时长）。
+
+    仅描述事实；ffprobe 失败时返回路径本身（不带虚构参数）。远程不可达返回空串。
+    """
+    try:
+        history = get_history(prompt_id)
+        entry = (history or {}).get(prompt_id) or {}
+        files = []
+        for _oid, o in (entry.get("outputs") or {}).items():
+            if not isinstance(o, dict):
+                continue
+            for im in (o.get("images") or []) + (o.get("video") or []):
+                if isinstance(im, dict) and im.get("filename"):
+                    files.append(im)
+        if not files:
+            return ""
+        files.sort(key=lambda f: 0 if str(f.get("format", "")).lower() in ("mp4", "") else 1)
+        f0 = files[0]
+        sub = str(f0.get("subfolder") or "").strip("/")
+        sub = (sub.strip("/") + "/") if sub else ""
+        name = str(f0.get("filename") or "")
+        path = sub + name
+        remote = "~/ai/ComfyUI/output/" + path
+        try:
+            import subprocess as _sp
+            r = _sp.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+                         "-show_entries", "stream=width,height", "-show_entries",
+                         "format=duration", "-of", "csv=p=0",
+                         os.path.expanduser(remote)],
+                        capture_output=True, text=True, timeout=15)
+            lines = [ln for ln in (r.stdout or "").splitlines() if ln]
+            parts = []
+            for ln in lines:
+                cols = ln.split(",")
+                if len(cols) >= 2 and cols[0].isdigit() and cols[1].isdigit():
+                    parts.append("%sx%s" % (cols[0], cols[1]))
+                elif cols and cols[0]:
+                    try:
+                        parts.append("%.2fs" % float(cols[0]))
+                    except ValueError:
+                        parts.append(cols[0])
+            if parts:
+                return "%s（%s）" % (remote, ", ".join(parts))
+            return remote
+        except Exception:  # noqa: BLE001
+            return remote
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _monitor_worker(cid: str, turn_id: int, out_queue: queue.Queue, stop_event: threading.Event):
     """后台监控线程工作函数。
     

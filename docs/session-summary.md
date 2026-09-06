@@ -850,6 +850,11 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.42 P1 事件驱动完成通知（监听→模型，零轮询）——2026-09-06 实施
+- **实现**：task_watch 通知原语（watcher_beat/health 心跳 90s、notify_key 去重键、build_notify_message 四类文案=完成/失败/队列超时 30min/运行超时 2h + 监听异常降级、describe_output=history→产物路径+ffprobe 参数）；session_state.list_cids；ui_app 常驻 _notify_watcher（15s 周期；P1_NOTIFY_EVENTS=off 回滚；_active_turn 互斥=仅 idle 注入；stop_event 置位=用户已接管不注入；p1_was 共享标记=send 正常展示过不重复；_inject_notify 复用 send 全链（消息写会话档+模型总结），任务表注入保守合并防丢监控）。
+- **测试**：tests/test_p1_notify.py 10 例（四类文案含真实 pid/路径、去重键、心跳新鲜/过期/初始不新鲜）；165 基线+全套绿。
+- **☆真机**（spark）：agent 重启后 watcher 线程运行确认=run log 周期 p1_watch tick（17 条，cids 正确登记）；正常链=send 展示完成时 p1_was 正确抑制重复注入（watcher 不打扰）；**注入分支**（send 异常断/任务存续）未在真机复现（低概率场景；A2 因子进程重启清空内存任务表而未触发）——由单测+代码路径覆盖，验证状态如实标注：**注入路径=待自然场景观察（登记）**；驱动测试片 f79f7dd0→MiniMax_H3_00124→win outputs video_43.mp4（橘猫屋檐黄昏 8s/360p）。
+- **顺带暴露**：断点残留现象（last_job 未随任务完成清理）——登记低优先增强候选（任务完成时自动清断点）。
 ### 20.41 S8 批量状态轮询优化（决策树，消除逐段子进程）——2026-09-06
 - **实现**：comfy.py 新增 classify_task_state(entry, pid, running_pids, pending_pids)（五审决策树纯函数：completed=history 含 outputs/complete/success；failed=status.error；running/pending=queue_pids 消歧（running 优先）；absent=都不在——cancelled/never-queued 在 ComfyUI 侧不可区分，如实标注不猜）；h3_batch cmd_status 改写：ComfyClient(retries=1, request_timeout=5) + queue_pids/history 本进程判定，删除每段 h3_submit --resume 子进程（30s/段）；--wait 轮询间隔 15s→10s；completed 输出 REMOTE_VIDEO_PATH（同构）；absent→failed（如实说明）；输出格式兼容。
 - **测试**：tests/test_s8_decision.py 9 例；165 基线+顶层 unittest 全绿。

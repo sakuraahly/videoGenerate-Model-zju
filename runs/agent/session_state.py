@@ -48,6 +48,12 @@ def add_tasks(cid: str, tasks: list):
         _session_tasks[cid].extend(tasks)
 
 
+def list_cids() -> list:
+    """P1：返回登记过任务的会话 id 列表（通知 watcher 遍历用）。"""
+    with _state_lock:
+        return list(_session_tasks.keys())
+
+
 def get_tasks(cid: str) -> list:
     """获取指定会话的所有任务记录。"""
     with _state_lock:
