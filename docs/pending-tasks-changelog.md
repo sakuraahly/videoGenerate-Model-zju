@@ -469,6 +469,7 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 ## 44. 队列空闲监听+复检 queue_watch（2026-09-06 用户指示）
 
 **需求**：共享队列纪律——加入长任务前先监听队列，得到空闲结果后**复检**（连续 N 次探测全空）确认真的空闲再入队；监听工具复用项目工具收取运行结果。
-**实现**：uns/h3/queue_watch.py——once（单次快照 QUEUE_STATE=idle/busy/unreachable）/idle（轮询状态机：streak=连续 idle 探测次数，busy/不可达重置，streak≥--confirm（默认 2）→ QUEUE_IDLE_CONFIRMED exit 0；超时 → QUEUE_BUSY_TIMEOUT exit 2；**不可达视为忙=失败安全**）；复用 comfy.ComfyClient.queue_pids（低重试 1/超时 5s 适合轮询）；7 单测（状态机重置/复检/超时/CLI）。
+**实现**：
+uns/h3/queue_watch.py——once（单次快照 QUEUE_STATE=idle/busy/unreachable）/idle（轮询状态机：streak=连续 idle 探测次数，busy/不可达重置，streak≥--confirm（默认 2）→ QUEUE_IDLE_CONFIRMED exit 0；超时 → QUEUE_BUSY_TIMEOUT exit 2；**不可达视为忙=失败安全**）；复用 comfy.ComfyClient.queue_pids（低重试 1/超时 5s 适合轮询）；7 单测（状态机重置/复检/超时/CLI）。
 **应用**：S7 二级真机前置——用户任务结束后先 idle --confirm 3 复检通过 → 提交 r2v 任务（--submit-only 入队不阻塞）→ h3_submit --resume <prompt_id> 轮询结果（本项目工具）。
 
