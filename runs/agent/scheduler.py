@@ -106,6 +106,15 @@ SYSTEM_MESSAGE = """\
 - 中文文字渲染逐字枚举：first '你', then '好'...
 - 始终包含音频描述（即使"no dialogue, only ambient tone"）
 - 负面约束收尾：No text, no watermark, no cuts, no dialogue.
+- **r2v 参考图 tag 契约（book-19 §10 P1.5，强制）**：官方要求"reference the inputs
+  by tag, in the exact order they were connected"——r2v 提示词必须用 tag 引用**每张**
+  参考图（第 1 张连接参考=<Picture 1>、第 2 张=<Picture 2>…，与 images 列表顺序一致），
+  并必须包含固定语义句："The reference images (scene/character/props) are locked
+  throughout the whole shot; they are NOT first-frame/last-frame keyframes; keep every
+  frame consistent."；严禁把参考图当作首帧/尾帧关键帧描述。
+- **r2v 生成后校验（强制）**：提交前核对提示词中 <Picture 1..N> tag 数量==参考图数
+  （N=images 数量）；缺失即**不提交**，补 tag/重写提示词后再提交（改用
+  --no-check-ref-tags 属已登记的降级，非默认）。
 
 ═══ 分辨率/时长 ═══
 360p(608×352,**验证档默认**) / 480p / 540p / 720p(1280×736) / 768p(1344×768,**交付档推荐**)

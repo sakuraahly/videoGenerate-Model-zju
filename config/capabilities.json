@@ -237,13 +237,22 @@
         },
         "fps": 24,
         "steps": 20,
-        "seed": "12345"
+        "seed": "12345",
+        "ref_image_size": {
+          "default": "max",
+          "options": [
+            "max",
+            "match"
+          ],
+          "note": "max=<=2048px short edge, strong identity fidelity, slower (ref tokens per step); match=scaled to gen resolution, faster, weaker fidelity"
+        }
       },
       "features": {
         "reference_videos": false,
         "per_segment": false,
         "audio": true,
-        "negative_support": true
+        "negative_support": true,
+        "ref_tag_required": true
       },
       "inject_spec": {
         "class_prefix": "MiniMaxH3",

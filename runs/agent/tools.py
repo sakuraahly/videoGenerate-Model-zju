@@ -301,6 +301,11 @@ class CallComfyUI(BaseTool):
                 'enum': ['none', 'fl2v_4step', 'ref2v_4step', 'ref2v_8step'],
                 'description': '加速 LoRA（book-17 §3：验证档默认按阶段自动选择，一般不必传）。fl2v_4step 用于 t2v/i2v/flf2v；ref2v_4step 用于 r2v 验证档；ref2v_8step 仅 r2v 交付档；传 none 表示 20 步默认精度（交付档质量优先时用）。省略=验证档 4 步。仅注册表声明的 lora 可用',
             },
+            'ref_image_size': {
+                'type': 'string',
+                'enum': ['max', 'match'],
+                'description': '参考图尺度（book-19 §10 P1.5；仅 r2v 生效，默认 max）。max=≤2048px 短边强身份保真、略慢（参考 token 随采样步）；match=缩到生成分辨率更快但弱身份保真——无需特殊需求时不用传',
+            },
         },
         'required': ['stage'],
     }
@@ -361,6 +366,8 @@ class CallComfyUI(BaseTool):
                 cmd.extend(['--image', _img])
         if params.get('lora') and params['lora'] != 'none':
             cmd.extend(['--lora', params['lora']])
+        if params.get('ref_image_size'):
+            cmd.extend(['--ref-image-size', str(params['ref_image_size'])])
         if params.get('tts_text'):
             cmd.extend(['--tts-text', str(params['tts_text'])])
 
@@ -526,6 +533,11 @@ class BatchSubmit(BaseTool):
                 'enum': ['xiaoxiao', 'yunxi'],
                 'description': '台词音色（短名，默认 xiaoxiao）',
             },
+            'ref_image_size': {
+                'type': 'string',
+                'enum': ['max', 'match'],
+                'description': '参考图尺度（仅 r2v 生效，默认 max=≤2048px 短边强身份保真；match=更快但弱保真）',
+            },
             'dry_run': {
                 'type': 'boolean',
                 'description': '仅生成 manifest 不实际提交',
@@ -564,6 +576,8 @@ class BatchSubmit(BaseTool):
             cmd.extend(['--tts-texts', str(params['tts_texts'])])
         if params.get('tts_voice'):
             cmd.extend(['--tts-voice', str(params['tts_voice'])])
+        if params.get('ref_image_size'):
+            cmd.extend(['--ref-image-size', str(params['ref_image_size'])])
         if params.get('dry_run'):
             cmd.append('--dry-run')
         try:

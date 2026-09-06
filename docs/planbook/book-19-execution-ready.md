@@ -112,4 +112,9 @@
 - ③ **验证判据**：☆真机 3 段→每段抽 3 帧（首/中/尾）目检：人物身份/场景空间/道具外观**全程一致**（不再首尾帧化）；无 tag 契约时的"首尾帧化"登记为**已知限制**（用户侧临时缓解=提示词手工加 `<Picture N>`）。
 **实现（实施期细化）**：runs/agent/scheduler.py（SYSTEM_MESSAGE 参考引用规则+校验）、runs/h3/idea2prompts.py（模板）、runs/h3_submit.py/params/capabilities（ref_image_size 开关+默认 max）、配置：模板 node 136 第 5 widget match→max（本地镜像）。
 **回滚**：SYSTEM 语句与校验开关删除；ref_image_size 回 match；模板 widget 回滚。工作量：中。**实施序**：P1.5（当前最高优先，先于 P1/S2-P1a）。
-```
+
+**实施记录（2026-09-06，代码层✅ / ☆真机 3 段抽帧目检待验证）**：
+- ✅ ① 契约强制：scheduler.py SYSTEM_MESSAGE（r2v tag 规则+贯穿句+生成后校验要求）；idea2prompts.py（build_messages 追加规则+_ref_contract_violation 存在性校验+违规重生成一次+仍违规拒写）；prompt_blueprints.json（global 规则 8+video_r2v/api_r2v extra）；**提交前硬校验**=h3_submit.py 按实际接线参考数 N 校验 <Picture 1..N> 齐全，缺失即 exit 3（含指引），开关 --no-check-ref-tags；贯穿句缺失=警告（措辞容错）。
+- ✅ ② ref_image_size：params（GenParams/DEFAULTS= max/枚举校验）、CLI（h3_submit/h3_batch+manifest）、tools.py（call_comfyui/batch_submit 转发）、stage.apply_ref_image_size+build_template_workflow 接线、capabilities.json video_r2v（params.ref_image_size{default:max} + features.ref_tag_required）、**模板 node 136 第 5 widget→max**（本地镜像；参数覆写兜底，sync 回退无害）。
+- ✅ ③ 单测：tests/test_ref_tag_contract.py 新增 21 例；全套 165 基线+顶层 unittest 56 例绿；consistency 问题 0。
+- ⏳ ④ ☆真机验证（用户侧）：3 段 r2v×每段抽 3 帧（首/中/尾）目检=人物身份/场景空间/道具外观全程一致、无首尾帧化；用户侧临时缓解=提示词手工加 <Picture N>+贯穿句。

@@ -303,6 +303,53 @@ def apply_generation_params(wf: dict, token_map: Dict[str, str]) -> int:
     return count
 
 
+REF_IMAGE_SIZE_CHOICES = ("max", "match")
+
+
+def apply_ref_image_size(wf: dict, value: Optional[str]) -> int:
+    """book-19 §10 P1.5：把 ref_image_size 覆写到参考节点（MiniMaxH3ReferenceToVideo）。
+
+    同 apply_generation_params 先例：在线转换的模板带入的是模板默认值
+    （历史 =match），按请求参数强制覆写。仅覆写存在该键的节点（守卫模式）；
+    未知值返回 0（不报错，由 params 层枚举校验兜底）。
+    """
+    if not value:
+        return 0
+    v = str(value).strip().lower()
+    if v not in REF_IMAGE_SIZE_CHOICES:
+        return 0
+    count = 0
+    for n in wf.values():
+        if not isinstance(n, dict):
+            continue
+        if str(n.get("class_type") or "") != "MiniMaxH3ReferenceToVideo":
+            continue
+        ins = n.get("inputs") or {}
+        if "ref_image_size" in ins and ins["ref_image_size"] != v:
+            ins["ref_image_size"] = v
+            count += 1
+    return count
+
+
+def count_wired_reference_images(wf: dict) -> int:
+    """统计 API 工作流中已接线的参考图槽位数（ref_images.ref_image_N = [node, out]）。
+
+    仅统计 MiniMaxH3ReferenceToVideo 节点；按槽位键前缀识别，与模型 AUTOGROW
+    子键（ref_images.ref_image_0/1/...）一致。
+    """
+    total = 0
+    for n in wf.values():
+        if not isinstance(n, dict):
+            continue
+        if str(n.get("class_type") or "") != "MiniMaxH3ReferenceToVideo":
+            continue
+        ins = n.get("inputs") or {}
+        for k, v in ins.items():
+            if k.startswith("ref_images.ref_image_") and isinstance(v, list) and len(v) == 2:
+                total += 1
+    return total
+
+
 def load_api_or_ui_template(
     tpath: Path, client: Optional["comfy.ComfyClient"] = None,
 ) -> dict:
@@ -349,6 +396,7 @@ def build_template_workflow(
     image_names: Dict[str, str],
     template_file: Optional[Path] = None,
     client: Optional["comfy.ComfyClient"] = None,
+    ref_image_size: Optional[str] = None,
 ) -> dict:
     """
     读取模板并做占位符替换后返回可提交的 API 工作流。
@@ -373,6 +421,12 @@ def build_template_workflow(
     if n_over:
         print(f"[提示] 已按请求参数覆写生成节点（{n_over} 处）：width/height/length/steps/fps ''"
               f"（修复模板默认 480p/5s 与请求 720p/15s 不一致）", flush=True)
+    # book-19 §10 P1.5：ref_image_size 默认 max（身份保真优先）；同键覆写
+    n_ref = apply_ref_image_size(wf, ref_image_size)
+    if n_ref:
+        print(f"[提示] 已按请求参数覆写参考图尺度 ref_image_size={ref_image_size}"
+              f"（{n_ref} 处；max=≤2048px 短边强保真、参考 token 随采样步；"
+              f"match=缩到生成分辨率更快但弱保真）", flush=True)
     return wf
 
 

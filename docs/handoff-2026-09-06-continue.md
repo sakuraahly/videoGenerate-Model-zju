@@ -21,6 +21,8 @@
 **归因（已取证）**：3 段任务 `workflow_api.json` **`<Picture` tag 计数=0**——提示词未按官方契约（"reference the inputs by tag…`<Picture 1>`…matching the reference tags precisely tends to work best"）引用参考图；模型将参考图按顺序解读为**首→尾关键帧**；且模板 `ref_image_size` 固定 `match`（弱身份保真档；`max`=2048px 短边强保真、稍慢）。**非绑定/脚本 bug**（绑定此前已取证正确）。
 **任务**：`docs/planbook/book-19-execution-ready.md` **§10 P1.5 参考语义修复**（提示词 tag 契约强制+生成后校验；ref_image_size 默认 max+开关；验证=3 段抽帧目检）——**当前最高优先，先于 P1/S2-P1a**。临时缓解（用户侧）：提示词手工加 `<Picture N>`（1-based 连接顺序）+"参考贯穿全片、非首尾帧"。
 
+**状态（2026-09-06 同会话实施后）**：**代码层 ✅ 已完成**（见 §2 P1.5 行）——tag 契约强制（SYSTEM_MESSAGE/idea2prompts/blueprints）+提交前硬校验（h3_submit 按实际接线参考数校验 <Picture 1..N>，缺失即拒；开关 --no-check-ref-tags）+ref_image_size 默认 max（params/CLI/capabilities/tools.py/模板 node136 widget→max）；单测 165 基线+新增 21 例全绿，已回写 session §20.36/changelog §30。**剩余=☆真机验证**：3 段 r2v×每段抽 3 帧（首/中/尾）目检（人物身份/场景空间/道具外观全程一致、不再首尾帧化）——需用户配合（队列空闲窗口+3 段 r2v 提交+抽帧目检判据）。
+
 ## 2. 已完成（勿重复）
 
 | 项目 | 状态 |
@@ -31,6 +33,7 @@
 | 批量提交通道 | ✅ 池序号+逐段提示词（prompts→--prompts-file）+逐段台词（tts_texts/tts_voice）+文件名优先引导 |
 | 取消链安全 | ✅ /interrupt 定向化+CancelTask 归一+last_job 原子写 |
 | 单测基线 | 165 例绿（仓库根运行） |
+| **P1.5 参考语义修复** | ✅ **代码层完成（2026-09-06）**：tag 契约强制（SYSTEM_MESSAGE/idea2prompts/blueprints 规则8）+提交前硬校验（h3_submit 按实际接线参考数校验 <Picture 1..N>，缺失即拒；开关 --no-check-ref-tags）+ref_image_size 默认 max（params/CLI/capabilities/tools/h3_batch）+模板 node136 widget→max；单测 165+21 绿；**剩余=☆真机 3 段抽帧目检（待用户）** |
 
 ## 3. 待做（权威规格=pending-tasks-implementation.md + book-19）
 

@@ -11,8 +11,9 @@ manifest default（prompts/positive_prompts.txt 等）。文件为空视为未�
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .params import ParamError, read_prompt_file
 
@@ -157,6 +158,58 @@ def write_slot_texts(
     _write(p1, positive)
     _write(p2, negative)
     return p1, p2
+
+
+# ---------------------------------------------------------------------------
+# 参考图 tag 契约（book-19 §10 P1.5：参考语义修复）
+# ---------------------------------------------------------------------------
+# 厂商契约（模板内嵌 MarkdownNote id 116 原文）：
+#   "reference the inputs by tag, in the exact order they were connected,
+#    for example <Picture 1>, <Video 1>, <Audio 1> ..."
+#   "matching the reference tags precisely and being explicit about which
+#    reference drives which part of the shot tends to work best."
+# 映射：<Picture N>（1-based，N=按连接顺序第 N 张参考图）
+#   ↔ ref_images.ref_image_(N-1)（0-based 槽位键）。
+_REF_TAG_RE = re.compile(r"<\s*picture\s*(\d+)\s*>", re.IGNORECASE)
+
+# 固定语义句（契约要求：参考图贯穿全片、非首帧/尾帧关键帧）。
+# 校验只强制 tag 数量==参考数；本句缺失以警告登记（模型措辞允许微调）。
+REF_PERSIST_MARKERS = ("throughout the whole shot", "not first-frame",
+                       "not a first-frame", "not just the first",
+                       "NOT first/last", "not the first and last frame")
+
+
+def reference_tag_set(prompt: str) -> set:
+    """提取提示词中的 <Picture N> tag 集合（大小写不敏感，N≥1）。"""
+    return {int(m) for m in _REF_TAG_RE.findall(str(prompt or ""))}
+
+
+def missing_reference_tags(prompt: str, n_refs: int) -> List[int]:
+    """按连接顺序 1..n_refs 检查缺失的 tag 序号（空引用(0)返回空列表）。"""
+    n = int(n_refs or 0)
+    if n <= 0:
+        return []
+    have = reference_tag_set(prompt)
+    return [i for i in range(1, n + 1) if i not in have]
+
+
+def has_ref_persist_sentence(prompt: str) -> bool:
+    """检测“参考图贯穿全片、非首尾帧”固定语义句是否出现（宽松匹配）。"""
+    t = str(prompt or "").lower()
+    return any(m in t for m in REF_PERSIST_MARKERS)
+
+
+def ref_tag_contract_rule(slot: str) -> str:
+    """idea2prompts 对 r2v 槽位追加的契约规则文本；非 r2v 槽位返回空串。"""
+    if not str(slot or "").lower().endswith("_r2v"):
+        return ""
+    return (
+        "8 本槽位有参考图时（r2v），必须按官方契约引用：每张参考图按连接顺序用 tag "
+        "标注——第 1 张=<Picture 1>、第 2 张=<Picture 2>…（tag 精确匹配模板槽位顺序），"
+        "并在 positive 中包含固定语义句：\"The reference images (scene/character/props) "
+        "are locked throughout the whole shot; they are NOT first-frame/last-frame "
+        "keyframes; keep every frame consistent.\"。禁止把参考图描述成首帧/尾帧关键帧。"
+    )
 
 
 # ---------------------------------------------------------------------------

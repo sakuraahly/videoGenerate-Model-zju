@@ -280,6 +280,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--lora", type=str, default="none",
                    choices=["none", "fl2v_4step", "ref2v_4step", "ref2v_8step"],
                    help="book-12 B1 加速 LoRA: none(默认)/fl2v_4step(t2v·i2v·flf2v)/ref2v_4step|ref2v_8step(r2v); steps 自动 4/8")
+    p.add_argument("--ref-image-size", type=str, default=None,
+                   choices=["max", "match"],
+                   help="book-19 §10 P1.5 参考图尺度: max(默认)=≤2048px 短边强身份保真、"
+                        "参考 token 随采样步略慢; match=缩到生成分辨率更快但弱保真")
+    p.add_argument("--no-check-ref-tags", action="store_true",
+                   help="book-19 §10 P1.5 校验开关: 关闭 r2v 参考 tag 契约校验"
+                        "（默认开启: 提示词必须含 <Picture 1..N> 与参考数一致，缺失即拒绝）")
     p.add_argument("--postprocess", type=str, default="none", choices=["none", "fast"],
                    help="book-14 T2: 完成后质量增强 none(默认)/fast(2x+降噪+锐化)")
     p.add_argument("--width", type=int, default=None)
@@ -378,6 +385,7 @@ def _resolve_gp_text(args: argparse.Namespace, project_dir: Path,
         "steps": args.steps,
         "fps": args.fps,
         "timeout": args.timeout,
+        "ref_image_size": getattr(args, "ref_image_size", None),
     }
     return h3params.resolve_params(raw, prompt=prompt, negative_prompt=negative_prompt,
                                    cli_overrides=overrides)
@@ -500,6 +508,7 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
             wf = h3stage.build_template_workflow(
                 stage, pcfg, project_dir, token_map, image_names,
                 template_file=tpath, client=client,
+                ref_image_size=gp.ref_image_size,
             )
         elif template_usable:
             # 阶段默认模板文件存在：API 直接用；UI 格式尝试在线转换；
@@ -507,7 +516,8 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
             try:
                 wf = h3stage.build_template_workflow(
                     stage, pcfg, project_dir, token_map, image_names,
-                    template_file=tpath, client=client)
+                    template_file=tpath, client=client,
+                    ref_image_size=gp.ref_image_size)
             except h3params.ParamError as e:
                 if not stage.get("builtin"):
                     raise
@@ -534,6 +544,27 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
         changed = h3prompts.inject_local_prompts(wf, prompt, negative, spec=_p_spec)
         if changed:
             print(f"[提示] 已用本地提示词覆盖工作流内嵌字段（{changed} 处）。", flush=True)
+        # book-19 §10 P1.5：r2v 参考 tag 契约校验（生成后校验；缺失即拒绝）
+        # 依据=模板内嵌官方文档（node 116）：reference the inputs by tag, in the exact
+        # order they were connected...matching the reference tags precisely ... works best
+        if stage_id == "r2v" and not getattr(args, "no_check_ref_tags", False) and not used_builtin:
+            _n_refs = h3stage.count_wired_reference_images(wf)
+            if _n_refs > 0:
+                _missing = h3prompts.missing_reference_tags(prompt, _n_refs)
+                if _missing:
+                    _want = "、".join(f"<Picture {i}>" for i in range(1, _n_refs + 1))
+                    _got = "、".join(f"<Picture {i}>" for i in sorted(h3prompts.reference_tag_set(prompt)))
+                    raise h3params.ParamError(
+                        f"r2v 参考 tag 契约校验失败：参考图 {_n_refs} 张，提示词缺少 "
+                        f"{'、'.join(f'<Picture {i}>' for i in _missing)}"
+                        f"（现有 tag：{_got or '无'}；应含：{_want}）。\n"
+                        "请按连接顺序（<Picture 1>=第 1 张参考图）补全 tag，并确保参考图"
+                        "贯穿全片锁定、不是首帧/尾帧关键帧；或显式 --no-check-ref-tags 关闭校验。")
+                if not h3prompts.has_ref_persist_sentence(prompt):
+                    print(
+                        "[警告] r2v 提示词缺少\"参考图贯穿全片、非首帧/尾帧关键帧\"固定语义句"
+                        "（tag 已通过校验；建议补句以加强身份/场景保真）。",
+                        file=sys.stderr, flush=True)
         # book-12 B1：加速 LoRA 注入（LoraLoaderModelOnly + steps 4/8 覆写 + 日志同步）
         if getattr(args, 'lora', '') and args.lora != 'none':
             _lmap = {}

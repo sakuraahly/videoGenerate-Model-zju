@@ -341,3 +341,26 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **六、覆盖与剩余**：已覆盖 CallComfyUI 全链/_coerce_fields/_derive_tool_enums/_apply_registry_derived_schema/workflow_registry 解析/agent_params 档位/qwen_agent 校验实现/自愈命令。**登记下一轮**：tools.py 其余工具（RunScript/ModifyWorkflow/BatchSubmit/ReadDoc，尤其 BatchSubmit×§4/§8）、scheduler.py SYSTEM_MESSAGE（§6③/§7c/§12 引用均未逐字核过）、ui_app turn 机制×S12 grants 时序。
 
 **机制**：本轮**代码修复 tools.py 4 处**（字符串预解析/coerce 元组扩充/enum 比较修正/导入期告警）+文档（§7a 定稿/§13 更正+顺序陷阱/版本登记）；COMPILE_OK+165 例全绿；每处修复后 grep 落点核对（含一次修复过程自纠：coerce 函数误替换后当场还原重做，终态正确）。
+---
+
+## 30. P1.5 参考语义修复实施记录（2026-09-06 · book-19 §10）
+
+**一、设计定稿（用户首验归因后）**：P1.5=提示词 tag 契约强制（根治）+ 生成后校验 + ref_image_size 默认 max（身份保真优先）+ 验证=3 段抽 3 帧目检。与 §7c「images 保持位置序、不做 <Picture N>」的旧取舍**冲突**——P1.5 以用户首验实证推翻旧取舍（无 tag → 参考图被解读为首→尾关键帧），定稿=实施 <Picture N> 契约（与 §7b/§7c 的 <Video N>/<Audio N> 映射同源：tag 1-based 按连接顺序、槽位键 0-based）。
+
+**二、实施落点（11 文件）**：
+- `runs/agent/scheduler.py`：SYSTEM_MESSAGE 提示词规则新增 r2v tag 契约+固定语义句+生成后校验要求（行为规则）。
+- `runs/h3/prompts.py`：REF_TAG_RE（大小写不敏感）、REF_PERSIST_MARKERS、reference_tag_set/missing_reference_tags/has_ref_persist_sentence/ref_tag_contract_rule。
+- `runs/h3/idea2prompts.py`：build_messages 追加 r2v 契约规则；_ref_contract_violation 存在性校验（tag+贯穿句）；_enforce_ref_tag_contract 违规→追加强制提醒重生成一次→仍违规 ParamError 拒写。
+- `config/prompt_blueprints.json`：global_rules 规则 8（r2v 类槽位 tag 契约+固定语义句）+ video_r2v/api_r2v extra。
+- `runs/h3_submit.py`：--ref-image-size（max/match）、--no-check-ref-tags（校验开关，默认开）；_stage_mode 提交前硬校验——stage=r2v 且 wf 含 MiniMaxH3ReferenceToVideo → count_wired_reference_images(N) → missing_reference_tags 缺失即 ParamError exit 3（含补 tag 指引）；贯穿句缺失=警告（措辞容错不硬拒）。
+- `runs/h3/stage.py`：REF_IMAGE_SIZE_CHOICES、apply_ref_image_size（仅覆写存在该键的 RefToVideo 节点）、count_wired_reference_images（槽位键前缀+连线值判定）；build_template_workflow 增 ref_image_size kwarg（与 apply_generation_params 同点覆写）。
+- `runs/h3/params.py`：DEFAULTS.ref_image_size=max、GenParams.ref_image_size（workflow_dict 含）、resolve_params 枚举校验（非法→ParamError）。
+- `runs/h3_batch.py`：--ref-image-size + manifest 持久化 + submit/retry 转发。
+- `runs/agent/tools.py`：call_comfyui/batch_submit 增 ref_image_size 参数（enum max/match）并转发。
+- `config/capabilities.json`：video_r2v params.ref_image_size{default:max,options}+features.ref_tag_required=true（agent digest 可见）。
+- `workflows/remote_workflows/video_minimax_h3_r2v.json`：node 136 widgets_values[4] "match"→"max"（本地镜像；参数覆写兜底，故 sync_remote_workflows 回退无害，登记）。
+
+**三、验证**：py_compile 全部 8 文件 OK；新增 tests/test_ref_tag_contract.py 21 例；基线 py -3.13 -m pytest runs/h3/tests -q = 164 passed+1 skipped（=165 基线）+顶层 unittest 56 例 OK；consistency_check 问题 0。**一级判据（agent 进程内 stage enum 实值）不受影响**（未动注册表 stage 枚举）。**二级=☆真机 3 段×抽 3 帧目检**——待用户（队列空闲窗口）+ 抽帧目检判据：人物身份/场景空间/道具外观全程一致、无首尾帧化。
+
+**四、风险/遗留登记**：① 硬校验对「手工提示词无 tag」的既有用法=行为变更（拒绝+指引；开关 --no-check-ref-tags 降级，已登记）；② idea2prompts 只做存在性校验（张数未知），准确数校验在 h3_submit（按实际接线数）；③ ref_image_size 速度代价（参考 token 随采样步）如实写入文档/工具描述；④ 真机验证=抽帧目检（人工判据，不可自动化——用户首次验收环节）。
+

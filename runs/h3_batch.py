@@ -165,6 +165,8 @@ def cmd_submit(args) -> int:
         'resolution': args.resolution or '',
         'seconds': args.seconds or 5,
         'prompt': args.prompt or '',
+        # book-19 §10 P1.5：参考图尺度（retry 沿用；默认 max=强身份保真）
+        'ref_image_size': getattr(args, 'ref_image_size', '') or '',
         'segments': segments,
         'created': _now(),
         'total_submit_time': 0,
@@ -198,6 +200,8 @@ def cmd_submit(args) -> int:
                 cmd.extend(['--tts-text', seg['tts_text']])  # 现场修复：逐段台词
                 if args.tts_voice:
                     cmd.extend(['--tts-voice', args.tts_voice])
+            if getattr(args, 'ref_image_size', ''):
+                cmd.extend(['--ref-image-size', args.ref_image_size])
             cmd.extend(['--force-new'])
 
             seg['submit_time'] = time.time()
@@ -346,6 +350,8 @@ def cmd_retry(args) -> int:
                 cmd.extend(['--seconds', str(manifest['seconds'])])
             if seg.get('prompt') or manifest.get('prompt'):
                 cmd.extend(['--prompt', seg.get('prompt') or manifest['prompt']])
+            if manifest.get('ref_image_size'):
+                cmd.extend(['--ref-image-size', manifest['ref_image_size']])
             try:
                 result = subprocess.run(cmd, capture_output=True, text=True,
                                         timeout=60, cwd=str(PROJECT_ROOT))
@@ -390,6 +396,8 @@ def main(argv=None) -> int:
     p_sub.add_argument('--seconds', type=int, default=None)
     p_sub.add_argument('--resolution', default=None)
     p_sub.add_argument('--prompt', default='')
+    p_sub.add_argument('--ref-image-size', default='', choices=['max', 'match'],
+                       help='book-19 §10 P1.5 参考图尺度（默认 max=≤2048px 短边强保真；match=缩到生成分辨率更快）')
     p_sub.add_argument('--prompts-file', default='', help='逐段提示词 JSON 文件：{"0":"...","1":"..."}（按段索引；缺省用 --prompt 共享）')
     p_sub.add_argument('--tts-text', default='', help='旁白台词（全部段共享；与 --tts-texts 互斥）')
     p_sub.add_argument('--tts-texts', default='', help='逐段台词 JSON 字典（按段索引）；与 --tts-text 互斥')

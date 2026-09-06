@@ -176,7 +176,8 @@ def build_messages(idea: str, slot: str, blueprints: dict,
         'rain and distant traffic, soft footsteps, no dialogue, no music. No watermark, no '
         'text, no cuts.", "negative": "blurry, gibberish text, watermark, distorted hands, '
         'extra fingers, flicker, low quality"}\n'
-        "规则：\n" + rules
+        # book-19 §10 P1.5：r2v 槽位强制参考 tag 契约（<Picture N> 按连接顺序 + 贯穿句）
+        + "规则：\n" + rules + h3prompts.ref_tag_contract_rule(slot)
     )
     user_prompt = (
         f"目标提示词槽位：{slot}（{label}）\n槽位说明：{extra}\n"
@@ -232,6 +233,51 @@ def _write_segments(project_dir, idea, slot, blueprints, m, cfg, n, dry_run) -> 
         _log_err(e)
         return 0
 
+
+
+def _ref_contract_violation(positive: str, slot: str) -> str:
+    """r2v 槽位提示词契约违规说明（book-19 §10 P1.5）；空串=通过。
+
+    该层不知道参考图确切张数（提示词面向通用槽位），故只做“存在性”校验——
+    至少一个 <Picture N> tag + 贯穿全片语义句；准确的“tag 数==参考数”由
+    h3_submit 提交前校验（那里知道实际接线张数）。
+    """
+    if not str(slot or "").lower().endswith("_r2v"):
+        return ""
+    problems = []
+    if not h3prompts.reference_tag_set(positive):
+        problems.append("缺少 <Picture N> 参考 tag（官方契约：按连接顺序引用，第 1 张=<Picture 1>、第 2 张=<Picture 2>…）")
+    if not h3prompts.has_ref_persist_sentence(positive):
+        problems.append("缺少固定语义句（参考图贯穿全片锁定、不是首帧/尾帧关键帧、每帧保持一致）")
+    return "；".join(problems)
+
+
+def _enforce_ref_tag_contract(out: dict, slot: str, idea: str, blueprints: dict,
+                              m, cfg, need: str) -> dict:
+    """生成后校验（book-19 §10 P1.5）：r2v 契约违规 → 追加强制提醒重生成一次；
+    仍违规则抛 ParamError（拒绝写入槽位文件）。返回（可能已重生成的）out。"""
+    viol = _ref_contract_violation(out.get("positive") or "", slot)
+    if not viol:
+        return out
+    print(f"      [契约] {slot} 提示词未满足参考 tag 契约：{viol}", file=sys.stderr)
+    retry_msgs = build_messages(idea, slot, blueprints, m)
+    retry_msgs.append({"role": "user", "content":
+        f"上一版输出{need}。请重新生成该槽位，必须满足：\n"
+        "1. 每张参考图按连接顺序用官方 tag 引用（<Picture 1>=第 1 张、<Picture 2>=第 2 张…），"
+        "tag 必须出现在 positive 中；\n"
+        "2. positive 必须包含下列固定语义句（可原样照抄）：\n"
+        "\"The reference images (scene/character/props) are locked throughout the whole "
+        "shot; they are NOT first-frame/last-frame keyframes; keep every frame consistent.\"\n"
+        "3. 其余规则不变，只输出 JSON。"})
+    raw2 = chat_once(cfg, retry_msgs)
+    out2 = parse_prompt_json(raw2, slot)
+    viol2 = _ref_contract_violation(out2.get("positive") or "", slot)
+    if viol2:
+        raise ParamError(
+            f"槽位 {slot} 重生成后仍违反参考 tag 契约：{viol2}。未写入任何文件；"
+            "请人工在提示词中补 <Picture N> tag 与贯穿全片语义句，或直接使用 "
+            "call_comfyui --prompt 提交（提交前 h3_submit 仍会按参考数强校验）。")
+    return out2
 
 
 def build_segment_messages(idea: str, slot: str, blueprints: dict, m, n: int) -> list:
@@ -312,6 +358,10 @@ def main(argv=None) -> int:
         else:
             raw = chat_once(cfg, msgs)
             out = parse_prompt_json(raw, slot)
+            # book-19 §10 P1.5：r2v 槽位生成后契约校验（违规→重生成一次→仍违规拒绝）
+            out = _enforce_ref_tag_contract(
+                out, slot, idea, blueprints, m, cfg,
+                need="未满足 r2v 参考 tag 契约")
         if slot == "default":
             h3prompts.write_slot_texts(project_dir, None, out["positive"], out["negative"],
                                        defaults=True)

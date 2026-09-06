@@ -850,6 +850,15 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.36 P1.5 参考语义修复实施（2026-09-06 · 代码层完成；☆真机抽帧目检待用户侧验证）
+- **提示词 tag 契约（根治）**：官方契约依据=模板内嵌 MarkdownNote id 116（"reference the inputs by tag, in the exact order they were connected…matching the reference tags precisely …tends to work best"）。
+  - SYSTEM_MESSAGE（runs/agent/scheduler.py 提示词规则）新增 r2v 强制规则：每张参考图按连接顺序用 <Picture N>（1-based；<Picture 1>=images 第 1 张）+ 固定语义句（贯穿全片锁定、非首帧/尾帧关键帧）+ 生成后校验（tag 数==参考数，缺失即不提交补 tag 重提）。
+  - idea2prompts（runs/h3/idea2prompts.py）模板强制：build_messages 对 *_r2v 槽位追加契约规则；生成后校验（_ref_contract_violation）→ 违规自动追加强制提醒**重生成一次** → 仍违规 ParamError 拒绝写入。
+  - 蓝图规则（config/prompt_blueprints.json）：global_rules 新增规则 8（r2v 类槽位 tag 契约+固定语义句）；video_r2v/api_r2v 的 extra 更新。
+  - **提交前硬校验（h3_submit.py）**：r2v + MiniMaxH3ReferenceToVideo 节点 → 按实际接线参考数 N 校验提示词 <Picture 1..N> 齐全；缺失即 exit 3 拒绝（含补 tag 指引）；开关=--no-check-ref-tags（默认开启）；贯穿句缺失=警告登记（不硬拒，措辞容错）。
+- **ref_image_size 默认 max（身份保真优先）**：params（GenParams+枚举校验 max/match，默认 max）；CLI --ref-image-size（h3_submit/h3_batch+batch manifest 持久化）；tools.py call_comfyui/batch_submit 参数转发；stage.apply_ref_image_size（仅 MiniMaxH3ReferenceToVideo，覆写键守卫）+build_template_workflow 接线（同 apply_generation_params 先例）；capabilities.json video_r2v params.ref_image_size{default:max,options} + features.ref_tag_required=true；**本地镜像模板 node 136 第 5 widget match→max**（workflows/remote_workflows；重新同步 remote_workflows 会回退该 widget——参数覆写已兜底，登记）。
+- **验证**：COMPILE_OK；新增 tests/test_ref_tag_contract.py 21 例；全套 165 例（py -3.13 -m pytest runs/h3/tests）+顶层 unittest 56 例全绿；**剩余=☆真机 3 段抽 3 帧目检（首/中/尾：人物身份/场景空间/道具外观全程一致、不再首尾帧化）——需用户配合（队列空闲+3 段 r2v 提交）**；临时缓解（用户侧）：提示词手工加 <Picture N>+贯穿句。
+- **已修正落点 grep**：scheduler.py SYSTEM_MESSAGE（r2v tag 契约）；prompts.py REF_TAG_RE/REF_PERSIST_MARKERS/reference_tag_set/missing_reference_tags/has_ref_persist_sentence/ref_tag_contract_rule；stage.py apply_ref_image_size/count_wired_reference_images/REF_IMAGE_SIZE_CHOICES；params.py REF_IMAGE_SIZE_CHOICES+DEFAULTS+GenParams+resolve_params；h3_submit.py --ref-image-size/--no-check-ref-tags+校验块；h3_batch.py --ref-image-size；idea2prompts.py _ref_contract_violation/_enforce_ref_tag_contract+build_messages；tools.py ref_image_size×2；capabilities.json；prompt_blueprints.json；模板 node136。
 ### 20.35 用户首验发现：参考语义问题归因与 P1.5 登记（2026-09-06）
 - **现象**：3 段 r2v 产物每段“参考图=首帧+尾帧”（1:客厅→男主/2:男主→父亲/3:父亲→眼镜）；中间帧仅人物/道具部分参考、场景参考未发挥。
 - **归因（取证）**：3 段任务 workflow_api.json `<Picture` 计数=0——提示词未按官方 tag 契约引用参考图→模型按注入顺序把参考图解读为首→尾关键帧；模板 ref_image_size 固定 match（弱保真档；max=2048px 强保真、稍慢）。非绑定/脚本 bug（绑定此前取证正确）。

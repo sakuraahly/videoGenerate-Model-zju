@@ -59,7 +59,12 @@ DEFAULTS = {
     "fps": workflow.DEFAULT_FPS,
     "timeout": 3600,     # 轮询总超时（秒）
     "negative_prompt_optional": True,
+    # book-19 §10 P1.5（2026-09-06 用户首验）：参考图身份保真优先，
+    # 默认 max（≤2048px 短边强保真，参考 token 随采样步=稍慢）；match=缩到生成分辨率（快、弱保真）
+    "ref_image_size": "max",
 }
+
+REF_IMAGE_SIZE_CHOICES = ("max", "match")
 
 
 class ParamError(ValueError):
@@ -138,6 +143,7 @@ class GenParams:
     steps: int = workflow.DEFAULT_STEPS
     fps: float = workflow.DEFAULT_FPS
     timeout: int = 3600
+    ref_image_size: str = "max"  # book-19 §10 P1.5：match/max（默认 max=强身份保真）
     raw: Dict[str, str] = field(default_factory=dict)  # 参数文件中的全部原始键值
 
     @property
@@ -154,6 +160,7 @@ class GenParams:
             "seed": self.seed,
             "steps": self.steps,
             "fps": self.fps,
+            "ref_image_size": self.ref_image_size,
         }
 
 
@@ -222,6 +229,13 @@ def resolve_params(
         _as_float("timeout", merged.get("timeout", DEFAULTS["timeout"]), 60, 6 * 3600)
     )
 
+    ref_image_size = str(merged.get("ref_image_size", DEFAULTS["ref_image_size"])).strip().lower()
+    if ref_image_size not in REF_IMAGE_SIZE_CHOICES:
+        raise ParamError(
+            f"ref_image_size {ref_image_size!r} 不受支持。可用: {', '.join(REF_IMAGE_SIZE_CHOICES)}"
+            "（match=缩到生成分辨率更快但弱保真；max=≤2048px 短边强身份保真、略慢）"
+        )
+
     p = GenParams(
         prompt=prompt,
         negative_prompt=negative_prompt,
@@ -233,6 +247,7 @@ def resolve_params(
         steps=steps,
         fps=fps,
         timeout=timeout,
+        ref_image_size=ref_image_size,
         raw=raw,
     )
     p.length = workflow.snap_length(p.seconds, p.fps)
