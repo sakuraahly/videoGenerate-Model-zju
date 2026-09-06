@@ -439,3 +439,11 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **一、实现**：list/export/search（函数化+单测）；CHATS_DIR 注同值双定义；search 位置语义修正。
 
 **二、验证**：5 单测+165 绿；spark 真机 list/export/search PASS。
+
+---
+
+## 40. S10 质量看板实施记录（2026-09-06）
+
+**一、实现**：quality.py（append/compare/report）+ h3_submit PROBE 接线 + dev quality-report + probe_av timeout 对齐 60。
+
+**二、验证**：3 单测+165 绿；spark 真机 report JSON 完整（3 条双流记录）+ SSIM 复算 0.864483（一致）。

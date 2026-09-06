@@ -850,6 +850,9 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.53 S10 质量看板（quality-report）——2026-09-06
+- **实现**：新建 runs/h3/quality.py（append=probe_av 双流记录（ts/prompt_id/width/height/fps/frames/video+audio/时长/size=同源择一）；compare=ffmpeg SSIM；report/render=汇总（总条数/音频缺失计数/最近 N 条）；日志 logs/quality.jsonl append-only）；h3_submit PROBE 后自动 append（prompt_id 传参；失败不阻断）；dev.py quality-report 子命令（--json/--limit）；probe_av timeout 30→60（十八审低项对齐）。
+- **测试**：tests/test_quality_cmd.py 3 例（字段映射/读写/汇总）；165 绿。**★spark 真机**：补记 3 条（probe_av 双流 aac+立体声+size）；report JSON 完整；**compare video_19 vs video_24 SSIM=0.864483（与已知 0.864 复算一致）**。
 ### 20.52 S9 dev.py sessions 会话导出/搜索（spark-only）——2026-09-06
 - **实现**（dev.py）：sessions list/export/search 三子命令（逻辑函数化可单测：sessions_list/sessions_export/sessions_search）；CHATS_DIR 采用注同值+双定义注明（抽公共常量=低优先候选）；list 严格 glob *.jsonl（防 thumbs/ 目录混入）；export 输出 docs/exports/<cid>.md；search 支持 --cid 限定。
 - **测试**：tests/test_sessions_cmd.py 5 例（list 标题/export 内容/缺失报错/search 命中/限定）；165 绿。**★spark 真机**：list（含用户近期会话+首条摘要）/ export（md 落盘 930B）/ search 视频（命中历史会话行）全部 PASS。

@@ -35,7 +35,7 @@ def probe_av(path: str) -> dict:
          "-show_entries", "stream=codec_type,codec_name,channels,width,height,r_frame_rate,nb_frames,duration",
          "-show_entries", "format=duration,size",
          "-of", "json", str(path)],
-        capture_output=True, text=True, timeout=30)
+        capture_output=True, text=True, timeout=60)  # 十八审低项：与 probe() 60s 对齐（大文件更稳）
     if r.returncode != 0:
         raise ValueError("ffprobe(av) 失败: " + (r.stderr or r.stdout or "")[-200:])
     import json as _j

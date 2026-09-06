@@ -109,10 +109,11 @@ def _probe_diff(probe_lines: str, width, height, length, seconds) -> str:
     return ""
 
 
-def _finalize_local_outputs(project_dir, remote_paths, gp=None) -> None:
+def _finalize_local_outputs(project_dir, remote_paths, gp=None, prompt_id="") -> None:
     """spark-local 直跑（无外层下载器）：产物本机复制直接保存到程序文件夹 outputs/。
 
     仅由无人负责下载的直跑路径调用；编排层（H3_KEEP_BREAKPOINT=1）自行下载，不重复。
+    S10：PROBE 后自动登记质量看板（quality.append，probe_av 双流；失败不阻断主产物）。
     """
     outputs_dir = Path(project_dir) / "outputs"
     try:
@@ -146,6 +147,12 @@ def _finalize_local_outputs(project_dir, remote_paths, gp=None) -> None:
                 print(f"PROBE: {dst.name} width={_pp.get('width')} height={_pp.get('height')} "
                       f"fps={_pp.get('r_frame_rate')} frames={_pp.get('nb_frames')} duration={_pp.get('duration')}",
                       flush=True)
+                # S10：质量看板自动登记（probe_av 双流；失败不阻断）
+                try:
+                    from h3 import quality as _q
+                    _q.append(str(dst), prompt_id=prompt_id, project_dir=Path(project_dir))
+                except Exception:  # noqa: BLE001
+                    pass
                 if gp is not None and getattr(gp, 'width', None):
                     issue = _probe_diff(pr.stdout, gp.width, gp.height,
                                         getattr(gp, 'length', None), getattr(gp, 'seconds', None))
@@ -986,7 +993,8 @@ def main(argv: Optional[list] = None) -> int:
         # 直跑（CLI/agent，无外层下载器）：spark-local → 产物直接保存到 outputs/；
         # win-remote → 保持 scp 提示（由外层/人工经隧道下载）。
         if _site(project_dir) == "spark-local":
-            _local_out = _finalize_local_outputs(project_dir, all_remote, gp=gp)
+            _local_out = _finalize_local_outputs(project_dir, all_remote, gp=gp,
+                                              prompt_id=resume_id or "")
             # book-14 T2b：中文语音替换（--tts-text 或任务记录 tts_text；失败不阻断主产物）
             # 八审：抽为模块级 _run_tts_hook（双分支可单测；修复 _voice/_tj UnboundLocalError）
             # 返回值=解析后的台词文本：供下方仅-fast 分支判断“是否已做 TTS”（历史语义保留）

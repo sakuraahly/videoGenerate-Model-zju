@@ -808,6 +808,9 @@ def main(argv=None):
     ss.add_argument("arg", nargs="?", default="", help="export=会话 id；search=关键词")
     ss.add_argument("--cid", default="", help="search 的会话限定（可选）")
     ss.add_argument("--out", default="", help="export 输出目录（默认 docs/exports/）")
+    qr = sub.add_parser("quality-report", help="质量看板（book-19 S10）：合并日志/汇总输出")
+    qr.add_argument("--json", action="store_true", help="结构化输出")
+    qr.add_argument("--limit", type=int, default=20)
     args = ap.parse_args(argv)
 
     if args.cmd == "check":
@@ -832,6 +835,18 @@ def main(argv=None):
         return cmd_queue(args)
     if args.cmd == "sessions":
         return cmd_sessions(args)
+    if args.cmd == "quality-report":
+        try:
+            from h3 import quality as _q
+            if getattr(args, "json", False):
+                print(json.dumps(_q.report(limit=getattr(args, "limit", 20) or 20),
+                                  ensure_ascii=False, indent=1))
+            else:
+                print(_q.render(limit=getattr(args, "limit", 20) or 20))
+            return 0
+        except Exception as e:  # noqa: BLE001
+            print(f"[错误] {type(e).__name__}: {e}", file=sys.stderr)
+            return 3
     if args.cmd == "postprocess":
         # book-14 T2：在 spark 侧执行（Windows 无 ffmpeg）
         extra = f" --scale {args.scale} --denoise {args.denoise} --sharpen {args.sharpen}"
