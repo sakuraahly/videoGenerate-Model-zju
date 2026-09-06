@@ -557,6 +557,7 @@ class BatchSubmit(BaseTool):
                 with open(_pf, 'w', encoding='utf-8') as _f:
                     json.dump(_pj, _f, ensure_ascii=False)
                 cmd.extend(['--prompts-file', _pf])
+                _pf_cleanup = _pf
             except Exception as e:  # noqa: BLE001
                 return f'[错误] prompts 参数不是有效 JSON 字典: {e}'
         if params.get('tts_texts'):
@@ -568,6 +569,12 @@ class BatchSubmit(BaseTool):
         try:
             result = subprocess.run(cmd, capture_output=True, text=True,
                                     timeout=300, cwd=PROJECT_ROOT)
+            try:
+                _pf_cleanup
+                os.remove(_pf_cleanup)  # 临时 prompts 文件用完即删（防 runs/ 残留）
+                _pf_cleanup = None
+            except (NameError, OSError):
+                pass
             out = (result.stdout or '') + (result.stderr or '')
             if result.returncode != 0:
                 return f'批量提交失败 (exit {result.returncode})\n{_truncate(out)}'
