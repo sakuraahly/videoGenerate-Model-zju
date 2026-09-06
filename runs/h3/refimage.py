@@ -178,15 +178,47 @@ def bind_images_to_template(stage: str, image_names: list, template: Path = None
     i2v/flf2v 按槽位顺序（flf2v: slot0=首帧、slot1=末帧）；r2v 前 N 个槽位并启用。
     image_names 须为已上传到 ComfyUI input 的文件名。返回模板路径。
 
-    book-11 修复：默认绑定【共享模板】（历史行为）；调用方传入 `template` 时绑定该副本，
+    book-11 修复：默认绑定【共享模板】（历史行为）；调用方传入 template 时绑定该副本，
     绝不留入共享模板（之前的 in-place 写回会污染模板，导致后续无人引用的素材自动渗入）。
+
+    book-19 P1.5 补丁（2026-09-06 agent 全链真机暴露）：绑定只写 widget 值、不接线——
+    r2v 模板默认仅 0/1 槽接线（2/3 等为禁用占位），N>2 张参考图时未接线槽位=参考图
+    **静默不达模型**（提示词 tag 契约全过 + 提交成功 + 参考缺失，最隐蔽的一类）。修复：
+    绑定前自动“启用前 N 个 LoadImage 并接线到 ref_images.ref_image_0..N-1”（幂等：
+    已接线仅换图；行不足补行——复用 _wire_slot/_clone_loadimage 逻辑）。
     """
+    def _ensure_wired(data: dict, slots: list, n: int) -> int:
+        tgt, rows = _owner_rows(data, "MiniMaxH3ReferenceToVideo", "ref_images.ref_image_")
+        if tgt is None or not rows:
+            return 0
+        for i in range(len(rows), n):
+            tgt.setdefault("inputs", []).append({
+                "name": "ref_images.ref_image_%d" % i, "type": "IMAGE",
+                "link": None, "widget": None})
+            _clone_loadimage(data.get("nodes") or [], i, ["drama_asset_hero.png"])
+            tgt, rows = _owner_rows(data, "MiniMaxH3ReferenceToVideo", "ref_images.ref_image_")
+        wired = 0
+        for i in range(min(n, len(slots), len(rows))):
+            node = slots[i]
+            if node.get("mode") != 0:
+                node["mode"] = 0
+            before = rows[i].get("link")
+            _wire_slot(data, tgt, rows[i], node.get("id"))
+            if rows[i].get("link") != before:
+                wired += 1
+        return wired
+
     tpl = Path(template) if template else _stage_template(stage)
     data = json.loads(tpl.read_text(encoding="utf-8-sig"))
     nodes = data.get("nodes") or []
     slots = [n for n in nodes if isinstance(n, dict) and n.get("type") == "LoadImage"]
     if not slots:
-        raise ValueError(f"模板 {tpl.name} 无 LoadImage 槽位")
+        raise ValueError("模板 %s 无 LoadImage 槽位" % tpl.name)
+    rewired = 0
+    try:
+        rewired = _ensure_wired(data, slots, len(image_names))
+    except Exception as e:
+        _log("bind_images wire_skip stage=%s err=%s" % (stage, e))
     bound = 0
     for n in slots:
         if bound >= len(image_names):
@@ -198,11 +230,9 @@ def bind_images_to_template(stage: str, image_names: list, template: Path = None
         vals[0] = image_names[bound]
         n["mode"] = 0
         bound += 1
-    tpl.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    _log(f"bind_images stage={stage} bound={bound} -> {tpl.name}")
+    tpl.write_text(json.dumps(data, indent=2, ensure_ascii=False) + chr(10), encoding="utf-8")
+    _log("bind_images stage=%s bound=%d rewired=%d -> %s" % (stage, bound, rewired, tpl.name))
     return str(tpl)
-
-
 def _load_batch_map() -> dict:
     """加载 log.jsonl 的 sha→batch_id 映射（带 mtime+size 缓存）。"""
     log_path = ROOT / "uploads" / "log.jsonl"
