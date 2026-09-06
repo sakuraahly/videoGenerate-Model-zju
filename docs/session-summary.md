@@ -850,6 +850,14 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.38 P1.5 真机验证：3 段 r2v（参考贯穿全片）实测（2026-09-06 · 用户意图确认后）
+- **任务**（用户给定）: 18s/360p 三段分镜（0-4s 客厅发现盒子 / 4-10s 拆盒+父亲台词 / 10-18s 眼镜+独白+钢琴渐入），4 张参考图（客厅/沙朗/父亲/新眼镜）贯穿全片 — stage=r2v。
+- **执行**（spark 真机）: 模板 4 槽接线（use --slot 0..3 启用 137/139/141/142 + 接线 ref_image_2/3 links 283/284）→ 逐段 h3_submit（360p/ref2v_4step/--image 4 张 bind 副本）→ 提交 675d7a7a/a8295a2d/1e036509 全部 success（00116/00117/00118）；补 --resume 触发 T2b 钩子：seg2 TTS_OUT 3.19s+SRT、seg3 TTS_OUT 10.20s+SRT（**10.2s 独白 > 8s 视频=字幕/语音越出，登记待用户定夺：精简台词/延长镜头/变速**）。
+- **P1.5 一级证据（落盘 API）**：3 段 wired_slots=4、tags={1,2,3,4}、ref_image_size=max、persist 句齐全——tag 契约+max 默认生效。
+- **抽帧目检（每段首/中/尾 3 帧）**：人物身份 OK（沙朗黑发黑衫 3 段一致；父亲白发旧夹克与参考人设图吻合）；道具 OK（眼镜 seg2/3 一致、纸盒 seg1/2/3 一致）；场景 WARN（seg1/seg3 与参考图破旧客厅一致=黄桌/红时钟/双沙发/破墙；**seg2 尾帧父子同框时环境漂移=明亮木窗房**——镜头拉宽+同框被温馨家庭化，模型行为）；无首尾帧化 OK（全程贯穿，非参考图首尾两帧式）。
+- **产物落点**（win outputs）: video_39=seg1 原生 / video_40=seg2 TTS 成品 / video_41=seg3 TTS 成品；video_36/37/38=原生备份；上次 flf2v 三件改名 *_flf2v（与 spark 系统编号冲突化解，登记）。
+- **新增英文音色**（英文台词）: tts.py VOICE_ALIASES + aria/en-aria→en-US-AriaNeural；h3_submit/h3_batch/tools choices 同步；spark 实测合成 3.19s OK。
+- **状态**：r2v 模板 use --undo 还原（git 仅 voice 4 文件改动）；last_job.json 已清；共享队列空闲。
 ### 20.37 遗留断点核查 + P1.5 归因勘误（2026-09-06 · 用户确认意图=r2v 参考贯穿全片）
 - **断点 5f820fe9（用户询问）**：=03:30 首验批量任务 batch_20260906_033010 **第 3 段**（父亲→眼镜，stage=**flf2v**）；ComfyUI history 三查=**全部 success/completed**（段0=00112/段1=00113/段2=00114，均 608×352/5.17s，在 spark ComfyUI output/video）；last_job.json 仅簿记残留（remote_path 空/manifest 未收尾），**任务未卡住、产物未丢**。另查 01:50:15 i2v 任务（5768e508→00105）亦 success。
 - **归因勘误（重要）**：用户首验 3 段实为 **flf2v 首末帧转场**（MiniMaxH3ImageToVideo），**非 r2v**——原归因“无 <Picture tag → 参考图被当首尾帧”与“ref_image_size=match 弱保真”对 flf2v **不适用**（flf2v 无 tag 契约、无 ref_image_size 键，“首尾帧”=其设计语义）。**但 P1.5 修复未白做**：抽查历史 12 份真实 r2v 提交（09-02~09-05）全部 <Picture tags=[] 且 ref_image_size=match——r2v 通道契约缺失真实存在，修复命中。**区分**：首验现象=flf2v 语义 vs r2v 通道漏洞。

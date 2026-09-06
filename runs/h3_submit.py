@@ -272,8 +272,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    choices=sorted(h3workflow.RESOLUTION_PRESETS),
                    help="Use a resolution preset (overrides file value)")
     p.add_argument("--tts-voice", type=str, default="zh-CN-XiaoxiaoNeural",
-                choices=["xiaoxiao", "yunxi", "zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural"],
-                help="七审（S6）：TTS 音色——短名 xiaoxiao(女)/yunxi(男) 或全名；均归一为全名后传给 edge-tts")
+                choices=["xiaoxiao", "yunxi", "aria", "en-aria",
+                         "zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural", "en-US-AriaNeural"],
+                help="七审（S6）：TTS 音色——短名 xiaoxiao(女)/yunxi(男)/aria(英文女声) 或全名；均归一为全名后传给 edge-tts")
     p.add_argument("--tts-text", type=str, default="",
                 help="中文台词/旁白文本：完成后将该文本合成中文语音并替换视频音轨（T2b edge-tts）")
 

@@ -16,6 +16,9 @@ DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"  # 女声/新闻小说；备选 zh-CN-Yun
 VOICE_ALIASES = {
     "xiaoxiao": "zh-CN-XiaoxiaoNeural",
     "yunxi": "zh-CN-YunxiNeural",
+    # 英文台词（父子英文对话/画外独白）：短名 aria=en-US-AriaNeural（美音女声；男英文用 en-US-ChristopherNeural 待登记）
+    "aria": "en-US-AriaNeural",
+    "en-aria": "en-US-AriaNeural",
 }
 
 _SRT_TIME = re.compile(r"(\d+):(\d{2}):(\d{2})[.,](\d{3})")

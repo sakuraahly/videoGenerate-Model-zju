@@ -530,8 +530,8 @@ class BatchSubmit(BaseTool):
             },
             'tts_voice': {
                 'type': 'string',
-                'enum': ['xiaoxiao', 'yunxi'],
-                'description': '台词音色（短名，默认 xiaoxiao）',
+                'enum': ['xiaoxiao', 'yunxi', 'aria'],
+                'description': '台词音色（短名 xiaoxiao/yunxi/aria=英文美音女声；默认 xiaoxiao；英文台词建议 aria）',
             },
             'ref_image_size': {
                 'type': 'string',

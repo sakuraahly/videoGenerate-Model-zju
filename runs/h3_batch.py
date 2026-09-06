@@ -401,7 +401,7 @@ def main(argv=None) -> int:
     p_sub.add_argument('--prompts-file', default='', help='逐段提示词 JSON 文件：{"0":"...","1":"..."}（按段索引；缺省用 --prompt 共享）')
     p_sub.add_argument('--tts-text', default='', help='旁白台词（全部段共享；与 --tts-texts 互斥）')
     p_sub.add_argument('--tts-texts', default='', help='逐段台词 JSON 字典（按段索引）；与 --tts-text 互斥')
-    p_sub.add_argument('--tts-voice', default='', choices=['xiaoxiao', 'yunxi'], help='台词音色（短名，默认 xiaoxiao）')
+    p_sub.add_argument('--tts-voice', default='', choices=['xiaoxiao', 'yunxi', 'aria'], help='台词音色（短名 xiaoxiao/yunxi/aria(英文女声)；默认 xiaoxiao）')
     p_sub.add_argument('--dry-run', action='store_true')
 
     p_stat = sub.add_parser('status')
