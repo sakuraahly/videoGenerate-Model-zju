@@ -364,3 +364,12 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 
 **四、风险/遗留登记**：① 硬校验对「手工提示词无 tag」的既有用法=行为变更（拒绝+指引；开关 --no-check-ref-tags 降级，已登记）；② idea2prompts 只做存在性校验（张数未知），准确数校验在 h3_submit（按实际接线数）；③ ref_image_size 速度代价（参考 token 随采样步）如实写入文档/工具描述；④ 真机验证=抽帧目检（人工判据，不可自动化——用户首次验收环节）。
 
+---
+
+## 31. S8 批量状态轮询优化实施记录（2026-09-06 · 五审定稿落地）
+
+**一、实现**：comfy.py 决策树 classify_task_state（completed/failed/running/pending/absent；absent=两个来源皆不可区分如实标注）+ h3_batch cmd_status 改写（本进程 ComfyClient 判定，无子进程；输出兼容：SEG 行/图标/总耗时/REMOTE_VIDEO_PATH/manifest 回写；--wait 10s）。
+
+**二、验证**：test_s8_decision 9 例；165 基线+顶层 unittest OK；spark 真机：已完成批瞬时 3/3（旧 3×30s）、失败批如实 4 failed。
+
+**三、遗留**：task_watch.poll_batch 的 pathlib 修复确认在场（P1 前置）；cancelled 不可区分已按规格如实标注（P1 事件文案沿用）。

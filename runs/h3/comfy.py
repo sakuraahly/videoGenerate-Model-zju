@@ -374,6 +374,47 @@ def extract_output_files(node_outputs: object) -> List[Dict[str, str]]:
     return files
 
 
+def classify_task_state(entry, pid, running_pids, pending_pids):
+    """S8 决策树（五审定稿）：ComfyUI history/queue 状态消歧 -> (state, detail)。
+
+    state ∈ completed / failed / running / pending / absent：
+      - completed：history 非空且 status.completed 或含 outputs；
+      - failed：   history 非空且 status.status_str == "error"（detail=status_text）；
+      - pending：  history 为空（或非终态）且 pid ∈ queue_pending；
+      - running：  history 为空（或非终态）且 pid ∈ queue_running；
+      - absent：   都不在（ComfyUI 侧 cancelled 与 never-queued 不可区分，如实标注）。
+    detail：completed 时=rank 最高的 mp4 文件名（subfolder/filename 拼接）；failed 时=错误文本。
+    """
+    history = entry if isinstance(entry, dict) else {}
+    status = history.get("status") or {}
+    status_str = str(status.get("status_str") or "")
+    if status.get("completed") or history.get("outputs") or status_str == "success":
+        files = []
+        for _oid, o in (history.get("outputs") or {}).items():
+            if not isinstance(o, dict):
+                continue
+            for im in (o.get("images") or []) + (o.get("video") or []):
+                if isinstance(im, dict) and im.get("filename"):
+                    files.append(im)
+        if files:
+            files.sort(key=lambda f: 0 if str(f.get("format", "")).lower() in ("mp4", "") else 1)
+            f0 = files[0]
+            parts = [str(f0.get("subfolder") or "").strip("/")]
+            parts.append(str(f0.get("filename") or ""))
+            return "completed", "/".join(p for p in parts if p)
+        return "completed", ""
+    if status_str == "error":
+        return "failed", str(status.get("status_text") or "ComfyUI 执行失败")[:200]
+    pid = str(pid)
+    if pid in running_pids:
+        return "running", ""
+    if pid in pending_pids:
+        return "pending", ""
+    # history 非空且非终态但不在队列：判定为 absent（诚实：状态不可区分）。
+    # history 为空且不在队列：同上（cancelled/never-queued 不可区分）。
+    return "absent", ""
+
+
 def build_remote_path(remote_output_dir: str, file_info: Dict[str, str]) -> str:
     """把文件信息拼成远端 scp 可用路径（~ 由远端 shell 展开）。"""
     base = (remote_output_dir or "~/ai/ComfyUI/output").rstrip("/")

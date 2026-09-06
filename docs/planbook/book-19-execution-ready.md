@@ -32,7 +32,7 @@
 | 0 | **P0 受控续接**（先于 S 序列） | §8（本书） | 小 | ☆1 次 | 目标驱动+上限 5+轮空熔断+尊重用户；修复"多段任务第一段成功后中断/失败重试后自熄" |
 | 0.5 | **P1 事件驱动完成通知**（先于 S8；与 S8 复用任务状态） | §9（本书） | 中 | ☆1 次 | 监听脚本→模型（零轮询）；模型侧校验监听健康+超时分型；去重防重复注入 |
 | 0.6 | **P1.5 参考语义修复**（用户首验发现·当前最高优先） | §10（本书） | 中 | ☆1 次×3 抽检 | tag 契约缺失=参考图被当首尾帧；ref_image_size 默认改 max；实施< P1
-| 3 | **S8**：批量状态重写（queue_pids+决策树） | §8 | 中 | ☆1 次 | 前置=task_watch.poll_batch 缺 pathlib 修复已在场须确认；cancelled/never-queued 不可区分如实标注 |
+| 3 | **S8**：批量状态重写（queue_pids+决策树）｜✅已实施（2026-09-06） | §8 | 中 | ☆1 次 | 前置=task_watch.poll_batch 缺 pathlib 修复已在场须确认；cancelled/never-queued 不可区分如实标注 |
 | 4 | **S6**：男/女声+schema tts_voice/tts_font_size+SYSTEM 一句 | §6 | 小 | ☆1 次 | 引擎已预接通（VOICE_ALIASES）；tools 透传短名不映射；判据=argv 短名+tts_done 全名 |
 | 5 | **S1**：gallery caption/可用性 | §1 | 小-中 | ☆（spark-only） | _asset_available=文件系统存在性（非 _known_shas）；第三改动点 :1411-1417 元组化+回退兜底 |
 | 6 | **S4**：idea2prompts --segments-json | §4 | 小-中 | ☆LLM spark 本机 | 十八审前置：双向槽名对齐+0-based 统一+段数守卫；验证读落盘 manifest JSON |

@@ -236,6 +236,16 @@ def cmd_submit(args) -> int:
 
 
 def cmd_status(args) -> int:
+    """book-19 S8（五审定稿）：逐段状态判定改为 ComfyClient 决策树（queue_pids+history），
+    消除每段新起 h3_submit --resume 子进程（每段 30s 开销）；--wait 轮询间隔 10s。
+
+    归一口径（决策树）：history 非空且含 outputs/complete→completed；status.error→failed；
+    history 为空→pid ∈ queue_running→running / ∈ queue_pending→pending / 皆不在→absent
+    （ComfyUI 侧 cancelled 与 never-queued 不可区分，如实标注，不猜）。
+    """
+    from h3 import comfy as _comfy
+    from h3 import params as h3params
+
     batch_dir = _find_batch_dir(args.batch)
     if not batch_dir:
         print('[错误] 找不到批次目录', file=sys.stderr)
@@ -245,11 +255,27 @@ def cmd_status(args) -> int:
         print(f'[错误] manifest 不存在: {manifest_path}', file=sys.stderr)
         return 3
     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-    timeout = args.timeout or 100  # book-07：与 run_script 工具超时(120s)对齐；长任务分多次查询，不假死等
-    t0 = time.time()
+    timeout = getattr(args, 'timeout', None) or 100
 
+    # S8：在线客户端（重试收紧：故障时快速失败，10 段最多约 5*N 秒，由外层 --wait 轮询兜底）
+    client = _comfy.ComfyClient(retries=1, request_timeout=5)
+    env = None
+    try:
+        env = h3params.load_environment(PROJECT_ROOT)
+    except Exception:  # noqa: BLE001
+        pass
+    remote_base = str((env or {}).get('remote_output_dir') or '~/ai/ComfyUI/output')
+
+    t0 = time.time()
     while True:
         all_done = True
+        try:
+            running_pids, pending_pids = client.queue_pids()
+        except Exception as e:  # noqa: BLE001
+            print(f'[S8] 队列读取失败（{type(e).__name__}: {e}）——本轮按已知状态继续；'
+                  f'故障时建议稍后重跑 status。', file=sys.stderr)
+            running_pids, pending_pids = set(), set()
+
         for seg in manifest['segments']:
             if seg['state'] in ('completed', 'failed'):
                 continue
@@ -259,40 +285,41 @@ def cmd_status(args) -> int:
                 seg['error'] = seg.get('error') or '无 prompt_id（提交未成功）'
                 all_done = False
                 continue
-            cmd = [sys.executable, str(SUBMIT_SCRIPT), '--resume', seg['prompt_id']]
+            pid = str(seg['prompt_id'])
             try:
-                result = subprocess.run(cmd, capture_output=True, text=True,
-                                        timeout=30, cwd=str(PROJECT_ROOT))
-                out = result.stdout + result.stderr
-                if result.returncode == 0:
-                    local = next((ln.strip() for ln in result.stdout.splitlines()
-                                  if ln.startswith('LOCAL_OUTPUT:')), '')
-                    remote = next((ln.strip() for ln in result.stdout.splitlines()
-                                   if ln.startswith('REMOTE_VIDEO_PATH:')), '')
-                    seg['state'] = 'completed'
-                    seg['output'] = local or remote
-                    seg['complete_time'] = time.time()
-                    print(f"SEG {seg['idx']} 完成: {seg['output']}")
-                elif result.returncode == 2:
-                    all_done = False
-                else:
-                    seg['state'] = 'failed'
-                    seg['error'] = out[:200]
-            except subprocess.TimeoutExpired:
+                entry = client.history(pid).get(pid)
+            except Exception as e:  # noqa: BLE001
+                entry = None
+                seg['state'] = seg.get('state') or 'submitted'
+                print(f"[S8] SEG {seg['idx']} history 读取失败: {type(e).__name__}: {str(e)[:80]}")
                 all_done = False
-            except Exception as e:
-                # book-07：异常归一为 failed（终态），避免"异常但 all_done 仍 True→提前判成功"的边界 bug
+                continue
+            state, detail = _comfy.classify_task_state(entry, pid, running_pids, pending_pids)
+            if state == 'completed':
+                seg['state'] = 'completed'
+                seg['output'] = detail or seg.get('output') or ''
+                seg['complete_time'] = seg.get('complete_time') or time.time()
+                print(f"SEG {seg['idx']} 完成: {seg['output']}")
+                # 与 h3_submit REMOTE_VIDEO_PATH 同构（供外层下载）
+                if seg['output']:
+                    print(f"  REMOTE_VIDEO_PATH: {remote_base}/{seg['output']}")
+            elif state == 'failed':
                 seg['state'] = 'failed'
-                seg['error'] = str(e)[:200]
+                seg['error'] = (detail or seg.get('error') or '任务执行失败')[:200]
+            elif state == 'absent':
+                # S8 诚实标注：ComfyUI 侧 cancelled/never-queued 不可区分 → 按失败如实处理
+                seg['state'] = 'failed'
+                seg['error'] = '任务不在队列且无 history（可能已被取消或从未入队；ComfyUI 侧不可区分）'
+            else:  # running/pending
                 all_done = False
             _save_manifest(batch_dir, manifest)
 
-        if all_done or (not args.wait):
+        if all_done or (getattr(args, 'wait', None) is False):
             break
         if time.time() - t0 > timeout:
             print(f'[超时] 等待超过 {timeout}s')
             break
-        time.sleep(15)
+        time.sleep(10)  # S8：轮询间隔 15s→10s
 
     completed = sum(1 for s in manifest['segments'] if s['state'] == 'completed')
     failed = sum(1 for s in manifest['segments'] if s['state'] == 'failed')
@@ -300,7 +327,7 @@ def cmd_status(args) -> int:
     total_time = round(time.time() - t0, 1)
     avg = round(total_time / max(completed, 1), 1)
 
-    if args.json:
+    if getattr(args, 'json', False):
         print(json.dumps(manifest, indent=2, ensure_ascii=False))
     else:
         print(f"\n批次 {manifest['batch_id']} 状态:")

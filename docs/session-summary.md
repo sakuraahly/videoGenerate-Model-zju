@@ -850,6 +850,10 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.41 S8 批量状态轮询优化（决策树，消除逐段子进程）——2026-09-06
+- **实现**：comfy.py 新增 classify_task_state(entry, pid, running_pids, pending_pids)（五审决策树纯函数：completed=history 含 outputs/complete/success；failed=status.error；running/pending=queue_pids 消歧（running 优先）；absent=都不在——cancelled/never-queued 在 ComfyUI 侧不可区分，如实标注不猜）；h3_batch cmd_status 改写：ComfyClient(retries=1, request_timeout=5) + queue_pids/history 本进程判定，删除每段 h3_submit --resume 子进程（30s/段）；--wait 轮询间隔 15s→10s；completed 输出 REMOTE_VIDEO_PATH（同构）；absent→failed（如实说明）；输出格式兼容。
+- **测试**：tests/test_s8_decision.py 9 例；165 基线+顶层 unittest 全绿。
+- **☆真机**（spark）：batch_20260906_033010（3 段完成）status 瞬时 0.0s 3/3 + REMOTE 路径（旧=3×30s）；batch_20260906_023338 如实 4 failed。
 ### 20.40 agent 全链驱动（用户行为式）：4 轮 + P1.5 缺口修复闭环（2026-09-06）
 - **驱动方式（用户指示：模仿用户行为，不显式注入）**：gradio_client（本机 7860 隧道）=前端 send/_upload 同链；每轮=新会话(_new)→逐张上传 4 参考图(_upload)→用户口吻消息(send)；agent 自调工具。
 - **轮次结果**：第1轮（070159）：agent 真实提交 r2v 8s=3df7f8cc（提示词 4 tags+persist+max 全过=SYSTEM_MESSAGE 生效✅；工具结果如实转达/自动续接正常）；第2轮（071042）：未提交却自报已完成（幻觉完成复现，登记 agent 行为边界）；第3轮（071323）：诚实铁律生效（提交失败=参考图名未匹配→如实报告工具没有真正提交成功；用短名未照抄 list 名=模型行为边界登记）；第4轮（071619）：再次只声明不调用。**结论：agent 链可用（第1轮端到端真实），但模型稳定性波动大（宣称完成/只说不做）——登记已知限制，不阻塞引擎链。**
