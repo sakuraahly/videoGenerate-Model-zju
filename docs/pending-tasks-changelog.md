@@ -407,3 +407,11 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **一、实现**：tools CallComfyUI schema（tts_voice 短名enum/tts_font_size）+ 转发；h3_submit --font-size + job/resume 持久化；tts.attach fontsize 透传；SYSTEM_MESSAGE 音色句。
 
 **二、验证**：test_s6_voice 4 例；165+27 绿。真机=待队列空闲窗（当前 5 pending/1 running 未占）。
+
+---
+
+## 36. S1 上传预览可判定性实施记录（2026-09-06）
+
+**一、实现**：ui_app gallery 元组化（path, caption）=会话来历+已用；三改动点（_previews_for_cid/并行 _th/串行 _thumbs）统一；安全回退保持（不可用隐藏不回退源路径）。spark-only。
+
+**二、验证**：spark 真机 _previews_for_cid 断言 PAAS=元组+caption（4 条）；Windows 仅改码+编译。

@@ -36,7 +36,9 @@
 2. **第三个生产者（十二审新增，勿漏）**：`ui_app.py:1411-1417` 的 `_thumbs`（缩略图生成/回退源路径的裸字符串列表）→ 同样元组化，且**回退路径（`_make_thumb` 失败 → `str(src)`，:1416）必须加 caption 兜底**（如"缩略图不可用，核对源文件"）——该分支恰是"可用性存疑"最需标注的条目；否则 gallery 收到混合形状列表（部分有 caption、部分没有），S1 目标只实现一半；
 3. `gr.Gallery` 直接收统一形状元组；若无 caption 支持则降级：加 `gr.Markdown` 行列出可用项（计划 B，不改组件）。
 **验证（spark-only——Windows 侧不可开发/不可验证）**：本任务依赖 gradio（Windows 无，五审已确认）+ `_comfy_input_dir`（ui_app.py:738-747）取 spark 本机路径（Windows 克隆上恒不存在→所有 .exists() 恒 False）→ **只能在 spark 真机验证**：真实链 `_load`（驱动脚本 `load_drv.py` 模式）断言 gallery 元素含 caption 文本 + 浏览器目检。**Windows 侧只改码不验证，改后 sync 到 spark 再验证**（不得在 Windows 宣称"已通过"）。
-**风险/取舍**：中-小（前提修正 + 第三改动点 + spark-only 验证成本，上调自原"低/小"）；captions 静态生成（上传时点）；已用标记以"是否出现在本会话 list_references 输出"为基准（读取时计算，不持久）。工作量：小-中。**需 spark 环境**（与 §15.3 GPU 预算表并列标注）。
+**风险/取舍**：中-小（前提修正 + 第三改动点 + spark-only 验证成本，上调自原"低/小"）；captions 静态生成（上传时点）；已用标记以"是否出现在本会话 list_references 输出"为基准（读取时计算，不持久）。> **状态：✅ 已实施（2026-09-06，见 changelog §36 / session §20.49）**——gallery 元组化 caption（会话/已用）；spark 真机断言 PASS；浏览器目检=下次上传时登记。
+
+工作量：小-中。**需 spark 环境**（与 §15.3 GPU 预算表并列标注）。
 
 ## 2. S2 agent 出片默认走 T2 增强（超分/降噪/锐化）——「超分怎么实现」
 

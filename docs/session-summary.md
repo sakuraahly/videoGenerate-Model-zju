@@ -850,6 +850,13 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.49 S1 上传预览可判定性（gallery caption 会话/可用性）——2026-09-06
+- **实现**（ui_app.py，spark-only 验证口径）：_caption_for(cid) 生成 caption（会话来历+已用）；_previews_for_cid 输出统一规格 [(path, caption)]；第三个生产者（并行 _th/串行 _thumbs）同元组化+失败无 None 混入（不回退源路径 的现存安全行为保留）；gr.Gallery 直接收元组。
+- **spark-only ☆验证**（Windows 只改码不宣称）：spark 真机调用 _previews_for_cid 断言=4 条元组+caption 含'会话/已用'——PASS；浏览器目检=用户下次上传时可见（登记）。
+- **关键口径**：可用性=本地归档/缩略图存在性（_known_shas 仅候选集）；已用=本会话素材池成员。
+### 20.48 用户反馈：自动续接断链（2026-09-06）
+- 用户实测 r2v 提交后 [系统自动续接] 出现，模型列出素材后要求用户给创意——任务断链、未自动完成。已登记 book-19 §11d（后修复）；当时用户在跑自己的分镜流程（队列被占 4-5 任务）。
+
 ### 20.47 S6 男/女声可选 + 字幕字号参数化（2026-09-06 实施，真机待队列空闲窗）
 - **实现**：tools.py CallComfyUI schema 增 tts_voice（enum 短名 xiaoxiao/yunxi/aria；八审 Option A：透传短名、归一在 h3_submit 入口）+ tts_font_size（integer）并转发 --font-size；h3_submit 增 --font-size（默认 None=等比 0.07x高）+ job 持久化 + resume 恢复；tts.attach_speech_and_subtitle 增 fontsize 透传；钩子两条路径（合并链 process/非合并 attach）均传 fontsize；SYSTEM_MESSAGE 台词规则补音色句（默认女声，用户指定男声 yunxi、英文 aria）。
 - **测试**：tests/test_s6_voice.py 4 例；165+27 绿。

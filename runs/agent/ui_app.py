@@ -933,12 +933,22 @@ def ingest_upload(paths, cid='') -> tuple:
 
 
 
+def _caption_for(cid: str) -> str:
+    """S1：gallery 条目 caption——会话来历 + 已用/可用（本会话重建的预览=池内素材=已用）。"""
+    return f'会话 {cid} · 已用'
+
+
 def _previews_for_cid(cid: str) -> list:
-    """book-13 P2#9b：按上传归档日志重建某会话的图片预览列表（加载历史会话时用）。"""
+    """book-13 P2#9b：按上传归档日志重建某会话的图片预览列表（加载历史会话时用）。
+
+    S1：输出统一为 [(path, caption), ...]——caption 标注会话来历+可用性
+    （可用性=本地归档/缩略图存在性判定；丢失条目隐藏，素材以 list_references 为准）。
+    """
     try:
         import json as _j
         out: list = []
         seen: set = set()
+        cap = _caption_for(cid)
         with open(UPLOADS_LOG, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
@@ -956,7 +966,7 @@ def _previews_for_cid(cid: str) -> list:
                 seen.add(sha)
                 thumb = THUMBS_DIR / f'{sha}.jpg'
                 if thumb.is_file():
-                    out.append(str(thumb))
+                    out.append((str(thumb), cap))
                     continue
                 arch = str(rec.get('archived') or '')
                 if arch and Path(arch).is_file():
@@ -965,7 +975,7 @@ def _previews_for_cid(cid: str) -> list:
                     # 缺失缩略图时按需生成，失败则隐藏该预览（素材仍以 list_references 为准）
                     th = _make_thumb(Path(arch), sha)
                     if th:
-                        out.append(str(th))
+                        out.append((str(th), cap))
         return out
     except Exception:  # noqa: BLE001
         return []
@@ -1469,16 +1479,18 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                         def _th(kv):  # 现场故障修复：多素材上传卡顿——缩略图并行生成（大图 PIL 解码并行）
                             src, sha = kv
                             th = _make_thumb(Path(src), sha) if Path(src).exists() else None
-                            return str(th) if th else str(src)
+                            # S1：统一元组化（path, caption）；缩略图失败不append（保留安全：不回退源路径进组件值）
+                            return (str(th), _caption_for(cid)) if th else None
                         with _cf.ThreadPoolExecutor(max_workers=4) as _ex:
-                            _thumbs = list(_ex.map(_th, previews))
+                            _thumbs = [x for x in _ex.map(_th, previews) if x]
                     else:
                         for i, (src, sha) in enumerate(previews, 1):
                             yield (_pill(f'⏳ 正在生成预览 {i}/{len(previews)}（{Path(src).name[:24]}）…',
                                          '#8a6d1a', '#fff8e1', '#e7d492'), gr.update())
                             th = _make_thumb(Path(src), sha) if Path(src).exists() else None
                             if th:
-                                _thumbs.append(str(th))  # 现场修缮：缩略图失败不回退源路径（防归档/缓存路径进组件值）
+                                # S1：统一元组化（path, caption）——失败不append（不回退源路径进组件值）
+                                _thumbs.append((str(th), _caption_for(cid)))
                     _gal_by_cid[cid] = _previews_for_cid(cid)  # P0：全量重建（缩略图已缓存）——并发/重复上传不再互相覆盖
                     yield html, _gal_by_cid[cid]
                 except Exception as e:  # noqa: BLE001

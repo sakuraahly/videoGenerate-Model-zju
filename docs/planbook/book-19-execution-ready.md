@@ -34,7 +34,7 @@
 | 0.6 | **P1.5 参考语义修复**（用户首验发现·当前最高优先） | §10（本书） | 中 | ☆1 次×3 抽检 | tag 契约缺失=参考图被当首尾帧；ref_image_size 默认改 max；实施< P1
 | 3 | **S8**：批量状态重写（queue_pids+决策树）｜✅已实施（2026-09-06） | §8 | 中 | ☆1 次 | 前置=task_watch.poll_batch 缺 pathlib 修复已在场须确认；cancelled/never-queued 不可区分如实标注 |
 | 4 | **S6**：男/女声+schema tts_voice/tts_font_size+SYSTEM 一句｜✅已实施（2026-09-06；真机=队列空闲窗补验） | §6 | 小 | ☆1 次 | 引擎已预接通（VOICE_ALIASES）；tools 透传短名不映射；判据=argv 短名+tts_done 全名 |
-| 5 | **S1**：gallery caption/可用性 | §1 | 小-中 | ☆（spark-only） | _asset_available=文件系统存在性（非 _known_shas）；第三改动点 :1411-1417 元组化+回退兜底 |
+| 5 | **S1**：gallery caption/可用性｜✅已实施（2026-09-06；spark-only 断言 PASS） | §1 | 小-中 | ☆（spark-only） | _asset_available=文件系统存在性（非 _known_shas）；第三改动点 :1411-1417 元组化+回退兜底 |
 | 6 | **S4**：idea2prompts --segments-json | §4 | 小-中 | ☆LLM spark 本机 | 十八审前置：双向槽名对齐+0-based 统一+段数守卫；验证读落盘 manifest JSON |
 | 7 | **S5**：selfcheck-llm | §5 | 小 | ☆1 次（授权+空闲） | 三处改动点（docstring/choices/分派）；复用 nap()+comfy_queue_idle；恢复窗口≥300s；--yes 一致化 |
 | 8 | **S9**：dev.py sessions | §9 | 小 | ☆ | CHATS_DIR 双定义（实施时抽公共常量）；spark-only |
@@ -127,6 +127,12 @@
 
 **指示**：主要任务=视频生成做电影；图片/参考图生成（t2img/flux/refimage 等）的速率优化**作为甜点内容列入未来计划**（当前不做、不占主序列权重）。
 **登记**：未来批次优先度=低；纳入 S2-P1b/P6（超分/品质链）同类升级批次时一并考虑（届时再列规格）。
+
+## 11d. 自动续接断链登记（2026-09-06 用户反馈·后修复）
+
+**现象（用户原话要点）**：提交任务后 [系统自动续接] 出现，但模型列表可用素材后要求用户提供创意——任务明明在生成中，模型却停止工作/丢失任务上下文（应自动补提示词、设计镜头、一气呵成 提交→查询→取回→汇报）。
+**待查根因方向（修复前取证）**：① should_continue 在提交成功帧后未续（last_tool 判定与 TASK_SUBMITTED 提取）；② 续接轮 messages 上下文裁剪/丢失任务信息；③ 模型把素材列表轮误判为用户无创意（SYSTEM_MESSAGE 创意询问门限过宽）。
+**修复计划（后置）**：取证会话档/日志→定位断点→修复+单测→真机复验。
 
 ## 11b. UI 缺陷登记：历史会话下拉条目时间错误（2026-09-06 用户反馈）
 
