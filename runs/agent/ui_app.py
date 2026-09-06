@@ -597,6 +597,9 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                         out = _run_tool(fname, fc.get('arguments'))
                         _tool_call_cache[tkey] = out
                         if out.startswith('[错误]') or out.startswith('提交失败') or out.startswith('错误：'):
+                            # 现场修缮（2026-09-06）：失败不占用频控名额——模型修正参数后重试合法
+                            # （绝对 1 次/轮曾把"失败→修正→重试"拦死，导致多段分镜批量提交中断）
+                            _tool_count[fname] = max(0, _tool_count.get(fname, 0) - 1)
                             _tool_errs.append((fname, out[:90]))
                             _fn = sum(1 for _e in _tool_errs if _e[0] == fname)
                             if _fn >= 3:
@@ -953,7 +956,12 @@ def _previews_for_cid(cid: str) -> list:
                     continue
                 arch = str(rec.get('archived') or '')
                 if arch and Path(arch).is_file():
-                    out.append(arch)
+                    # 现场修缮（2026-09-06）：不再回退归档路径——归档/缓存路径进入组件值会被
+                    # Gradio 当作"非用户上传对象"拒绝（InvalidPathError → 事件链断 → 等待输入）；
+                    # 缺失缩略图时按需生成，失败则隐藏该预览（素材仍以 list_references 为准）
+                    th = _make_thumb(Path(arch), sha)
+                    if th:
+                        out.append(str(th))
         return out
     except Exception:  # noqa: BLE001
         return []
@@ -1431,7 +1439,8 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                             yield (_pill(f'⏳ 正在生成预览 {i}/{len(previews)}（{Path(src).name[:24]}）…',
                                          '#8a6d1a', '#fff8e1', '#e7d492'), gr.update())
                             th = _make_thumb(Path(src), sha) if Path(src).exists() else None
-                            _thumbs.append(str(th) if th else str(src))
+                            if th:
+                                _thumbs.append(str(th))  # 现场修缮：缩略图失败不回退源路径（防归档/缓存路径进组件值）
                     _gal_by_cid[cid] = (_gal_by_cid.get(cid) or []) + list(_thumbs)
                     yield html, _gal_by_cid[cid]
                 except Exception as e:  # noqa: BLE001

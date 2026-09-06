@@ -159,8 +159,8 @@ outputs/ logs/ uploads/ refs/  skills/ docs/ ai_daily_reports/(已删) agent_cha
 | flf2v/r2v 图不对 | 槽位未设/模板被覆盖 | refimage use --info；重设后提交；结束时 --undo |
 | ninja 缺失 | PATH 未含 venv/bin | 已修复；若再犯手动 export PATH |
 | 上传后素材池出现未选文件（如历史会话的图） | uploads/log.jsonl 该批 batch_id 行（cid/dup/文件名） | 已修（2026-09-06 现场）：上传摘要回显文件名清单（已收录/跳过）+dup 不再重复镜像；仍混入时核对摘要并让模型忽略（会话素材以 list_references 为准）
-| Gradio `InvalidPathError: Cannot move … not uploaded by a user`（agent 交互中断/等待输入） | ~/qwen-agent.log 该 Traceback；uploaded 路径是否为 uploads/ 归档或 /tmp | 已修（2026-09-06 现场）：demo 加载即清空 up_btn 值（防恢复态携带非上传对象）；**客户端侧**：请用浏览器 UploadButton 选文件上传（勿用脚本把归档路径当文件直调 API）；若页面为旧会话恢复态，Ctrl+F5
-| 多段分镜任务提交中断（“等待输入”且频控拦截） | 会话内 call_comfyui 每轮 1 次频控 + 模型重复陈述 | 多段用 `batch_submit`（单次多段）或分轮提交；SYSTEM_MESSAGE 铁律（工作到完成/不重述已完成段）已登记待下轮实施
+| Gradio `InvalidPathError: Cannot move … not uploaded by a user`（agent 交互中断/等待输入） | ~/qwen-agent.log 该 Traceback；payload 路径是否为 uploads/ 归档或 /tmp | **根因已定位并二次修复（2026-09-06）**：预览重建/上传回退曾把归档路径塞进 Gallery/组件值（用户或前端回传即崩）；已改为缩略图失败即隐藏（绝不回退源路径）+ demo.load 清空 up_btn（**UI 改动必须重启 agent 才生效——重启后 AGENT_VERSION 与 SMOKE_OK 验证**）；客户端侧仍请用浏览器上传、勿将归档路径当文件直调 API；旧页面 Ctrl+F5 |
+| 多段分镜任务提交中断（“等待输入”且频控拦截） | 会话内 call_comfyui 每轮 1 次频控 + 模型重复陈述 | **已修（2026-09-06）**：失败调用不再占用频控名额（模型修正参数后重试合法；成功/同指纹仍按去重与限次防御）；多段仍推荐 `batch_submit`（单次多段）或分轮提交；SYSTEM_MESSAGE 铁律（工作到完成/不重述已完成段）已登记待实施 |
 | i2v 首帧用参考图但随后立即偏离 | workflow_api.json 中 LoadImage→first_frame 链（绑定正确=114→133） | 非绑定 bug：H3 i2v 首帧锚定弱=模型特性；方案=提示词加首帧延续约束词；需强保真用 flf2v（双帧）或参考视频；如实告知边界
 | 上传多素材卡顿 | 图片数量/尺寸；previews 逐张缩略图 | 已修（2026-09-06 现场）：>3 张缩略图并行生成（ThreadPool 4）；仍慢=前端大图渲染，可批量压缩后上传
 
