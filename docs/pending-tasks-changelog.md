@@ -459,3 +459,9 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **二、验证**：14 单测（test_s12_grant.py）全绿 + 全套 251 绿；CLI 冒烟（grant→list 共享过滤）通过；启发式正反 5 例。
 **三、登记**：☆真机 agent 轮验证待队列窗口（授权→签发→list shared 全链）；弱在环（audit 兜底）；--scope-all 收窄另立项；agent 重启后旧授权自动失效（fail-closed 符合预期）。
 
+
+## 43. S7 参考视频/音频原生支持实施记录（2026-09-06；二级待真机）
+
+**一、实现**：7a 登记（capabilities video_r2v slots.videos/audios 3+3、features.reference_videos=true；add_local slots=/features= kw；template_health 设计 B 分型+注入前缀校验；object_info 四节点在线复核全绿——ref_videos/ref_video_audios/ref_audios 均 AUTOGROW_V3 max=3，prefix=ref_video_/ref_video_audio_/ref_audio_）；7b 引擎（stage.inject_media_refs API 层注入 LoadVideo+GetVideoComponents→ref_videos.ref_video_i [gvc,0]+ref_video_audios.ref_video_audio_i [gvc,1]、LoadAudio→ref_audios.ref_audio_j；数字串 id>146；h3_submit --videos/--audios+upload_image 复用+引擎 tag 校验+dry-run 短路+job 持久化/resume 恢复）；7c 工具/提示词（CallComfyUI videos/audios schema+拼装前双通道校验；SYSTEM_MESSAGE 媒体 tag 规范；prompts media_tag_set/missing_media_tags）。
+**二、验证**：8 单测（test_s7_media.py：注入字段/槽位键/GVC 输出槽 0=images 1=audio/守卫/0-based 多槽/tag 正反/注册表扩展）+ 全套 249 绿；一级在线 PASS（spark convert 20 节点+注入 5 节点断言）；二级真机=待队列窗口（用户任务占用）。
+

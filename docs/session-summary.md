@@ -851,6 +851,12 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
 
+
+### 20.60 S7 参考视频/音频原生支持（book-19 最大工程）——2026-09-06 实施（二级待真机）
+- 7a 登记（十九审定稿=扩展现有 video_r2v）：capabilities slots.videos/audios=reference×3 + features.reference_videos=true + reference_media note；object_info 在线复核四节点全绿（ref_videos/ref_video_audios/ref_audios=AUTOGROW_V3 max=3、prefix=ref_video_/ref_video_audio_/ref_audio_、子输入 IMAGE/AUDIO；LoadVideo file/LoadAudio audio=COMBO input 根；GVC 输出 images/audio）；add_local 扩展 slots=/features= kw；template_health 设计 B 分型（videos/audios 不数模板行，仅复核注入目标前缀节点存在——取 inject_spec.class_prefix）。
+- 7b 主案（API 层注入，循 apply_lora 先例）：stage.inject_media_refs——LoadVideo(file)→GetVideoComponents(video) 拆帧拆声→ref_videos.ref_video_i=[gvc,0]+ref_video_audios.ref_video_audio_i=[gvc,1]；LoadAudio→ref_audios.ref_audio_j=[la,0]；数字串 id>现有 max（避开 apply_lora 字符串 id 脆弱史）；守卫（无目标/超 3 报错）；h3_submit --videos/--audios（复用 upload_image 落 input 根）+ 引擎层 tag 契约校验（--no-check-media-tags 降级）+ job 持久化/resume 恢复；dry-run 仅打印计划。
+- 7c：tools CallComfyUI videos/audios schema（逗号分隔/≤3/仅 r2v 生效）+ 拼装前双通道硬约束（<Video N>/<Audio N> tag 集合==列表索引集合，不一致拒提交；prompt 缺省时引擎层兜底）；SYSTEM_MESSAGE 媒体 tag 规范（视频=动作/运动参考、音频=氛围参考，显式说明驱动部分）；prompts media_tag_set/missing_media_tags。
+- 验证：8 单测+全套 249 绿；**一级在线 PASS**（spark 真实 convert 20 节点/目标 136+注入 5 节点，槽位键/GVC→LoadVideo 链断言全过）；**二级真机待队列窗口**（用户任务 running，登记未执行；素材已备=spark input 现成 mp4/mp3+客厅参考图）。
 ### 20.59 S12 一次性共享授权（跨会话精授权）——2026-09-06 实施
 - 按十三审定稿五条全落地：独立 `<cid>.grants.json`（tmp+replace 原子写；不写 meta.json——该文件 ui_app 每轮 w 模式 3 键覆写会静默丢失）；接口=魔术值 `session=shared-<target>`（无新 flag；cmd_list 共享分支三型拒绝提示）；签发=白名单工具 `grant_refs(target, reason)`（当前轮用户消息授权启发式：允许/可以/同意+使用动词+目标指向；否定/疑问句拒发；模型自签=禁；audit 留痕）；生命周期=轮末失效（turn_id 校验，一轮内重复读=LLM 重试安全）；session=all 保留（工具描述/SYSTEM 引导 shared-<target>，暴露面收窄=另立项）。
 - 配套：提示语反引导修正（--scope-all→shared-<cid>）；hint-recent 显示完整 cid；session_cleanup 随删 grants；scheduler 素材边界②落点（线索→请授权→grant_refs→shared-<cid>）；四注册点齐（TOOL_NAMES/_TOOL_LIMITS/_TOOL_NAMES/_wrap_call）。

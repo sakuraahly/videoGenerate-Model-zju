@@ -40,7 +40,7 @@
 | 8   | **S9**：dev.py sessions                                                                                | §9          | 小     | ☆                  | CHATS_DIR 双定义（实施时抽公共常量）；spark-only                                                                                   |
 | 9   | **S10**：quality.py+quality-report｜✅已实施（2026-09-06；SSIM 复算一致）                          | §10         | 小-中  | ☆?（只读探测）     | probe_av 为主取值源（timeout 已对齐 60）；bytes 择一                                                                             |
 | 10  | **S12**：一次性 token（跨会话精授权）｜✅已实施（2026-09-06；14 单测绿+CLI 冒烟；spark 真机验证=☆待队列窗口） | §12         | 中     | ☆1-2 次            | 定稿：grants.json 独立文件+原子写/魔术值 shared-<target>/对话确认轮签发（grant_refs）/轮末失效（turn_id）/--scope-all 保留登记收窄 |
-| —   | **S7**（最大工程）                                                                                     | §7          | 大     | ☆多轮              | 排在 S12 之后或独立窗口；主案=API 层注入（inject_media_refs）；7a 双注册；两级判据；官方文档三条一并实施                           |
+| —   | **S7**（最大工程）｜⏳ 7a/7b/7c 已实施（2026-09-06；单测 8 绿+一级在线 PASS；**二级真机=待队列窗口**） | §7          | 大     | ☆多轮              | 主案=API 层注入（inject_media_refs）；7a 双注册；两级判据；官方文档三条一并实施；二级提交在用户任务后             |
 | —   | S11                                                                                                    | §11         | —      | —                  | 观察（不发规格）                                                                                                                   |
 | —   | S13/P 链                                                                                               | §13         | —      | —                  | 待魔搭 ID 闭合+逐项批注后动工（P2 ASR→P3 Wav2Lip 冒烟→P4→P5→P6）                                                                   |
 
@@ -191,4 +191,11 @@
 - 系统提示：scheduler SYSTEM_MESSAGE 素材边界②落地（线索→请授权→grant_refs→shared-<cid>）；TOOL_NAMES/_TOOL_LIMITS/_TOOL_NAMES/_wrap_call 四注册点齐。
 **验证**：14 单测（tests/test_s12_grant.py：原子写/轮末/过期/缺失/无轮/启发式正反/共享分支过滤与拒绝/随会话删）+ 全套 251 绿；CLI 冒烟（grant→list 共享过滤）通过；☆真机（agent 真实轮：授权→签发→list shared）待队列窗口。
 **剩余登记**：① grants 文件属纯磁盘态，agent 重启后 turn_id 归零→旧授权自动失效（fail-closed，符合预期）；② 弱在环启发式可被绕过（audit 留痕；UI 瞬态确认弹窗=未来增强）；③ --scope-all 暴露面收窄=另立项。
+## 16. S7 实施记录（2026-09-06；7a/7b/7c 已实施，二级真机待窗口）
+
+- **7a 登记（十九审定稿：扩展现有 video_r2v，不新建 stage）**：capabilities video_r2v 增 slots.videos=[reference×3]、slots.audios=[reference×3]、features.reference_videos=true、params.reference_media note；object_info 在线复核四节点全绿（ref_videos/ref_video_audios/ref_audios 均 COMFY_AUTOGROW_V3、prefix=ref_video_/ref_video_audio_/ref_audio_、max=3、子输入 IMAGE/AUDIO；LoadVideo file/LoadAudio audio 均 COMBO+input 根；GetVideoComponents 输出 images/audio）；workflow_registry add_local 扩展 slots=/features= kw；template_health 设计 B 分型（videos/audios 不数模板行；仅复核注入目标前缀节点存在）+ 注入前缀取 inject_spec.class_prefix；pipeline.json 无需新 stage（r2v 已存在，templates_dir 已确认）。
+- **7b 引擎接线（主案=API 层注入）**：stage.py `inject_media_refs(wf, video_names, audio_names)`——LoadVideo(file)→GetVideoComponents(video) 拆帧/拆声，槽位键 `ref_videos.ref_video_i`=[gvc,0]、`ref_video_audios.ref_video_audio_i`=[gvc,1]、`ref_audios.ref_audio_j`=[la,0]；注入 id=数字串且 > 现有 max id（避开 apply_lora 字符串 id 脆弱史）；守卫=目标节点缺失/视频>3/音频>3 抛 ParamError；h3_submit `--videos/--audios`（append）+ 上传复用 client.upload_image（落 input/ 根）+ 引擎层 tag 契约校验（--no-check-media-tags 降级开关）+ job 持久化/resume 恢复；dry-run 仅打印计划。
+- **7c 工具/提示词**：tools CallComfyUI schema 增 videos/audios（逗号分隔；≤3；仅 r2v 生效）+ 拼装前双通道硬约束（<Video N>/<Audio N> tag 集合==列表索引集合 {1..N}，不一致拒提交；prompt 缺省时由引擎层校验兜底）；SYSTEM_MESSAGE 增参考媒体 tag 规范（videos/audios 顺序一一对应+驱动镜头显式说明）；prompts.py 增 media_tag_set/missing_media_tags（仿 Picture 契约）。
+- **验证**：8 单测（tests/test_s7_media.py）+ 全套 249 绿；**一级（在线）PASS**——spark 真实 convert_ui_file（20 节点/目标 136）+ inject_media_refs（5 节点）断言槽位键/GVC→LoadVideo 链全过；**二级真机**（--stage r2v --videos/--audios 真实提交→产物 ffprobe+听到参考音频采纳/视频动作可辨识）**= 待队列空闲窗口**（用户任务占用中，登记未执行）。
+
 
