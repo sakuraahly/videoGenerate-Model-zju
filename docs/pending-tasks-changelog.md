@@ -324,3 +324,20 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **机制**：本轮**代码修复 2 文件**（queue_probe.py 定向中断+原子写、tools.py CancelTask 归一）+配置文件（llm.json 残片，不入库）+文档（§3/§4/§9/§10/§12 清单补充）；断言双抽查后落地（16 份生产 BasicScheduler 键集）；165 例全绿。
 
 **机制**：本轮全部文档修订（§0/§7/§13/§15.3/§15.5/handoff），零代码改动；关键断言本地双抽查（16 份生产 BasicScheduler 键集、snap_length 111 点对比）后落地；决策与正文同步（回应"决策记录必须实际修改"）。
+---
+
+## 29. 十九审应答（2026-09-05 · tools.py CallComfyUI 全链专项）
+
+**一、自我更正接受（十六审→十九审）**：§13"768p 硬编码 6 处"中 tools.py:260/:792 不准确（:260 静态 enum 运行时被注册表派生覆写、:792 仅为 fallback）→ **§13 已改为有效站点 4 处**+结构说明（agent 侧杠杆=capabilities params.resolutions；CLI/校验侧=RESOLUTION_PRESETS）。排查排除三条（已取证）：supervisor 自愈先 activate venv（system python3 无 qwen_agent 但自愈链走 venv）；布尔字符串 false→jsonschema 硬拒绝（非静默误判）；stage 必填先由 :310 jsonschema 强制（KeyError 不会到 :311）。
+
+**二、【高·已定稿】§7a 命名空间定案（原"新 stage video_ref2v"废弃）**：两套命名（id=video_X/stage=X；tools enum 派生自 stage；resolve 首个命中）下两种读法均缺陷——A：id=video_ref2v+stage=r2v→resolve 遮蔽+enum 重复（agent 不可选）；B：stage=video_ref2v→default_lora_for_stage 仅精确匹配 r2v→**加速 LoRA 静默消失（20 步 vs 4 步≈5× GPU、exit 0 无警告）**。**定稿=不新建 stage，扩展现有 video_r2v 条目**（id/stage/slot 不变；slots 3/3、features.reference_videos=True、params 增 ref_image_size；lora.stages=[r2v] 已覆盖、agent_params 无需改；pipeline.json 无需新 stage，7a 原"stages 增 video_ref2v"删去）——§7a 已写入；若未来需区分纯图/视频参考档位=另立项（登记）。
+
+**三、【高·已修代码】_coerce_fields 非确定性 + 扩大覆盖**：字符串路径下 _coerce_fields 不执行（_verify_json_format_args 内才 loads+validate）→ 同一 payload dict 成功/字符串失败（实测两例）；且默认元组不含 docstring 自述的 motivating case（wait_until_done 布尔串→裸 jsonschema 异常、call() try 从 :361 起不捕获）。**已修**：CallComfyUI.call 字符串先 json.loads（失败保留原样→_verify 报错）+ _coerce_fields 默认元组扩为 seconds/seed/dry_run/wait_until_done（布尔强转已支持；BatchSubmit 同受益）；结构性说明记录（qwen_agent 把 parse+validate 融合，coerce 只能前置——新增 videos/audios/tts_voice/tts_font_size 沿用此修复后路径，不再继承非确定性）。
+
+**四、【高·已修代码】导入期异常静默**：_apply_registry_derived_schema（except:pass 包住、导入时执行）→ capabilities 坏/导入失败时 enum 静默停留 fallback（进程正常无报错）。**已修**：except 改 stderr 打印（导入期失败可观测）；§7a 一级判据补充=必须在 agent 进程内打印 stage enum 实际值（防"登记没生效"误判）。
+
+**五、中**：① 分辨率 enum 来源=首个条目（video_t2v，命中即 break）+顺序耦合陷阱→ §13 已补（加 1080p 预设须加第一条目/全部四条）；② avail vs fallback[stage] str/list 恒真比较（描述总被追加）→ **已修**（改为 join 后比较；与 mix_tracks 音量单位 bug 同型）；③ VERIFY_TIER 静默降级 ≈10×（480p+20 步 vs 360p+4 步；触发面窄=不经 scheduler 的导入路径；已登记为潜在陷阱非现行 bug）；④ tool_timeout=180 submit-only 路径：h3_submit 已 POST 成功但 TASK_SUBMITTED 未 flush→agent 拿不到 pid→模型可能重复提交（共享队列双份 GPU）；**断点写入顺序未核实**（TASK_SUBMITTED 仅 :852 resume 路径确认——如实标注未核实）；⑤ 依赖版本未登记：spark 实测 qwen_agent 0.0.34 + jsonschema 4.26.0（承载整个工具框架校验语义，比 gradio 更载荷）→ 登记实际版本。
+
+**六、覆盖与剩余**：已覆盖 CallComfyUI 全链/_coerce_fields/_derive_tool_enums/_apply_registry_derived_schema/workflow_registry 解析/agent_params 档位/qwen_agent 校验实现/自愈命令。**登记下一轮**：tools.py 其余工具（RunScript/ModifyWorkflow/BatchSubmit/ReadDoc，尤其 BatchSubmit×§4/§8）、scheduler.py SYSTEM_MESSAGE（§6③/§7c/§12 引用均未逐字核过）、ui_app turn 机制×S12 grants 时序。
+
+**机制**：本轮**代码修复 tools.py 4 处**（字符串预解析/coerce 元组扩充/enum 比较修正/导入期告警）+文档（§7a 定稿/§13 更正+顺序陷阱/版本登记）；COMPILE_OK+165 例全绿；每处修复后 grep 落点核对（含一次修复过程自纠：coerce 函数误替换后当场还原重做，终态正确）。

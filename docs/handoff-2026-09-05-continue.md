@@ -2,7 +2,7 @@
 
 > 用途：**让新 Agent 无缝接手规划任务**（不依赖原会话上下文）。本档自包含；
 > 与 `docs/handoff-2026-09-05-L-tasks.md`（book-14 L1–L5，已完成）互不覆盖。
-> 现状时间点：**十八轮外部审核闭环**（八轮=代码修复+真机验收；九-十一审=S7 规格专项；十二审=S1 专项+§7b 上传链；十三审=S12 专项；十五审（代码/验证轮）；十六审=spark 全量只读取证+768p 真相+孤儿模板/设计B边界；十七审=高爆炸半径专项；十八审=§3-§5/§8-§10 专项+共享队列安全（/interrupt 全局中断→定向化+ CancelTask 归一——已修代码）——权威见 changelog §20-§28 与 pending-tasks-implementation §1/§7/§12 最新审定稿）；仓库双端干净。
+> 现状时间点：**十九轮外部审核闭环**（八轮=代码修复+真机验收；九-十一审=S7 规格专项；十二审=S1 专项+§7b 上传链；十三审=S12 专项；十五审（代码/验证轮）；十六审=spark 全量只读取证+768p 真相+孤儿模板/设计B边界；十七审=高爆炸半径专项；十八审=§3-§5/§8-§10 专项+共享队列安全（已修代码）；十九审=tools.py CallComfyUI 全链专项（非确定性 coerce/命名空间定案/导入期告警——已修代码）——权威见 changelog §20-§29 与 pending-tasks-implementation §1/§7/§12 最新审定稿）；仓库双端干净。
 >
 > 一句话现状：规划书 `docs/pending-tasks-implementation.md`（S1–S13 + P2–P6）经 **10 轮审核**定稿（十审=S7 计数修正 + 主案改 API 层注入（apply_lora 同型）/GetVideoComponents 链/登记补全/两级验证判据），
 > 唯二被审出的**代码回归**（TTS 钩子两处 UnboundLocalError、workflow UI 存档缺失）已修复；
@@ -131,6 +131,7 @@ python runs/dev.py logs view -N / check / clean [--yes]
 | 长度/图上限（十六审） | length 量化式（节点 131）：length ≡ 5 (mod 17)——5s→124、15s→362（勿用 seconds×24 推算）；ref_images tooltip：downscaled to 2048 short edge if larger never upscaled——参考图修复/增强产物有效分辨率封顶 2048 短边 |
 | 高爆炸雷达（十七审） | **BasicScheduler 键=scheduler**（required=[model,scheduler,steps,denoise]，COMBO 含 simple/beta/normal——无 scheduler_name，全仓 0 命中；若覆写请用该键+守卫）；node 136 width/height/length=**连线输入**（115 ResolutionSelector/131 ComfyMathExpression）会被 apply_generation_params 标量覆写（608/352/124 实证）→ **megapixels 杠杆不可达**（被预设表覆盖；唯一杠杆=RESOLUTION_PRESETS/--width--height 逃生口）；node 115/131/132=零下游死重量（comfyui-logicutils，缺包提交 400）；**设计 B 注入 id 必须>146**；**768p 上限=LoRA**（lora_name 文件名带 768p 标签；ref2v_4step=v0.1 无标签=探测不确定项）；上传复用 upload_image=服务端源码确证（无类型校验/重传安全） |
 | 取消链（十八审修复） | **/interrupt 必须带 body={prompt_id:pid}**（空 body=全局中断误伤同队列他人；服务端 0.34.3 定向分支未命中会 skip）；/queue delete 传 prompt_id 正确（a[1]==id_to_delete）；CancelTask 已补参数归一（7 工具全一致）；last_job 清断点=tmp+replace 原子写 |
+| 工具链校准（十九审） | CallComfyUI 字符串参数已预解析+_coerce_fields 含 dry_run/wait_until_done（同 payload 同命运）；注册表派生 enum 失败会 stderr 告警（不再静默归 fallback）；**7a 定稿=扩展现有 video_r2v 条目**（新建 stage 会使加速 LoRA 静默消失 stage 命名冲突——id=video_X/stage=X 两套命名）；agent resolution enum 来源=首个条目 video_t2v（加档须加第一条/全部）；qwen_agent 0.0.34+jsonschema 4.26.0（spark 实测） |
 | 孤儿模板（十六审） | video_minimax_h3_flf2v.json=本地扩展孤儿：capabilities.json:262 在用（§8 --stage flf2v 目标）但 sync_remote_workflows.ps1 $names 与 pipeline.example remote_workflow_templates 均 6 项无它——无 spark 源、不可追溯，仅本地镜像（解释 7 vs 6） |
 | ffmpeg | volume dB 语义：`0.0`=-91dB 静音、`-12.0`=0dB 削波、`-12dB`=正确衰减；amix 需 `normalize=0`；`-shortest` 会截断（用 apad+`-t duration`）；音轨替换用 tmp+rename（原地写会 EIO） |
 | argparse | `--rate -8%` 会被当旗标 → 必须 `--rate=-8%`；`--tts-voice` choices=[xiaoxiao,yunxi,两全名] |

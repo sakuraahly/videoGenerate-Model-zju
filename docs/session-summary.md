@@ -850,6 +850,11 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.28 十九审闭环：tools.py CallComfyUI 全链专项（2026-09-05）
+- **代码修复 4 处（tools.py）**：① CallComfyUI 字符串参数先 json.loads（修 _coerce_fields 非确定性：dict 路径强转/字符串路径裸 jsonschema 拒——违反"同 payload 同命运"）；② _coerce_fields 元组扩为 seconds/seed/dry_run/wait_until_done（docstring motivating case 补上；BatchSubmit 同受益）；③ :806 avail vs fallback[stage] str/list 恒真比较修正；④ _apply_registry_derived_schema except:pass→stderr 告警（导入期 enum 归 fallback 不再静默）。COMPILE_OK+165 绿。
+- **§7a 命名空间定案（原"新 stage video_ref2v"废弃）**：两套命名（id=video_X/stage=X）下两读法均缺陷（A=resolve 遮蔽+enum 重复；B=default_lora_for_stage 不匹配→加速 LoRA 静默消失≈5×GPU）——**定稿=扩展现有 video_r2v 条目**（id/slot 不变、slots 3/3、features.reference_videos=True、params 增 ref_image_size；lora.stages 已覆盖）；7a 一级判据补"agent 进程内打印 stage enum 实际值"。
+- **十六审更正**：§13"6 处"→有效 4 处（tools.py:260:792 被运行时覆写/仅 fallback）；分辨率 enum 顺序耦合（首个条目 video_t2v 决定）已记录；**排除三条**（supervisor 自愈走 venv/布尔串硬拒绝/stage 必填先校验）。
+- **待核实**：tool_timeout=180 submit-only 重复提交风险（断点写入顺序未核实）；**登记下一轮**：tools.py 其余工具（BatchSubmit×§4/§8）、scheduler SYSTEM_MESSAGE、ui_app turn×S12 grants 时序。
 ### 20.27 十八审闭环：§3-§5/§8-§10 专项 + 共享队列安全（2026-09-05）
 - **代码修复（生产安全，独立于 S3 立即处理）**：① queue_probe.py /interrupt 空 body=全局中断（server.py 0.34.3 实证：JSONDecodeError→Global interrupt→进程级 nodes.interrupt_processing；TOCTOU+归属校验对中断无效+无条件清断点=三步全坏）→ **定向中断化**（body={prompt_id:pid}，未命中服务端 skip 不误伤）+last_job 清断点改 tmp+replace 原子写；② CancelTask（tools.py:562）补齐 _verify_json_format_args 归一（7 工具中唯一缺失；不归一=参数当整个串送 find_owned 必失败）——§3 mark_cancelled 分层前提自此成立。
 - **§4 三处高**（--segments 默认路径不可达：slot=="flf2v" 裸名 vs slot_list 8 槽/blueprints 键名不一致；段索引 1-based vs h3_batch 0-based 静默错位+数量不强制；验证按字面不可执行+抓不到错位）→ §4 补十八审前提更正段（双向对齐/0-based/段数守卫/验证读落盘 manifest）；工作量 小→小-中。

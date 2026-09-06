@@ -305,6 +305,13 @@ class CallComfyUI(BaseTool):
     }
 
     def call(self, params: Union[str, dict], **kwargs) -> str:
+        if isinstance(params, str):
+            # 十九审：字符串路径必须先预解析——_coerce_fields 只对 dict 生效，
+            # 而 _verify_json_format_args 内部才 json_loads+validate，顺序导致同一 payload 两种命运（非确定性）
+            try:
+                params = json.loads(params)
+            except (ValueError, TypeError):
+                pass
         if isinstance(params, dict):
             params = _coerce_fields(params)
         params = self._verify_json_format_args(params)
@@ -647,7 +654,7 @@ def _log_tool(name, event, **fields):
         pass
 
 
-def _coerce_fields(params, fields=('seconds', 'seed')):
+def _coerce_fields(params, fields=('seconds', 'seed', 'dry_run', 'wait_until_done')):
     """book-16：模型常把整数/布尔参数写成字符串（seconds: '5', wait_until_done: 'True'）
     → 参数校验拒收；提交前统一强转。"""
     if not isinstance(params, dict):
@@ -803,11 +810,11 @@ def _apply_registry_derived_schema() -> None:
                 props['lora']['enum'] = enums['lora']
         # 描述附加当前可用阶段（注册表为准）
         avail = '、'.join(str(s) for s in enums['stage'])
-        if avail and avail != fallback['stage']:
+        if avail and avail != '、'.join(str(s) for s in fallback['stage']):
             CallComfyUI.description = CallComfyUI.description + ('(book-12 注册表：当前可用阶段 ' + avail + ')'
                                                                 if '(book-12 注册表' not in CallComfyUI.description else '')
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        print(f"[警告] 注册表派生 enum 失败（工具 enum 停留 fallback）: {type(e).__name__}: {e}", file=sys.stderr)
 
 
 _apply_registry_derived_schema()
