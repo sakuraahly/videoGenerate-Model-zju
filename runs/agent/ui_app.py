@@ -268,7 +268,8 @@ def _tool_defs(user_text: str = '') -> list:
 
 
 _TOOL_LIMITS = {'call_comfyui': 1, 'batch_submit': 1, 'list_references': 2,
-                'run_script': 3, 'read_doc': 2, 'modify_workflow': 1}  # book-16 频控
+                'grant_refs': 2, 'run_script': 3, 'read_doc': 2,
+                'modify_workflow': 1}  # book-16 频控
 _SESSION_GEN_LIMIT = 10  # book-17 P2.3.4：每会话生成类任务上限（待批准项E=10）
 _SESSION_GEN_USED: dict = {}  # key=会话 cid（CURRENT_SESSION）
 _SESSION_SUBMITS: dict = {}  # book-14 T2b v2#4：会话级同任务指纹→{fingerprint:{pid,ts}}；30 分钟内复用
@@ -1136,6 +1137,12 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             stop_event.clear()
             clear_tasks(cid)
             current_turn_id = increment_turn_id(cid)
+            try:  # book-19 S12：当前轮上下文注入（grant_refs 授权校验/轮末失效）
+                from runs.agent import tools as _tools_t
+                _tools_t.CURRENT_TURN_ID = current_turn_id
+                _tools_t.CURRENT_USER_TEXT = user_text
+            except Exception:  # noqa: BLE001
+                pass
 
             ev = queue.Queue()
             stop_hb = threading.Event()

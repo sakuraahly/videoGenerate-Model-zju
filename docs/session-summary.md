@@ -850,6 +850,11 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+
+### 20.59 S12 一次性共享授权（跨会话精授权）——2026-09-06 实施
+- 按十三审定稿五条全落地：独立 `<cid>.grants.json`（tmp+replace 原子写；不写 meta.json——该文件 ui_app 每轮 w 模式 3 键覆写会静默丢失）；接口=魔术值 `session=shared-<target>`（无新 flag；cmd_list 共享分支三型拒绝提示）；签发=白名单工具 `grant_refs(target, reason)`（当前轮用户消息授权启发式：允许/可以/同意+使用动词+目标指向；否定/疑问句拒发；模型自签=禁；audit 留痕）；生命周期=轮末失效（turn_id 校验，一轮内重复读=LLM 重试安全）；session=all 保留（工具描述/SYSTEM 引导 shared-<target>，暴露面收窄=另立项）。
+- 配套：提示语反引导修正（--scope-all→shared-<cid>）；hint-recent 显示完整 cid；session_cleanup 随删 grants；scheduler 素材边界②落点（线索→请授权→grant_refs→shared-<cid>）；四注册点齐（TOOL_NAMES/_TOOL_LIMITS/_TOOL_NAMES/_wrap_call）。
+- 验证：14 单测（test_s12_grant.py：原子写/轮末/过期/缺失/无轮/启发式正反/共享分支过滤与拒绝/随会话删）+ 全套 251 绿；CLI 冒烟通过。☆真机 agent 轮（授权→签发→list shared）待队列窗口。
 ### 20.58 SGLang 存活保障守护（用户提议整合）——2026-09-06
 - sglang_guard.py（once/loop；健康探测/Comfy 阈值 32GB/自动拉起低耗参数/验证/防抖）+ start 脚本 MAX_RUN 引号修复；5 单测；tmux guard 常驻启动；book-19 §14 更新。S5 演练 FAIL 的恢复依赖不变（Comfy 释放），guard 将自动接管恢复。
 

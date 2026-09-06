@@ -453,3 +453,9 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 ## 41. S6 真机补验记录（2026-09-06 队列窗口期）
 
 **证据**：argv（yunxi/TTS 文本）+ job 归一全名 + tts_done（YunxiNeural/1.94s/srt/合并编码）+ 产物 1216×704 字幕清晰目检——判据全过；样例=win outputs/video_45.mp4。
+## 42. S12 一次性共享授权实施记录（2026-09-06）
+
+**一、实现**（按 §12 十三审定稿）：refimage grant_issue/grant_check/cmd_grant + `grant <cid> <turn> [--src][--ttl]`；tools GrantRefs（授权启发式/当前轮注入）；cmd_list `shared-<target>` 共享分支（三型拒绝提示）；session_cleanup 随删 grants；scheduler SYSTEM_MESSAGE 素材边界②；四注册点（TOOL_NAMES/_TOOL_LIMITS/_TOOL_NAMES/_wrap_call）。
+**二、验证**：14 单测（test_s12_grant.py）全绿 + 全套 251 绿；CLI 冒烟（grant→list 共享过滤）通过；启发式正反 5 例。
+**三、登记**：☆真机 agent 轮验证待队列窗口（授权→签发→list shared 全链）；弱在环（audit 兜底）；--scope-all 收窄另立项；agent 重启后旧授权自动失效（fail-closed 符合预期）。
+

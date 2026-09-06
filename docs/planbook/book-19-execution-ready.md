@@ -39,7 +39,7 @@
 | 7   | **S5**：selfcheck-llm｜✅已实施（2026-09-06）；销毁性演练=待用户授权                                    | §5          | 小     | ☆1 次（授权+空闲） | 三处改动点（docstring/choices/分派）；复用 nap()+comfy_queue_idle；恢复窗口≥300s；--yes 一致化                                     |
 | 8   | **S9**：dev.py sessions                                                                                | §9          | 小     | ☆                  | CHATS_DIR 双定义（实施时抽公共常量）；spark-only                                                                                   |
 | 9   | **S10**：quality.py+quality-report｜✅已实施（2026-09-06；SSIM 复算一致）                          | §10         | 小-中  | ☆?（只读探测）     | probe_av 为主取值源（timeout 已对齐 60）；bytes 择一                                                                             |
-| 10  | **S12**：一次性 token（跨会话精授权）                                                                  | §12         | 中     | ☆1-2 次            | 定稿：grants.json 独立文件+原子写/魔术值 shared-<target>/对话确认轮签发（grant_refs）/轮末失效（turn_id）/--scope-all 保留登记收窄 |
+| 10  | **S12**：一次性 token（跨会话精授权）｜✅已实施（2026-09-06；14 单测绿+CLI 冒烟；spark 真机验证=☆待队列窗口） | §12         | 中     | ☆1-2 次            | 定稿：grants.json 独立文件+原子写/魔术值 shared-<target>/对话确认轮签发（grant_refs）/轮末失效（turn_id）/--scope-all 保留登记收窄 |
 | —   | **S7**（最大工程）                                                                                     | §7          | 大     | ☆多轮              | 排在 S12 之后或独立窗口；主案=API 层注入（inject_media_refs）；7a 双注册；两级判据；官方文档三条一并实施                           |
 | —   | S11                                                                                                    | §11         | —      | —                  | 观察（不发规格）                                                                                                                   |
 | —   | S13/P 链                                                                                               | §13         | —      | —                  | 待魔搭 ID 闭合+逐项批注后动工（P2 ASR→P3 Wav2Lip 冒烟→P4→P5→P6）                                                                   |
@@ -179,3 +179,16 @@
 - ④ 语音不清晰/疑似胡言乱语 → 英文台词 TTS（Aria）+ seg3 独白 10.2s>8s 已知；**ASR 客观验收（FunASR/魔搭，P 链④）**落地后自动判可辨析；台词规范/语速或分句重合成在 TTS 升级链。
 - ⑤ 钟→眼镜穿帮 → 参考图含客厅红色时钟+道具眼镜，模型在道具序列上混淆；**参考语义边界登记**：提示词需对道具变换点显式描述（这属于 P1.5 同类参考语义问题的表现面），后续参考语义增强时一并（不得作为本次回滚理由）。
 **处置**：用户指示当前不重跑；全部登记为升级工作流（书-13/S2/S7/P 链）联动项；本次 3 段产物保留为基线（win outputs video_39/40/41）。
+## 15. S12 实施记录（2026-09-06）
+
+**实现**（按 pending-tasks §12 十三审定稿逐条落地）：
+- ① 存放：`runs/h3/refimage.py` 新增 `grant <target> <turn_id> [--src] [--ttl]` + `grant_issue/grant_check/cmd_grant`（`<cid>.grants.json` 独立文件，tmp+replace 原子写；字段 {target_cid, src_cid, turn_id, expires, used}；`grants_dir()` 与 session_cleanup.CHATS_DIR 同源）；
+- ② 签发者：`runs/agent/tools.py` 新增白名单工具 `grant_refs(target, reason)`——仅当当前轮用户消息命中授权启发式（允许/可以/同意…+使用动词+目标指向；否定/疑问句拒发；弱在环，audit 兜底）才放行；上下文=ui_app 每轮注入 CURRENT_TURN_ID/CURRENT_USER_TEXT；
+- ③ 接口：`list --session shared-<target>`（魔术值复用，无新 flag；cmd_list 共享分支=校验授权→按 target 过滤；缺失/过期/轮末失效三型提示+“勿写 meta.json 会被覆写”排障提示）；提示语反引导修正（--scope-all 文案改为指向 shared-<cid> 精授权）；hint-recent 显示完整 cid（供授权用）；
+- ④ 宽路径：--scope-all/session=all 保留但工具描述+SYSTEM_MESSAGE 优先引导 shared-<target>（暴露面未收窄=登记）；
+- ⑤ 重试交互：一次性=轮末失效（turn_id 校验；一轮内重复读安全）；
+- 会话清理：session_cleanup clean 随 jsonl/meta 删 `<cid>.grants.json`；
+- 系统提示：scheduler SYSTEM_MESSAGE 素材边界②落地（线索→请授权→grant_refs→shared-<cid>）；TOOL_NAMES/_TOOL_LIMITS/_TOOL_NAMES/_wrap_call 四注册点齐。
+**验证**：14 单测（tests/test_s12_grant.py：原子写/轮末/过期/缺失/无轮/启发式正反/共享分支过滤与拒绝/随会话删）+ 全套 251 绿；CLI 冒烟（grant→list 共享过滤）通过；☆真机（agent 真实轮：授权→签发→list shared）待队列窗口。
+**剩余登记**：① grants 文件属纯磁盘态，agent 重启后 turn_id 归零→旧授权自动失效（fail-closed，符合预期）；② 弱在环启发式可被绕过（audit 留痕；UI 瞬态确认弹窗=未来增强）；③ --scope-all 暴露面收窄=另立项。
+

@@ -43,6 +43,13 @@ _SCRIPT_TIMEOUT = 120
 
 # book-05：当前会话 id（由 ui_app 每轮设置；list_references 默认隔离到本会话）
 CURRENT_SESSION = ''
+# book-19 S12：当前对话轮（ui_app 每轮设置；一次性共享授权按轮末失效）
+CURRENT_TURN_ID = ''
+# book-19 S12：当前轮用户原始消息（授权启发式输入；仅当前轮有效）
+CURRENT_USER_TEXT = ''
+
+# book-19 S12 授权启发式（explicit_authorization）实现在 runs/h3/refimage.py（
+# 无 qwen_agent 依赖，便于单测；tools.py 内只做延迟引用）。
 
 
 def _resolve(path: str) -> str:
@@ -444,14 +451,17 @@ class ListReferences(BaseTool):
         '选择参考图：先调本工具，再用 run_script 运行 runs/h3/refimage.py '
         'promote --name <id>（放进 ComfyUI input）或 use --name <id> --stage r2v。'
         '参考图视频生成用 call_comfyui(stage="r2v" / "i2v" / "flf2v")。'
-        '如需复用其他历史产物：必须用户明确授权，且 session 传 "all"（会列出全部，请谨慎）。'
+        '如需复用其他会话/历史产物：必须用户明确授权并指明会话；'
+        '精授权路径=用户确认后调 grant_refs(target=<cid>) 签发一次性授权，再传 '
+        'session="shared-<cid>"（仅当前轮有效，轮末失效）；确需全部素材（--scope-all / '
+        'session="all"）仍要求用户明确授权并明示暴露面，请谨慎。'
     )
     parameters = {
         'type': 'object',
         'properties': {
             'session': {
                 'type': 'string',
-                'description': "会话 id（cid）。默认=当前会话（工具侧 CURRENT_SESSION，由界面每轮设置）；传 'all' 才显示全部（含其他会话/历史产物，需用户授权）。",
+                'description': "会话 id（cid）。默认=当前会话（工具侧 CURRENT_SESSION，由界面每轮设置）；传 'all' 才显示全部（含其他会话/历史产物，需用户明确授权）；单会话共享精授权：用户确认授权（grant_refs 签发）后传 'shared-<目标cid>'。",
             },
         },
         'required': [],
@@ -470,12 +480,17 @@ class ListReferences(BaseTool):
             return f'错误：refimage.py 不存在于 {script}'
         if session and session != 'all':
             cmd = [sys.executable, script, 'list', '--session', session]
+            env = None
+            if str(session).startswith('shared-'):
+                # S12：共享分支需要当前轮标识校验授权（轮末失效）
+                env = {**os.environ, 'REFIMAGE_TURN_ID': str(CURRENT_TURN_ID or '')}
         else:
             # 无会话上下文（CLI/手工）或显式 all → 全部（带未授权警示）
             _warn = ('⚠️ 正在列出**全部**素材（含其他会话/历史产物）。'
                      '仅当用户已明确授权 "查询全部素材" 时使用；否则请改为默认的本会话素材，'
-                     '并告知用户 "请先上传/指明素材"。\n')
+                     '或经 grant_refs 签发后使用 shared-<cid>（精授权）；请告知用户 "请先上传/指明素材"。\n')
             cmd = [sys.executable, script, 'list', '--scope-all']
+            env = None
             _force_warn = _warn
         try:
             result = subprocess.run(
@@ -484,6 +499,7 @@ class ListReferences(BaseTool):
                 text=True,
                 timeout=120,
                 cwd=PROJECT_ROOT,
+                env=env,
             )
             out = _truncate((result.stdout or '') + (result.stderr or ''))
             if result.returncode != 0:
@@ -502,6 +518,66 @@ class ListReferences(BaseTool):
             return '错误：列出素材超时'
         except Exception as e:
             return f'错误：{e}'
+
+
+@register_tool('grant_refs')
+class GrantRefs(BaseTool):
+    description = (
+        '签发一次性「素材共享授权」：让当前会话可读取目标会话素材（list_references 传 '
+        'session="shared-<目标cid>"）。**仅当用户在当前轮消息中明确授权**（如 "可以用上次会话的客厅图/'
+        '允许使用那个素材"）才能调用；工具会校验当前轮用户消息，未检测到明确授权即拒绝——'
+        '禁止自行/代用户签发。用法：用户确认授权 → grant_refs(target=<会话cid>, reason=<一句话理由>) '
+        '→ list_references(session="shared-<目标cid>")；授权仅当前对话轮有效（轮末失效），过期自动作废。'
+    )
+    parameters = {
+        'type': 'object',
+        'properties': {
+            'target': {
+                'type': 'string',
+                'description': "目标会话 cid（格式 YYYYMMDD_HHMMSS_xxxx；来自 list_references 最近上传线索或用户指明的会话）。",
+            },
+            'reason': {
+                'type': 'string',
+                'description': "一句授权理由（如 '复用客厅参考图'）；写入审计记录。",
+            },
+        },
+        'required': ['target'],
+    }
+
+    def call(self, params: Union[str, dict], **kwargs) -> str:
+        params = self._verify_json_format_args(params) if params else {}
+        target = str((params or {}).get('target') or '').strip()
+        reason = str((params or {}).get('reason') or '').strip()[:200]
+        try:
+            from h3 import refimage as _ref
+            _auth = _ref.explicit_authorization(CURRENT_USER_TEXT, target)
+        except Exception:  # noqa: BLE001
+            _auth = False
+        if not _auth:
+            return ('[错误] 未检测到当前轮用户的明确授权（grant_refs 需用户本人授权，'
+                    '禁止自行/代用户签发）。请先向用户说明拟引用的素材来源并请其确认'
+                    '（"是否同意使用会话 <target> 的素材？"），获得明确同意后再调用本工具。')
+        src = (CURRENT_SESSION or '').strip()
+        turn = str(CURRENT_TURN_ID or '').strip()
+        if not src:
+            return '[错误] 当前会话上下文缺失（CURRENT_SESSION 为空）'
+        if not turn:
+            return '[错误] 当前轮次上下文缺失（CURRENT_TURN_ID 为空）'
+        script = os.path.join(PROJECT_ROOT, 'runs', 'h3', 'refimage.py')
+        env = {**os.environ, 'REFIMAGE_SRC': src, 'REFIMAGE_TURN_ID': turn}
+        try:
+            result = subprocess.run(
+                [sys.executable, script, 'grant', target, turn, '--src', src],
+                capture_output=True, text=True, timeout=60, cwd=PROJECT_ROOT, env=env)
+        except subprocess.TimeoutExpired:
+            return '错误：签发超时'
+        except Exception as e:
+            return f'错误：{e}'
+        out = _truncate((result.stdout or '') + (result.stderr or ''))
+        if result.returncode != 0:
+            return f'签发失败 (exit {result.returncode})\n{out}'
+        return (f'已签发一次性共享授权（target={target}，仅本轮有效）：\n{out.strip()}\n'
+                f'下一步：list_references(session="shared-{target}") 读取素材。')
 
 
 @register_tool('batch_submit')
@@ -708,7 +784,8 @@ except Exception:
 # ---- 工具调用审计日志（透明包装：不改变 schema/行为；调用统一落 logs/run_*.log） ----
 _TOOL_NAMES = {RunScript: 'run_script', ModifyWorkflow: 'modify_workflow',
                CallComfyUI: 'call_comfyui', ReadDoc: 'read_doc',
-               ListReferences: 'list_references', BatchSubmit: 'batch_submit'}
+               ListReferences: 'list_references', GrantRefs: 'grant_refs',
+               BatchSubmit: 'batch_submit'}
 
 
 def _log_tool(name, event, **fields):
@@ -830,7 +907,7 @@ def _wrap_call(cls):
 
 
 for _cls in (RunScript, ModifyWorkflow, CallComfyUI, ReadDoc,
-             ListReferences, BatchSubmit):
+             ListReferences, GrantRefs, BatchSubmit):
     _wrap_call(_cls)
 
 

@@ -26,7 +26,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from runs.agent.tools import (RunScript, ModifyWorkflow, CallComfyUI, ReadDoc,  # noqa: E402, F401
-                              ListReferences)
+                              ListReferences, GrantRefs)
 
 LLM_CFG = {
     'model': 'Qwen3.8-27B',
@@ -91,7 +91,8 @@ SYSTEM_MESSAGE = """\
   · h3_batch.py — 批量状态查询/重试：status --wait / retry --batch <dir>
 - modify_workflow(path, changes) — 修改工作流节点
 - read_doc(filename) — 读取参考文档（按需）
-- list_references() — 列出可用素材
+- list_references(session) — 列出可用素材（默认本会话；可传 shared-<cid> 读共享授权素材）
+- grant_refs(target, reason) — 签发一次性素材共享授权（**仅当当前轮用户明确授权**；轮末失效）
 - cancel_task(prompt_id) — 取消**本机登记的**生成任务（归属校验；他人任务一律拒绝）
 
 ═══ 创意→成片流程 ═══
@@ -130,7 +131,7 @@ N 张图 → 一次 batch_submit(stage=flf2v, images=逗号分隔) 提交全部 
 ═══ 素材边界（book-05，强制）═══
 - 素材=当前会话专属：list_references 默认只返回本会话上传的素材；引用其他会话/历史任务产物（ComfyUI 历史生成、旧项目视频等）须用户明确授权并指明，禁止默认翻旧库。
 - 优先本会话最新上传/本任务所需；不要从历史产物里猜测哪张是「最新」。
-- 若用户提到「这些/那两张图」而本会话无素材：向用户说明本会话暂无素材；若 list_references 附带了「最近其他会话上传」线索，把线索列出并**请用户确认授权复用**（指明哪些），获得明确授权后再用（session=all 或调用方授权），严禁未经授权直接翻用。
+- 若用户提到「这些/那两张图」而本会话无素材：向用户说明本会话暂无素材；若 list_references 附带了「最近其他会话上传」线索，把线索列出并**请用户确认授权复用**（指明哪些）；用户明确同意后：①先 grant_refs(target=<会话cid>) 签发一次性授权 → ②再 list_references(session="shared-<该cid>")（仅当前轮有效）。严禁未经授权直接翻用，严禁自行/代用户签发授权。
 
 ═══ 硬性限制 ═══
 ✗ 不能执行 shell 命令、管理服务（ComfyUI/SGLang/tmux）
@@ -155,7 +156,7 @@ N 张图 → 一次 batch_submit(stage=flf2v, images=逗号分隔) 提交全部 
 """
 
 TOOL_NAMES = ['run_script', 'modify_workflow', 'call_comfyui', 'read_doc', 'cancel_task',
-               'list_references', 'batch_submit']
+               'list_references', 'batch_submit', 'grant_refs']
 
 
 def _detect_project_root() -> str:

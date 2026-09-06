@@ -24,6 +24,9 @@ i2v / r2v / flf2v 的参考图）。
                            禁用 LoadImage 占位；配合 use --slot 使用）
   use --undo               恢复本地镜像模板（git checkout 还原，仅适用已入库镜像）
   where                    打印三个池目录位置
+  grant <target> <turn_id>  签发一次性共享授权（S12；经 grant_refs 工具，仅在用户
+                           明确授权后调用；授权存 <cid>.grants.json，轮末失效）
+                           也可 list --session shared-<target> 消费已签发授权
 
 形态隔离：以 config/deploy.json 为准。spark-local 在本机直接操作；win-remote
 （本机仓库 + 隧道）时自动把本命令经 `ssh spark` 委托到 spark 上的同一仓库执行
@@ -47,9 +50,11 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -284,6 +289,131 @@ def _filter_by_session(rows: list, batch_map: dict, session: str) -> list:
 
 
 _LITERAL_SESSION = {'current', 'this', 'latest', 'now', '本会话'}
+SHARED_PREFIX = 'shared-'
+
+# ---- book-19 S12 一次性共享授权（跨会话精授权） ----
+GRANT_TTL_DEFAULT = 3600          # 有效期默认 1 小时（阈值兜底；主导失效靠轮末）
+_GRANT_CID_RE = re.compile(r'^\d{8}_\d{6}_[0-9a-f]{4}$')
+# 授权启发式词表（人类弱在环；audit 留痕兜底）
+_GRANT_AUTH_VERBS = ('允许', '可以', '同意', '授权', '批准', '没问题', '好的', '行')
+_GRANT_AUTH_USAGE = ('用', '拿', '复用', '调用', '使用', '参考')
+_GRANT_AUTH_SESS = ('会话', '历史', '上次', '之前', '以前', '那个', '这个',
+                    '他', '她', '素材', '图')
+_GRANT_AUTH_NEG = ('不用', '不能', '不行', '不同意', '不可以', '别用', '不要用', '拒绝')
+
+
+def grants_dir() -> Path:
+    """授权目录 = <项目>/logs/agent_chats（与 session_cleanup.CHATS_DIR / ui_app.CHATS_DIR 同源）。
+
+    用 VIDEOGEN_PROJECT_ROOT（生产由 scheduler/session_cleanup 注入；单测可指向 tmp）。
+    注意不可用模块级 ROOT 常量——win-remote 委托后本项目跑在 spark，须与运行环境的
+    agent_chats 对齐；env 缺省值同样指向 spark 仓库（与 session_cleanup 一致）。
+    """
+    root = Path(os.environ.get('VIDEOGEN_PROJECT_ROOT', '').strip() or ROOT)
+    return root / 'logs' / 'agent_chats'
+
+
+def _grant_path(target: str) -> Path:
+    return grants_dir() / f'{target}.grants.json'
+
+
+def grant_issue(target: str, src: str, turn_id, ttl=None) -> dict:
+    """签发一次性授权：{target_cid, src_cid, turn_id, expires, used}，原子写（tmp+replace）。"""
+    ttl = GRANT_TTL_DEFAULT if ttl is None or int(ttl) <= 0 else int(ttl)
+    grant = {
+        'target_cid': target,
+        'src_cid': src,
+        'turn_id': int(turn_id),
+        'expires': time.time() + ttl,
+        'used': False,
+        'ts': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    }
+    p = _grant_path(target)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(p.name + '.tmp')
+    tmp.write_text(json.dumps(grant, ensure_ascii=False, indent=2), encoding='utf-8')
+    os.replace(str(tmp), str(p))
+    return grant
+
+
+def grant_check(target: str, turn_id='') -> tuple:
+    """校验授权。返回 (status, detail)：
+    ok | missing | no_turn | stale_turn | expired | corrupt。
+    """
+    p = _grant_path(target)
+    if not p.exists():
+        return 'missing', f'未找到授权记录: {p.name}'
+    try:
+        g = json.loads(p.read_text(encoding='utf-8'))
+    except Exception:  # noqa: BLE001
+        return 'corrupt', '授权文件损坏/无法解析'
+    if str(g.get('target_cid') or '') != target:
+        return 'corrupt', '授权目标不匹配'
+    if not str(turn_id or '').strip():
+        return 'no_turn', '调用方未提供当前轮标识（REFIMAGE_TURN_ID）'
+    try:
+        ok_turn = int(g.get('turn_id', -1)) == int(turn_id)
+    except (TypeError, ValueError):
+        ok_turn = False
+    if not ok_turn:
+        return 'stale_turn', (f'授权已轮末失效（签发轮 {g.get("turn_id")} ≠ 当前轮 {turn_id}；'
+                              f'一次性授权仅签发轮有效）')
+    try:
+        expired = float(g.get('expires', 0)) < time.time()
+    except (TypeError, ValueError):
+        expired = True
+    if expired:
+        return 'expired', '授权已过期（TTL 到期）'
+    return 'ok', ''
+
+
+def cmd_grant(target: str, src: str, turn_id, ttl=None) -> int:
+    """grant <target> <turn_id> [--src] [--ttl]；仅内部（grant_refs 工具）签发入口。"""
+    target = str(target or '').strip()
+    src = str(src or '').strip()
+    turn_id = str(turn_id or '').strip()
+    if not target or not _GRANT_CID_RE.match(target):
+        print(f'[错误] 目标会话格式无效: {target!r}（应为 YYYYMMDD_HHMMSS_xxxx）', file=sys.stderr)
+        return 3
+    if not turn_id:
+        print('[错误] turn_id 缺失（签发上下文不完整）', file=sys.stderr)
+        return 3
+    if src and src == target:
+        print('[错误] 目标会话=当前会话，无需授权', file=sys.stderr)
+        return 3
+    g = grant_issue(target, src, turn_id, ttl=ttl)
+    print(f'已签发一次性共享授权:')
+    print(f'  target={g["target_cid"]}  src={g["src_cid"] or "-"}')
+    print(f'  turn={g["turn_id"]}  expires={datetime.fromtimestamp(g["expires"]).strftime("%m-%d %H:%M:%S")}')
+    print('  → list --session shared-<target> 使用（仅本对话轮有效，轮末自动失效）')
+    _log(f'grant target={g["target_cid"]} src={g["src_cid"]} turn={g["turn_id"]}')
+    return 0
+
+
+def explicit_authorization(text, target: str = '') -> bool:
+    """当前轮用户消息是否含明确授权（S12 弱在环启发式）：
+
+    须同时命中 ①允许类确认词 ②使用动词 ③目标会话指向（cid 或泛指)；
+    否定词（不用/不能/别用…）或疑问句（'吗'/问号）视为未授权；
+    任一缺失即拒发——模型自行签发=禁止。返回 True 才允许 grant_issue。
+    """
+    t = str(text or '').strip()
+    if not t:
+        return False
+    if any(k in t for k in _GRANT_AUTH_NEG):
+        return False
+    if '？' in t or '?' in t or t.rstrip('。.!！ ').endswith('吗'):
+        return False
+    if not any(k in t for k in _GRANT_AUTH_VERBS):
+        return False
+    if not any(k in t for k in _GRANT_AUTH_USAGE):
+        return False
+    if target:
+        if target in t:
+            return True
+        if len(target) > 13 and target[:13] in t:  # 线索展示的 cid 前缀
+            return True
+    return any(k in t for k in _GRANT_AUTH_SESS)
 
 
 def normalize_session(value, current: str = '') -> str:
@@ -291,7 +421,9 @@ def normalize_session(value, current: str = '') -> str:
 
     - 空/字面词(current/this/latest/now/本会话) → 用 current（CURRENT_SESSION）；
     - current 为空时返回 'all'（无会话上下文）；
-    - 'all' 原样；其余按字面 cid 返回。
+    - 'all' 原样；'shared-<target>' 特殊标记原样返回（含 target，由 cmd_list 共享分支消费，
+      禁止当作普通 cid 透传过滤——否则静默空结果且提示语反向引导）；
+    - 其余按字面 cid 返回。
     """
     v = str(value or '').strip()
     if not v or v.lower() in _LITERAL_SESSION:
@@ -318,7 +450,7 @@ def _dedupe_by_prefix(rows: list) -> tuple:
 def cmd_list(dirs: dict, show_other: bool = False, pool: str = "",
              name: str = "", limit: int = 25, batch: str = "",
              recent: int = 0, session: str = "", scope_all: bool = False,
-             hint_recent: int = 0) -> int:
+             hint_recent: int = 0, turn_id: str = '') -> int:
     rows = _filter_rows(_rows(dirs), pool=pool, name=name, show_other=show_other)
     batch_map = _load_batch_map()
 
@@ -331,20 +463,55 @@ def cmd_list(dirs: dict, show_other: bool = False, pool: str = "",
             cids = sorted(m.get('cids') or set())
             cid = cids[0] if cids else ''
             when = datetime.fromtimestamp(r['mtime']).strftime('%m-%d %H:%M')
-            print(f"  [最近上传·会话{cid[:13]}..·{when}] {r['name']}")
+            print(f"  [最近上传·会话{cid}·{when}] {r['name']}")
         if up_rows:
-            print("  → 本会话以上素材不可见（会话隔离）。如需复用，请用户明确授权并指明；授权后可用 session=all。")
+            print("  → 本会话以上素材不可见（会话隔离）。如需复用，请用户明确授权并指明；"
+                  "授权后由调度器签发一次性授权，用 shared-<会话cid>（精授权，轮末失效），"
+                  "或用户明确授权全部后 --scope-all。")
         return 0
 
-    if session:
-        # book-05：默认只看本会话素材（上传时记录 cid）；其他历史产物需 --scope-all
+    if session and session.startswith(SHARED_PREFIX):
+        # book-19 S12：shared-<target> = 一次性共享授权（跨会话精授权）
+        target = session[len(SHARED_PREFIX):]
+        if not target:
+            print('[错误] shared- 后需接目标会话 cid（如 shared-20260906_134500_ab12）', file=sys.stderr)
+            return 3
+        if not turn_id:
+            turn_id = os.environ.get('REFIMAGE_TURN_ID', '')
+        status, detail = grant_check(target, turn_id)
+        if status != 'ok':
+            hints = {
+                'missing': ('未签发授权：目标会话 %s 尚无共享授权。请用户明确授权并指明后，'
+                            '由调度器经 grant_refs 签发（授权存独立文件 logs/agent_chats/<cid>.grants.json，'
+                            '不写入 meta.json——该文件会被会话保存每轮覆写）。' % target),
+                'expired': '授权已过期（TTL 到期）。请重新请求用户授权后再次签发。',
+                'stale_turn': '授权已轮末失效（一次性授权仅签发轮有效）。请重新请求用户授权后再次签发。',
+                'no_turn': '无法校验轮次：调用方未提供当前轮标识（REFIMAGE_TURN_ID）。',
+                'corrupt': '授权文件损坏。请重新签发。',
+            }
+            print(f'[共享授权] {detail}')
+            print(f'→ {hints.get(status, "")}')
+            _log(f'list shared target={target} denied={status}')
+            return 0
+        sel = _filter_by_session(rows, batch_map, target)
+        if not sel:
+            print(f'共享授权（一次性，轮末失效）: 会话 {target} 暂无可用素材')
+            return 0
+        sel, notes = _dedupe_by_prefix(sel)
+        rows = sel
+        print(f'共享授权（一次性，轮末失效）: 会话过滤 {target}（{len(rows)} 项，按时间倒序）')
+        for n in notes[:8]:
+            print(f'  [注] {n}')
+    elif session:
+        # book-05：默认只看本会话素材（上传时记录 cid）；其他历史产物需授权共享/--scope-all
         sel = _filter_by_session(rows, batch_map, session)
         if not sel:
-            print(f"本会话 {session} 暂无可用素材（上传后自动归档到本会话；如需全部素材请用 --scope-all）")
+            print(f"本会话 {session} 暂无可用素材（上传后自动归档到本会话；"
+                  f"如需其他会话素材：请用户明确授权并指明，用 shared-<cid> 精授权或 --scope-all）")
             return 0
         sel, notes = _dedupe_by_prefix(sel)  # 优化2：up/in 镜像只列一次
         rows = sel
-        print(f"会话过滤: {session}（{len(rows)} 项，按时间倒序；其他历史产物需 --scope-all）")
+        print(f"会话过滤: {session}（{len(rows)} 项，按时间倒序；其他历史产物需用户授权后 shared-<cid> 或 --scope-all）")
         for n in notes[:8]:
             print(f"  [注] {n}")
     elif scope_all:
@@ -756,6 +923,11 @@ def main(argv=None) -> int:
                         help="目标总槽位数（默认 12）")
     sub.add_parser("where")
     sub.add_parser("prune", help="扫描三池，将无效图片隔离至 uploads/_quarantine/")
+    p_grant = sub.add_parser("grant", help="签发一次性共享授权（内部接口：经 grant_refs 工具调用）")
+    p_grant.add_argument("target", help="目标会话 cid（YYYYMMDD_HHMMSS_xxxx）")
+    p_grant.add_argument("turn_id", help="签发轮号（当前对话轮）")
+    p_grant.add_argument("--src", default="", help="发起会话 cid（缺省取 env REFIMAGE_SRC）")
+    p_grant.add_argument("--ttl", type=int, default=0, help="有效期秒（默认 3600）")
     args = ap.parse_args(argv)
 
     dirs = comfy_dirs()
@@ -763,9 +935,14 @@ def main(argv=None) -> int:
     if args.cmd != "undo-delegate" and _site() == "win-remote" \
             and not os.environ.get("REFIMAGE_DELEGATED"):
         argv_enc = [args.cmd] + sys.argv[sys.argv.index(args.cmd) + 1:]
+        env_prefix = 'REFIMAGE_DELEGATED=1'
+        for _k in ('REFIMAGE_SRC', 'REFIMAGE_TURN_ID'):
+            _v = os.environ.get(_k, '')
+            if _v:
+                env_prefix += f' {_k}={shlex_quote(_v)}'
         r = subprocess.run(
             ["ssh", "-o", "BatchMode=yes", "spark",
-             f"cd ~/videoGenerate-Model-zju && REFIMAGE_DELEGATED=1 python3 "
+             f"cd ~/videoGenerate-Model-zju && {env_prefix} python3 "
              f"runs/h3/refimage.py {' '.join(shlex_quote(a) for a in argv_enc)}"],
             capture_output=True, text=True, timeout=180)
         sys.stdout.write(r.stdout)
@@ -776,7 +953,15 @@ def main(argv=None) -> int:
         return cmd_list(dirs, show_other=args.all, pool=args.pool,
                         name=args.name, limit=args.limit, batch=args.batch,
                         recent=args.recent, session=args.session,
-                        scope_all=args.scope_all, hint_recent=args.hint_recent)
+                        scope_all=args.scope_all, hint_recent=args.hint_recent,
+                        turn_id=os.environ.get('REFIMAGE_TURN_ID', ''))
+    if args.cmd == "grant":
+        src = args.src or os.environ.get('REFIMAGE_SRC', '')
+        if not src:
+            print('[错误] 签发上下文缺失（src cid）。请通过 grant_refs 工具签发（S12 内部接口）。',
+                  file=sys.stderr)
+            return 3
+        return cmd_grant(args.target, src, args.turn_id, ttl=args.ttl)
     if args.cmd == "promote":
         return cmd_promote(dirs, args.name, args.as_name)
     if args.cmd == "use":

@@ -6,7 +6,8 @@
 策略见 config/session_retention.json（全项目统一、入库 tracked，非机器配置）。
 
 安全边界（红线，来自 handoff-2026-09-05-L-tasks.md §L1）：
-  - 只删聊天档：<cid>.jsonl 与 <cid>.meta.json；
+  - 只删聊天档：<cid>.jsonl、<cid>.meta.json 与 <cid>.grants.json（S12 一次性授权，
+    随所属会话删除一并清空）；
   - thumbs/<sha>.jpg 按内容 sha 命名、无法关联 cid → 一律不删（保守，避免误删
     其它会话仍在引用的缩略图）；
   - 严禁删 uploads/、workflows/、outputs/、logs/run_*.log（运行期产物）。
@@ -134,11 +135,14 @@ def clean(chats_dir=None, days=None, dry_run=None, yes: bool = False) -> tuple:
     chats_dir = Path(chats_dir or CHATS_DIR)
     info = scan(chats_dir, days)
     expired = [s for s in info['sessions'] if s['expired']]
-    deleted = {'jsonl': 0, 'meta': 0, 'failed': 0}
+    deleted = {'jsonl': 0, 'meta': 0, 'grants': 0, 'failed': 0}
     for s in expired:
+        grants = s['jsonl'].with_suffix('.grants.json')  # S12：一次性授权随会话清
+        has_grants = grants.exists()
         if dry_run:
             print(f"[dry-run] 将删: {s['jsonl'].name}"
-                  + (f" + {s['meta'].name}" if s['has_meta'] else ''))
+                  + (f" + {s['meta'].name}" if s['has_meta'] else '')
+                  + (f" + {grants.name}" if has_grants else ''))
             continue
         try:
             s['jsonl'].unlink()
@@ -153,6 +157,12 @@ def clean(chats_dir=None, days=None, dry_run=None, yes: bool = False) -> tuple:
                 deleted['meta'] += 1
             except OSError:
                 pass
+        if has_grants:
+            try:
+                grants.unlink()
+                deleted['grants'] += 1
+            except OSError:
+                pass
     stats = {
         'chats_dir': str(chats_dir), 'days': days, 'dry_run': dry_run,
         'total': info['total'], 'expired': len(expired), 'deleted': deleted,
@@ -160,7 +170,7 @@ def clean(chats_dir=None, days=None, dry_run=None, yes: bool = False) -> tuple:
     mode = 'DRY-RUN（未删除）' if dry_run else '已删除'
     print(f"[session_cleanup] {mode}: 超期 {len(expired)} 个会话；"
           f"jsonl 删 {deleted['jsonl']}，meta 删 {deleted['meta']}，"
-          f"失败 {deleted['failed']}")
+          f"grants 删 {deleted['grants']}，失败 {deleted['failed']}")
     if dry_run and expired:
         print('[session_cleanup] 加 --yes 真正删除。thumbs/ 缩略图不删（无法关联 cid）。')
     return stats, 0
