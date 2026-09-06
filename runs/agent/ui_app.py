@@ -1601,6 +1601,19 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                                             text = _tw.build_notify_message(
                                                 "run_timeout", pid, elapsed=el)
                                     if ekey and not _tw.p1_was(cid, pid):
+                                        # 产物落盘保障（2026-09-06 现场问题：send 提前结束时任务完成
+                                        # 但无人 resume → 视频只在 ComfyUI output，spark 项目 outputs 缺失）。
+                                        # watcher 接管路径=注入前先 resume（幂等；失败不阻断通知）。
+                                        if ekey == "done":
+                                            try:
+                                                import subprocess as _sp, sys as _sys2
+                                                _sp.run([_sys2.executable,
+                                                         os.path.join(PROJECT_ROOT, 'runs', 'h3_submit.py'),
+                                                         '--resume', pid],
+                                                        capture_output=True, timeout=300,
+                                                        cwd=PROJECT_ROOT)
+                                            except Exception:  # noqa: BLE001
+                                                pass
                                         # 用户已停止/切换会话（stop_event 置位）→ 不注入（用户已接管）
                                         try:
                                             from runs.agent import session_state as _ss4
