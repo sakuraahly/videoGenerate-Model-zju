@@ -134,6 +134,14 @@
 **待查根因方向（修复前取证）**：① should_continue 在提交成功帧后未续（last_tool 判定与 TASK_SUBMITTED 提取）；② 续接轮 messages 上下文裁剪/丢失任务信息；③ 模型把素材列表轮误判为用户无创意（SYSTEM_MESSAGE 创意询问门限过宽）。
 **修复计划（后置）**：取证会话档/日志→定位断点→修复+单测→真机复验。
 
+## 14. S5 演练结果（2026-09-06 授权执行·**失败**）
+
+**执行**：队列空闲守卫过（running 瞬时清零）→ nap（SGLang 已不在运行，跳过）→ wake ×3 档（0.25/0.20/0.15）全超时。
+**恢复尝试**：手动 tmux 重启 0.50/0.40/0.30（spec off）全部 RuntimeError=Not enough GPU memory for hybrid state cache（total_rest_memory 恒负：-1.4~-7.3GB）。
+**根因**：ComfyUI 当前 CUDA 池驻留 ~40GB（nvidia-smi compute apps 1672180=40.7GB；含 --reserve-vram 12+驻留模型栈），GB10 统一内存池不足以同时容纳 SGLang（需≥~49GB）。12:30 前 SGLang 可运行=当时 Comfy 占用更低。
+**影响**：agent 的 LLM（SGLang 8000）当前 DOWN；ComfyUI/工具链正常。**恢复依赖**：ComfyUI 侧驻留释放（用户工作流结束/模型重载；ComfyUI systemd 纪律=不重启、不代为操作）。
+**llm_mem 档位缺陷登记**：wake 降额档（0.25/0.20/0.15）实际无法满足 SGLang 最小需求（≥~0.40 且需 Comfy 空闲），自适应降额区间错误——修复项（档位下限/与 Comfy 共享预算检测，后续实施）。
+
 ## 12b. 产物对照说明（用户疑问登记 2026-09-06）
 
 **问题**：用户在 ComfyUI 看到的是“裸视频”（无字幕/无人声）——原始生成产物。

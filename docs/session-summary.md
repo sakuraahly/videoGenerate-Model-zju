@@ -850,6 +850,11 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.57 S5 演练（授权执行·失败）——2026-09-06
+- 执行：队列空闲→nap（SGLang 本不在运行）→wake×3 档超时；手动 0.50/0.40/0.30 重启全失败=Not enough GPU memory（total_rest -1.4~-7.3GB）。
+- 根因：ComfyUI CUDA 池驻留 ~40GB（含 reserve 12+驻留模型）；SGLang 需 ≥~49GB；GB10 池不足。**SGLang 当前 DOWN，agent LLM 暂不可用**；ComfyUI/引擎正常。
+- 恢复依赖 ComfyUI 侧释放（用户工作流结束/模型重载）；llm_mem 档位下限缺陷登记（book-19 §14）；详细记录 booked。
+
 ### 20.56 计划书登记（2026-09-06 用户指示）
 - 产物对照说明（book-19 §12b：ComfyUI=裸片母版，项目 outputs/*_pp.mp4=成品）。
 - **本地化集成路线**（book-19 §13）：人声/字幕改用魔搭/本地小模型（edge-tts/ffmpeg=过渡），集成形态（ComfyUI 节点化 vs 引擎管线化）实施前评估；与 S13/P 链联动。
