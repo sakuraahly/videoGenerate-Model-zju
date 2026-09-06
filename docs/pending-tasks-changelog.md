@@ -431,3 +431,11 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **一、实现**：svc_main 三处（docstring/choices/分派）+ cmd_selfcheck_llm（队列守卫→nap→wake>=300s）+ --yes 对齐双演练 + --timeout。
 
 **二、验证**：编译 OK；无 --yes 拒绝路径实测；销毁性演练=待授权（队列空闲窗）。登记 nap 冲突（supervisor ≤30s 拉回）另立。
+
+---
+
+## 39. S9 dev.py sessions 实施记录（2026-09-06）
+
+**一、实现**：list/export/search（函数化+单测）；CHATS_DIR 注同值双定义；search 位置语义修正。
+
+**二、验证**：5 单测+165 绿；spark 真机 list/export/search PASS。

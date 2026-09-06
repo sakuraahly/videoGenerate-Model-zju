@@ -360,6 +360,113 @@ def _logs_dir():
     return d
 
 
+# ---------------------------------------------------------------- S9 会话历史导出/搜索（spark-only）
+def _chats_dir():
+    """会话档目录。S9：与 ui_app.py:40 / session_cleanup.py:36 同值（双定义已注明，十八审）；
+    实施时抽公共常量为低优先候选。"""
+    return ROOT / "logs" / "agent_chats"
+
+
+def sessions_list(chats_dir=None) -> list:
+    """按 mtime 降序列出会话（cid + 首条 user 消息摘要 ≤60 字）。"""
+    d = Path(chats_dir) if chats_dir else _chats_dir()
+    out = []
+    if not d.is_dir():
+        return out
+    for p in sorted(d.glob("*.jsonl"), key=lambda x: x.stat().st_mtime, reverse=True):
+        cid = p.stem
+        title = ""
+        try:
+            for ln in p.read_text(encoding="utf-8").splitlines():
+                try:
+                    rec = json.loads(ln)
+                except Exception:  # noqa: BLE001
+                    continue
+                if rec.get("role") == "user":
+                    title = str(rec.get("content") or "")[:60]
+                    break
+        except Exception:  # noqa: BLE001
+            pass
+        out.append((cid, title))
+    return out
+
+
+def sessions_export(chats_dir, cid, out_dir=None) -> Path:
+    """导出会话为 Markdown（docs/exports/<cid>.md；内容=user/assistant 消息）。"""
+    d = Path(chats_dir) if chats_dir else _chats_dir()
+    src = d / f"{cid}.jsonl"
+    if not src.is_file():
+        raise FileNotFoundError(f"会话 {cid} 不存在于 {d}")
+    lines = ["# 会话 %s\n" % cid]
+    for ln in src.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(ln)
+        except Exception:  # noqa: BLE001
+            continue
+        role = rec.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        lines.append("## %s\n\n%s\n" % ("用户" if role == "user" else "助手",
+                                          str(rec.get("content") or "")))
+    out_p = (Path(out_dir or ROOT / "docs" / "exports") / f"{cid}.md")
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    out_p.write_text("\n".join(lines), encoding="utf-8")
+    return out_p
+
+
+def sessions_search(chats_dir, keyword, cid="") -> list:
+    """按关键词搜索（可选 cid 限定），返回 [(cid, 角色行摘要)]。"""
+    d = Path(chats_dir) if chats_dir else _chats_dir()
+    hits = []
+    if not d.is_dir():
+        return hits
+    for p in (d.glob(f"{cid}.jsonl") if cid else d.glob("*.jsonl")):
+        try:
+            for ln in p.read_text(encoding="utf-8").splitlines():
+                if keyword not in ln:
+                    continue
+                try:
+                    rec = json.loads(ln)
+                except Exception:  # noqa: BLE001
+                    continue
+                role = rec.get("role")
+                if role in ("user", "assistant"):
+                    hits.append((p.stem, "%s: %s" % (role, str(rec.get("content") or "")[:80])))
+        except Exception:  # noqa: BLE001
+            continue
+    return hits
+
+
+def cmd_sessions(args):
+    """S9：list / export <cid> [--out] / search <kw> [--cid]（spark-only）。"""
+    try:
+        if args.action == "list":
+            rows = sessions_list()
+            if not rows:
+                print("（无会话档；logs/agent_chats/ 为空或不存在）")
+                return 0
+            for cid, title in rows:
+                print(f"{cid}  |  {title}")
+            return 0
+        if args.action == "export":
+            out_p = sessions_export(None, args.arg, args.out or None)
+            print(f"已导出: {out_p}")
+            return 0
+        if args.action == "search":
+            hits = sessions_search(None, args.arg, getattr(args, "cid", "") or "")
+            if not hits:
+                print("（无命中）")
+                return 0
+            for cid, line in hits:
+                print(f"[{cid}] {line}")
+            return 0
+        print("[错误] 未知 action", file=sys.stderr)
+        return 3
+    except FileNotFoundError as e:
+        print(f"[错误] {e}", file=sys.stderr)
+        return 3
+
+
 def cmd_logs(args):
     """日志系统工具盒：view / check / clean（book-11）。"""
     d = _logs_dir()
@@ -570,14 +677,21 @@ def cmd_workflows(args):
 
 
 def cmd_services(args):
-    """book-15 L7：spark 侧 svc_main.py 动作（通过 ssh/本地调用）。"""
+    """book-15 L7：spark 侧 svc_main.py 动作（通过 ssh/本地调用；S5 透传 --yes/--timeout）。"""
     action = getattr(args, "action", "status")
+    extra = []
+    if action in ("selfcheck", "selfcheck-llm"):
+        if getattr(args, "yes", False):
+            extra.append("--yes")
+        if action == "selfcheck-llm":
+            extra.extend(["--timeout", str(getattr(args, "timeout", None) or 300)])
+    ext = (" " + " ".join(extra)) if extra else ""
     if Path(SPARK_REPO).exists():
-        rc, out, err = _run([sys.executable, str(ROOT / "runs" / "agent" / "svc_main.py"), action],
+        rc, out, err = _run([sys.executable, str(ROOT / "runs" / "agent" / "svc_main.py"), action] + extra,
                             timeout=900 if action != "status" else 60)
     else:
         rc, out, err = _ssh(f"cd {SPARK_REPO} && /home/Developer/qwen-agent-venv/bin/python "
-                            f"runs/agent/svc_main.py {action} 2>/dev/null",
+                            f"runs/agent/svc_main.py {action}{ext} 2>/dev/null",
                             timeout=900 if action != "status" else 60)
     body = (out or err or "").strip()
     if action == "status":
@@ -674,9 +788,11 @@ def main(argv=None):
     q.add_argument("action", nargs="?", choices=["status", "cancel"], default="status",
                    help="status=只读展示 running/pending + 归属判定（默认）；cancel=取消（须 --prompt-id 且归属本机）")
     q.add_argument("--prompt-id", default="", help="cancel: 本机登记的 prompt_id（未命中一律拒绝）")
-    sv = sub.add_parser("services", help="服务编排：status/restart-llm/restart-agent/selfcheck（book-15）")
-    sv.add_argument("action", choices=["status", "restart-llm", "restart-agent", "selfcheck"],
-                    default="status")
+    sv = sub.add_parser("services", help="服务编排：status/restart-llm/restart-agent/selfcheck/selfcheck-llm（book-15/S5）")
+    sv.add_argument("action", choices=["status", "restart-llm", "restart-agent",
+                                       "selfcheck", "selfcheck-llm"], default="status")
+    sv.add_argument("--yes", action="store_true", help="销毁性演练二次确认（S5：selfcheck/selfcheck-llm）")
+    sv.add_argument("--timeout", type=int, default=300, help="selfcheck-llm 恢复判据窗口（秒，默认 300）")
     pp = sub.add_parser("postprocess", help="视频质量增强链（book-14 T2；spark 侧执行）")
     pp.add_argument("input", help="视频路径（相对 outputs/ 或 spark 绝对路径）")
     pp.add_argument("--scale", type=float, default=2.0)
@@ -687,6 +803,11 @@ def main(argv=None):
     pp.add_argument("--subtitle", default="", help="SRT 字幕（中文，spark 绝对路径）")
     pp.add_argument("--audio", default="", help="音轨文件（spark 绝对路径）")
     pp.add_argument("--font-size", type=int, default=20)
+    ss = sub.add_parser("sessions", help="会话历史导出/搜索（S9；spark-only）：list / export <cid> [--out] / search <kw> [--cid]")
+    ss.add_argument("action", choices=["list", "export", "search"])
+    ss.add_argument("arg", nargs="?", default="", help="export=会话 id；search=关键词")
+    ss.add_argument("--cid", default="", help="search 的会话限定（可选）")
+    ss.add_argument("--out", default="", help="export 输出目录（默认 docs/exports/）")
     args = ap.parse_args(argv)
 
     if args.cmd == "check":
@@ -709,6 +830,8 @@ def main(argv=None):
         return cmd_services(args)
     if args.cmd == "queue":
         return cmd_queue(args)
+    if args.cmd == "sessions":
+        return cmd_sessions(args)
     if args.cmd == "postprocess":
         # book-14 T2：在 spark 侧执行（Windows 无 ffmpeg）
         extra = f" --scale {args.scale} --denoise {args.denoise} --sharpen {args.sharpen}"

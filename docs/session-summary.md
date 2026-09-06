@@ -850,6 +850,10 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.52 S9 dev.py sessions 会话导出/搜索（spark-only）——2026-09-06
+- **实现**（dev.py）：sessions list/export/search 三子命令（逻辑函数化可单测：sessions_list/sessions_export/sessions_search）；CHATS_DIR 采用注同值+双定义注明（抽公共常量=低优先候选）；list 严格 glob *.jsonl（防 thumbs/ 目录混入）；export 输出 docs/exports/<cid>.md；search 支持 --cid 限定。
+- **测试**：tests/test_sessions_cmd.py 5 例（list 标题/export 内容/缺失报错/search 命中/限定）；165 绿。**★spark 真机**：list（含用户近期会话+首条摘要）/ export（md 落盘 930B）/ search 视频（命中历史会话行）全部 PASS。
+- **期间修复**：CLI 位置参数语义混淆（search 词被当 cid 限定→无命中）——修正为位置=关键词、--cid 选项限定，重验 PASS。
 ### 20.51 S5 SGLang 销毁性自愈演练（selfcheck-llm）——2026-09-06 实施（演练待授权）
 - **实现**（svc_main.py 三处）：docstring 用法 + choices 增 selfcheck-llm + 分派；cmd_selfcheck_llm=前置 comfy_queue_idle 守卫→复用 llm_mem.nap()（销毁）→wake(timeout_s=--timeout 默认 300)；--yes 二次确认（selfcheck/selfcheck-llm 对齐）；与 restart-llm 互补。
 - **验证（已过）**：编译 OK；无 --yes 拒绝路径实测（ok:false+需二次确认）。**销毁性演练=待用户授权**（book-19 §5 待授权项：队列空闲窗+SGLang 冷启 1-3min+失败回退 supervisor）。
