@@ -850,6 +850,11 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.37 遗留断点核查 + P1.5 归因勘误（2026-09-06 · 用户确认意图=r2v 参考贯穿全片）
+- **断点 5f820fe9（用户询问）**：=03:30 首验批量任务 batch_20260906_033010 **第 3 段**（父亲→眼镜，stage=**flf2v**）；ComfyUI history 三查=**全部 success/completed**（段0=00112/段1=00113/段2=00114，均 608×352/5.17s，在 spark ComfyUI output/video）；last_job.json 仅簿记残留（remote_path 空/manifest 未收尾），**任务未卡住、产物未丢**。另查 01:50:15 i2v 任务（5768e508→00105）亦 success。
+- **归因勘误（重要）**：用户首验 3 段实为 **flf2v 首末帧转场**（MiniMaxH3ImageToVideo），**非 r2v**——原归因“无 <Picture tag → 参考图被当首尾帧”与“ref_image_size=match 弱保真”对 flf2v **不适用**（flf2v 无 tag 契约、无 ref_image_size 键，“首尾帧”=其设计语义）。**但 P1.5 修复未白做**：抽查历史 12 份真实 r2v 提交（09-02~09-05）全部 <Picture tags=[] 且 ref_image_size=match——r2v 通道契约缺失真实存在，修复命中。**区分**：首验现象=flf2v 语义 vs r2v 通道漏洞。
+- **用户确认**：意图=**参考图贯穿全片（应走 r2v）**→ 真机验证改走 **r2v 3 段提交 + 每段抽 3 帧目检**（flf2v 3 段不再作为 P1.5 验证基准，仅作产物语义勘误登记）。
+- **收尾（用户授权“取回产物+清断点”）**：3 段已下载 win outputs（00112→video_33.mp4/00113→video_34.mp4/00114→video_35.mp4，源文件 ffprobe 608×352/5.17s 验证通过）；spark manifest 3 段标记 completed+本地路径映射；**last_job.json 已删除（断点清除）**；spark repo 0 dirty；共享队列空闲（未动他人任务）。
 ### 20.36 P1.5 参考语义修复实施（2026-09-06 · 代码层完成；☆真机抽帧目检待用户侧验证）
 - **提示词 tag 契约（根治）**：官方契约依据=模板内嵌 MarkdownNote id 116（"reference the inputs by tag, in the exact order they were connected…matching the reference tags precisely …tends to work best"）。
   - SYSTEM_MESSAGE（runs/agent/scheduler.py 提示词规则）新增 r2v 强制规则：每张参考图按连接顺序用 <Picture N>（1-based；<Picture 1>=images 第 1 张）+ 固定语义句（贯穿全片锁定、非首帧/尾帧关键帧）+ 生成后校验（tag 数==参考数，缺失即不提交补 tag 重提）。
