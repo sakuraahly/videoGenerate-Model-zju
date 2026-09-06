@@ -852,7 +852,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 
 ### 20.44 S2-P1a agent 默认 T2 增强（lanczos fast 单次编码）——2026-09-06 实施
 - **实现**：tools.py CallComfyUI 提交参数默认追加 --postprocess fast（dry_run 不带；submit-only/等待均带）；**必要补丁（实施发现）**：提交参数不持久化→resume 无参续传时 args.postprocess 回默认 none→增强丢失——已修：job 记录增 postprocess 字段 + resume 恢复（CLI 显式优先；args 默认 None 区分显式 none）。
-- **验证（已证）**：164+1skip 全绿；spark 实证=agent 驱动提交的新任务 job.json postprocess=fast（持久化生效）；**判据待回填**：任务 cc8adc87 完成后 resume→产物 1216×704（后台等待/watch 回填）。
+- **验证（判据已过）**：164+1skip 全绿；spark 实证=agent 驱动提交 job.json postprocess=fast（持久化生效）；任务 cc8adc87 完成后 resume→**video_37_pp.mp4=1216×704 h264+aac 5.167s（PROBE 判定通过）**+日志 postprocess_done；agent 提交 argv 均含 --postprocess fast（日志实证）；增强片已取回 win outputs/video_44.mp4。**登记（次要不阻塞）**：增强选片按 outputs 最新 mtime 可能二次增强已有 _pp（出现 video_37_pp_pp.mp4）——低优先精确化候选。
 - **回滚**：--postprocess none（CLI 显式优先于 job 值）。
 ### 20.43 UI 时间显示缺陷登记（2026-09-06 用户反馈）
 - 历史会话下拉条目时间=日期对、时分错 → 已登记 book-19 §11b（后续再做；实施时查 _choices() 时间来源/格式化，加单测）。

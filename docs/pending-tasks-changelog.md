@@ -390,4 +390,4 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 
 **一、实现**：tools.py 默认 --postprocess fast（dry_run 不带）；补丁=postprocess 持久化到 job + resume 恢复（防无参续传丢增强参数；CLI 显式优先，args 默认 None 区分显式 none）。
 
-**二、验证**：164+1skip 绿；spark job.json postprocess=fast 实证；增强产物（1216×704）真机判据=后台等待 cc8adc87 完成后 resume 回填。
+**二、验证**：164+1skip 绿；spark job.json postprocess=fast 实证；真机判据已过：cc8adc87 resume 后 video_37_pp.mp4=1216×704 h264+aac 5.167s + postprocess_done 日志 + agent argv 均带 --postprocess fast；增强片=win outputs/video_44.mp4。登记：增强选片按最新 mtime 可能二次增强（_pp_pp）——低优先。
