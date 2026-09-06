@@ -473,3 +473,11 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 uns/h3/queue_watch.py——once（单次快照 QUEUE_STATE=idle/busy/unreachable）/idle（轮询状态机：streak=连续 idle 探测次数，busy/不可达重置，streak≥--confirm（默认 2）→ QUEUE_IDLE_CONFIRMED exit 0；超时 → QUEUE_BUSY_TIMEOUT exit 2；**不可达视为忙=失败安全**）；复用 comfy.ComfyClient.queue_pids（低重试 1/超时 5s 适合轮询）；7 单测（状态机重置/复检/超时/CLI）。
 **应用**：S7 二级真机前置——用户任务结束后先 idle --confirm 3 复检通过 → 提交 r2v 任务（--submit-only 入队不阻塞）→ h3_submit --resume <prompt_id> 轮询结果（本项目工具）。
 
+
+## 45. S7 二级真机验证记录（2026-09-06 通过）
+
+**流程（用户指示：监听→复检→入队→项目工具监听结果）**：queue_watch idle --confirm 3 复检通过（14:19:30/40/50 三连 idle）→ 插入 r2v 任务 --submit-only（排队不阻塞）→ h3_submit --resume 轮询至 success。
+**提交**：--stage r2v --image 客厅×2（模板预置 2 槽已接线；<Picture 1>/<Picture 2> 双 tag）--videos 分镜视频-#1.mp4 --audios 老人缓慢讲述_爱给网_aigei_com.mp3（<Video 1>/<Audio 1>）--resolution 360p --seconds 5 --lora ref2v_4step --postprocess none --submit-only → prompt_id=df684e84-d48e-48fe-86dc-fa5e2a197200；日志证据：媒体注入 3 节点（videos=1 audios=1）+ LoRA 注入 3 处 + 提交成功。
+**产物**：spark outputs/video_42.mp4 → win outputs/video_46.mp4（567KB）；PROBE 608×352/24fps/124f/5.167s + AAC 32kHz/2ch/5.167s；抽帧 0.5s/4.5s 目检：场景锁定（与参考图一致）+ 推近运镜（参考视频驱动采纳）。
+**剩余判据**：音频是否确为参考声（老人声）采用——听测待用户/ASR（P 链④ FunASR 落地后自动判）；如实标注，不视为本批未通过。
+
