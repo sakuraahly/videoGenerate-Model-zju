@@ -850,12 +850,17 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.34 计划书新增 P1：事件驱动完成通知（监听→模型，零轮询）（2026-09-06）
+- **需求**：不让模型轮询；监听脚本把任务完成/失败/超时作为事件注入模型会话（模型校验监听健康+timeout 分型）。
+- **已写入 book-19**：顺序表新行（0.5 P1，先于 S8，与 S8 复用状态判定）+ §9 完整规格——事件源复用 task_watch 结果通知钩子（仅 idle 才注入/防重复注入/心跳 90s 体检 watcher 健康/四类超时分型/与 stop_event、check_turn_valid 对齐/轮询工具保留为备用；回滚=通知钩子开关；工作量中）。
+- **实施依赖**：先 S8（状态判定决策树）落地判定，P1 接最后通知环；实施序=S8→P1。
 ### 20.33 P0 受控续接紧急修正 + 并发上传竞态修复（2026-09-06）
 - **NameError 故障（错误图标+模型无响应根因）**：P0 首版把 `_last_tool` 定义在 run_turn（后台线程）而读取在 send——跨函数局部变量，工具轮 `NameError: _last_tool is not defined`（agent.log 实锤）→ send 事件异常→红色错误图标+后续对话中断。**已修**：模块级 `_LAST_TOOL`（run_turn 写/send 读）+global+初始化（:758）；删除误入的冗余行。
 - **并发上传预览丢失（分次快速上传）**：`_gal_by_cid` 增量拼接（旧列表+本次 _thumbs）在并发 upload 事件下互相覆盖（旧值读取竞态）。**已修**：①`up_btn.upload` 加 concurrency_limit=1（串行排队）；②上传结束改为 `_gal_by_cid[cid]=_previews_for_cid(cid)` **全量重建**（缩略图缓存后幂等，任意批次/重复上传不再覆盖丢失）；③`_upload` 的 cid 兜底 `cid or _current_cid`（cid_state 异常时素材不再记错会话）。
 - **“上传了却认为没有”**：主要由上述 cid 兜底+预览重建修复；模型端“候选列表”行为=refimage 跨会话候选提示正常（复用需用户授权，符合 book-05）。
 - **过程教训（如实记录）**：本轮编辑因行号漂移两次误写（_th 定义/upload 行插入错误处），当场恢复并验证（py_compile+165 绿+区域抽查）；行号敏感操作采用“grep 定位+运行时拼接”；**第四起**（本次）：批量替换把 `out = _run_tool(...)` 执行行覆盖丢失→UnboundLocalError（已恢复 :598 并 grep 核验 out=_run_tool 恰 1 处）。
 - **验证**：COMPILE_OK+165 基线；spark 重启 AGENT_VERSION=e3a00e2+SMOKE_OK；真机待用户“分次快速上传 4 图”重试验证。
+- **测试工具环境（2026-09-06）**：bsk 0.2.0 已装（C:\Users\39163\.bsk\bin\bsk.exe；daemon 运行中 ws://127.0.0.1:52800）；**浏览器扩展需装**：Chrome store id hhcmgoofomhgciiibhipgmgkgnoenaoi / Edge emacgiaaaiojkkpkddmmdfhmokgmnikg——装好即可 bsk 自动化复测（用户当前自行页面测试）。
 ### 20.32 P0 受控续接实施（2026-09-06 · 计划书高优先级执行）
 - **列入计划书**：book-19 顺序表首位 P0 + §8 完整规格（含风险登记——回答“多次续接”的风险面：重复提交/ctx 漂移/幻觉完成/用户控制，全部以“上限 5+轮空熔断+防虚构约束+新消息即断”对冲）。
 - **实施（runs/agent/ui_app.py）**：①run_turn 记录 _last_tool（工具名+结果摘要 180 字）；②should_continue 增目标驱动三态分支（失败→续重试；call_comfyui 成功→续查询取片；batch_submit 成功→不续由监控接管）；③MAX_AUTO_CONTINUE 2→5；④续接消息附 [上一步] 摘要+“不得虚构提交结果”约束；⑤_last_tool=None 初始化。
