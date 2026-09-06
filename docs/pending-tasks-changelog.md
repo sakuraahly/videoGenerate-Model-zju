@@ -423,3 +423,11 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **一、实现**：槽名/蓝图键对齐、--segments-json 0-based、段数守卫、死 import 修复（h3prompts）。真机：deploy 切 spark-local（按纪律）；模型 1 段→守卫拒写（验证通过）。
 
 **二、登记**：Qwen3.8-27B 分段遵循度弱（单段输出）——提示词强化待下轮（不阻塞 S4 本体）。
+
+---
+
+## 38. S5 selfcheck-llm 实施记录（2026-09-06；演练待授权）
+
+**一、实现**：svc_main 三处（docstring/choices/分派）+ cmd_selfcheck_llm（队列守卫→nap→wake>=300s）+ --yes 对齐双演练 + --timeout。
+
+**二、验证**：编译 OK；无 --yes 拒绝路径实测；销毁性演练=待授权（队列空闲窗）。登记 nap 冲突（supervisor ≤30s 拉回）另立。

@@ -850,6 +850,10 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.51 S5 SGLang 销毁性自愈演练（selfcheck-llm）——2026-09-06 实施（演练待授权）
+- **实现**（svc_main.py 三处）：docstring 用法 + choices 增 selfcheck-llm + 分派；cmd_selfcheck_llm=前置 comfy_queue_idle 守卫→复用 llm_mem.nap()（销毁）→wake(timeout_s=--timeout 默认 300)；--yes 二次确认（selfcheck/selfcheck-llm 对齐）；与 restart-llm 互补。
+- **验证（已过）**：编译 OK；无 --yes 拒绝路径实测（ok:false+需二次确认）。**销毁性演练=待用户授权**（book-19 §5 待授权项：队列空闲窗+SGLang 冷启 1-3min+失败回退 supervisor）。
+- **登记冲突（规格⑥）**：nap() 意图停机让位，supervisor ≤30s 拉回（NAPKILL_FINISHED 无人消费）——另立问题登记。
 ### 20.50 S4 idea2prompts segments-json 与 batch 衔接（2026-09-06）
 - **实现**：槽名对齐 _is_flf2v_slot（flf2v/video_flf2v/api_flf2v）+ blueprints 键对齐 _blueprint_slot（flf2v→video_flf2v）；0-based JSON=_segments_dict_0based（与 h3_batch --prompts-file 对齐）+ --segments-json 参数；**段数守卫**=模型返回数!=N → ParamError 拒写（防静默错位）；顺手修复死代码：_write_segments 内 from h3 import h3prompts（不存在的名，segments 从未真机跑过所以潜伏）。
 - **真机（spark）**：deploy.py --set spark-local（llm.json :8011→:8000，按纪律经 deploy 切换）；idea2prompts 3 段验证：**模型返回 1 段→守卫正确拦截拒绝写入**（语义验证通过）；--segments-json 输出未达（模型单段）；**登记遗留（不阻塞）**：Qwen3.8-27B 分段遵循度弱（输出单段），提示词强化=轻优化待下轮（更大/更稳模型或直接拼接式分段生成）。

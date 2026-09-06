@@ -1,7 +1,9 @@
 """book-15 L7：服务编排观测与动作（spark 侧入口；dev.py services 调用）。
 
-用法：python3 runs/agent/svc_main.py status | restart-llm | restart-agent | selfcheck
+用法：python3 runs/agent/svc_main.py status | restart-llm | restart-agent | selfcheck | selfcheck-llm
 全部动作走项目程序（llm_mem/queue_probe）；ComfyUI 一律不重启。
+selfcheck=agent 自愈演练（kill agent tmux）；selfcheck-llm=LLM 销毁性自愈演练（nap→wake，
+仅授权时执行，需 --yes 二次确认；恢复判据窗口≥300s，--timeout 可调）。
 """
 import argparse
 import json
@@ -98,6 +100,28 @@ def cmd_restart_agent():
     rc, _o, _e = _run(cmd, timeout=20)
     print(json.dumps({"ok": rc == 0, "msg": "agent restart issued"}))
     return 0 if rc == 0 else 1
+def cmd_selfcheck_llm(timeout: int = 300):
+    """S5 销毁性自愈演练（LLM）：队列空闲检查 → nap()（销毁）→ wake()（恢复，判据≥300s）。
+
+    同 restart-llm 前置（comfy_queue_idle 守卫）；销毁动作复用 llm_mem.nap()（不重造 pkill/tmux）；
+    仅授权时执行（--yes 二次确认）。
+    """
+    try:
+        from runs.agent import llm_mem
+        if not llm_mem.comfy_queue_idle():
+            print(json.dumps({"ok": False,
+                              "msg": "ComfyUI 队列非空闲，已中止（共享服务器纪律）"}))
+            return 2
+        rc = llm_mem.nap()
+        print(json.dumps({"nap_rc": rc}))
+        rc2 = llm_mem.wake(timeout_s=timeout)
+        print(json.dumps({"ok": rc2 == 0, "msg": "wake rc=%d 档位=0 断言见日志" % rc2}))
+        return 0 if rc2 == 0 else 1
+    except Exception as e:  # noqa: BLE001
+        print(json.dumps({"ok": False, "msg": type(e).__name__ + ": " + str(e)[:160]}))
+        return 1
+
+
 def cmd_selfcheck():
     """自愈演练：kill agent tmux → 验证 supervisor 60s 内拉起（会短暂中断对话，仅授权时执行）。"""
     _run(["tmux", "kill-session", "-t", "agent"])
@@ -114,7 +138,11 @@ def cmd_selfcheck():
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="book-15 服务编排动作")
-    ap.add_argument("cmd", choices=["status", "restart-llm", "restart-agent", "selfcheck"])
+    ap.add_argument("cmd", choices=["status", "restart-llm", "restart-agent",
+                                    "selfcheck", "selfcheck-llm"])
+    ap.add_argument("--yes", action="store_true", help="销毁性演练二次确认（selfcheck/selfcheck-llm 需要）")
+    ap.add_argument("--timeout", type=int, default=300,
+                    help="selfcheck-llm 恢复判据窗口（秒，默认 300；SGLang 冷启 1-3min）")
     args = ap.parse_args(argv)
     if args.cmd == "status":
         return cmd_status()
@@ -122,6 +150,12 @@ def main(argv=None):
         return cmd_restart_llm()
     if args.cmd == "restart-agent":
         return cmd_restart_agent()
+    if args.cmd in ("selfcheck", "selfcheck-llm") and not args.yes:
+        print(json.dumps({"ok": False,
+                          "msg": "销毁性演练需 --yes 二次确认（会中断服务/对话，仅授权时执行）"}))
+        return 2
+    if args.cmd == "selfcheck-llm":
+        return cmd_selfcheck_llm(timeout=args.timeout)
     return cmd_selfcheck()
 
 

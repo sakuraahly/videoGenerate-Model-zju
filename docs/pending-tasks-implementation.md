@@ -71,6 +71,8 @@
 
 ## 5. S5 SGLang 销毁性自愈演练（selfcheck --llm）
 
+> **状态：✅ 已实施（2026-09-06，见 changelog §38 / session §20.51）——svc_main 三处+cmd（队列守卫→nap→wake≥300s）+--yes 对齐；销毁性演练=待用户授权**。
+
 **现状**：supervisor/`selfcheck`（agent 演练）已通过；`llm_mem.wake` 自适应链存在；**sglang 销毁性演练未做**（成本顾虑）。
 **实现（四审全面修订）**：`svc_main.py` 增 `selfcheck-llm`（**一次性改动三处**：line 3 用法 docstring / line 117 choices / 分派——四审提示勿漏）：
 - ① 前置 `llm_mem.comfy_queue_idle()`（**与 cmd_restart_llm 同源守卫**，勿再造 queue_probe.collect 第二套）；
