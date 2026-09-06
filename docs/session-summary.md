@@ -850,6 +850,11 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.24 十四审闭环：changelog 核验（正面）+ 双模板树分叉定案 + 模板内嵌官方文档三条回填（2026-09-05）
+- **changelog 抽查正面**：簿记四值精确/165 例绿可复现（仓库根）/官方 tag 原文命中/两处自我归因完整——§18 落地的 grep 落点机制确证生效。
+- **双模板树定案（ssh 实测）**：win+spark 的 config/pipeline.json（机器配置不入库）templates_dir 均=workflows/remote_workflows；sync 脚本目标=remote_workflows → **权威=remote_workflows**；config/templates 为历史副本（r2v 32KB/29 节点/8 图槽 vs 28KB/23 节点/3 图槽，5 个共享文件全部分叉、缺 flf2v）；处置=零副作用（不改 config/templates 内容；pipeline.example.json 默认值修正 + tools.py:159 描述与 allowlist 一致化）；§7a 补 pipeline.json 注册（stages/remote_workflow_templates/templates_dir 三处，不留则 7a 登记后 stage 不可提交）。
+- **官方 MarkdownNote id 116（14 轮首读）三条回填**：① BasicScheduler=simple（:124）vs 官方建议参考密集用 beta/normal → §7 登记零成本改进（stage.py:292 同点）；② ref_image_size 从未参数化（固定 match）→ 7a params 增（match 验证档/max 交付档+速度代价）；③ 官方 up to 2K → §13 1080p 行改"原生待探测"（撤"非原生"定论）；④ tag 契约原文→§7c 厂商契约依据。
+- **images=8 vs 9 显式取舍**（agent 会拒绝第 9 张）；**测试套运行说明**（必须仓库根，runs/ 下 3 个 loader error——十四审曾误判一次）。
 ### 20.23 十三审闭环：S12 专项——五项定案（独立文件/魔术值接口/对话确认轮签发/轮末失效/宽路径保留收窄）（2026-09-05）
 - **五项定案（零代码改动，S12 待实施）**：① token 存独立 `<cid>.grants.json`（meta.json 每轮被 ui_app.py:160-163 w 模式 3 键覆写=静默丢失）+tmp+replace 原子写（仿 tts.py:194），**不改会话保存热路径**；② 接口=魔术值 `session=shared-<target>`（normalize_session 增前缀识别，禁止原样透传——现状会静默空结果+反向引导 --scope-all），--scope-shared 作废；③ 签发者=对话显式确认轮（新白名单工具 grant_refs + 本轮用户消息含授权声明启发式；禁止模型/自动签发；audit 兜底；UI 弹窗=可选增强）；④ 生命周期=轮末失效（绑 turn_id，一轮内可重复读=LLM 重试安全；increment_turn_id ui_app.py:1099 后自动失效）——"用后即焚"语义从"一次调用"改为"轮末"；⑤ session=all 保留但登记收窄（不退役/不要求 token；工具描述优先引导 shared-<target>；S12 不改变 --scope-all 暴露面，收窄需另立项）。
 - **自我归因接纳**：签发者缺口部分源自审查者一轮建议（"用户点名→生成 token→用后即焚"未指定签发者）——已补齐。

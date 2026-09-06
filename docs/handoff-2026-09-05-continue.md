@@ -2,7 +2,7 @@
 
 > 用途：**让新 Agent 无缝接手规划任务**（不依赖原会话上下文）。本档自包含；
 > 与 `docs/handoff-2026-09-05-L-tasks.md`（book-14 L1–L5，已完成）互不覆盖。
-> 现状时间点：**十三轮外部审核闭环**（八轮=代码修复+真机验收；九-十一审=S7 规格专项；十二审=S1 专项+§7b 上传链；十三审=S12 专项——权威见 changelog §20-§24 与 pending-tasks-implementation §1/§7/§12 最新审定稿）；仓库双端干净。
+> 现状时间点：**十四轮外部审核闭环**（八轮=代码修复+真机验收；九-十一审=S7 规格专项；十二审=S1 专项+§7b 上传链；十三审=S12 专项；十四审=changelog 核验+双模板树分叉定案+模板内嵌官方文档回填——权威见 changelog §20-§25 与 pending-tasks-implementation §1/§7/§12 最新审定稿）；仓库双端干净。
 >
 > 一句话现状：规划书 `docs/pending-tasks-implementation.md`（S1–S13 + P2–P6）经 **10 轮审核**定稿（十审=S7 计数修正 + 主案改 API 层注入（apply_lora 同型）/GetVideoComponents 链/登记补全/两级验证判据），
 > 唯二被审出的**代码回归**（TTS 钩子两处 UnboundLocalError、workflow UI 存档缺失）已修复；
@@ -70,7 +70,7 @@ python runs/dev.py queue      # 队列只读状态
 python runs/dev.py logs view -N / check / clean [--yes]
 ```
 - **提交顺序**：先 `sync` 再 `commit`（dev.py commit 本身不 sync）；
-- **Windows 单测命令**：默认 python（msys）无 pytest → 用 `py -3.13 -m pytest runs/h3/tests -q`（**165 例全绿**为基线，含 `test_tts_hook_voice.py` 7 例）；
+- **Windows 单测命令**：默认 python（msys）无 pytest → 用 `py -3.13 -m pytest runs/h3/tests -q`（**165 例全绿**为基线；**必须从仓库根运行**（runs/ 子目录下会 3 个 ModuleNotFoundError: No module named runs），含 `test_tts_hook_voice.py` 7 例）；
 - **每次“已修正/已落地”声明后，必须 grep 目标文件对应行做机械核对**（8 轮审核多次抓出“commit 说改但没改”的教训——机制见 changelog §17/§18）；
 - **真机验收定义**（用户口径）：真实提交链（或等价 Gradio API）→ 非空文本 → 真实产物（ffprobe 参数）→ 语音需可辨析（听测或 ASR 抽检）。仅单测通过 ≠ 完成。
 
@@ -100,7 +100,7 @@ python runs/dev.py logs view -N / check / clean [--yes]
 | **S2-P1a**（§2） | agent 默认 `--postprocess fast` + 合并单次编码链 | 钩子 fast 分支现已修复+测试（八审），P1a 绿灯；回滚开关 `--postprocess none` 已存在；tools.py 在 `--submit-only` 之后追加；dry_run 不带 |
 | **S3**（§3） | 取消后任务表残留 → `mark_cancelled(cid,pid)` 是唯一权威（发『已取消』+停轮询）；CancelTask 成功仅调它，`clear_tasks` 会在下一轮 send 被覆盖 | `runs/agent/{task_watch,tools,queue_probe}.py`；单测 mock task_watch 状态 |
 | **S8**（§8） | `h3_batch` 状态重写：`ComfyClient(retries=1, request_timeout=5)` + `queue_pids()` + 决策树 | “cancelled/从未排队”不可区分（如实标注）；勿改 queue_probe.collect 职责 |
-| **S7**（§7） | 参考视频/音频原生支持（ref2va；**最大工程**，推荐排在 S8 后） | 十审定稿：本地 r2v 模板即 Ref2VA（ref_* 槽位已有、仅未接线）；**ref_videos 槽位类型=IMAGE**——LoadVideo（VIDEO）须经 GetVideoComponents 拆帧/拆声（images→ref_videos、audio→同号 ref_video_audios；utility-gan_upscaler.json 已实证同型链）；**主案=API 层注入**（循 apply_lora 先例 stage.py:180-220：转换后注 LoadVideo/GetVideoComponents/LoadAudio + 槽位键；免 uiapi 文件选择器分支与 UI 行合成；注入 id 用数字字符串）；**计数口径=模板 8/1/1 行、node 上限 9/3/3**（7a 目标 images count=8，勿写 9）；7a 登记后必须补全 slots/features（add_local 默认全空）；验证=两级判据（在线注入后 API dict 断言 + 真实提交）；**7c 双通道硬约束（tag 集合==列表索引集合，tools.py 校验报错）**；备选 A 成本=参数化已有函数（grow_slots/_wire_slot）+6 缺口，非从零构建；探测失败→如实归档不臆造 |
+| **S7**（§7） | 参考视频/音频原生支持（ref2va；**最大工程**，推荐排在 S8 后） | 十审定稿：本地 r2v 模板即 Ref2VA（ref_* 槽位已有、仅未接线）；**ref_videos 槽位类型=IMAGE**——LoadVideo（VIDEO）须经 GetVideoComponents 拆帧/拆声（images→ref_videos、audio→同号 ref_video_audios；utility-gan_upscaler.json 已实证同型链）；**主案=API 层注入**（循 apply_lora 先例 stage.py:180-220：转换后注 LoadVideo/GetVideoComponents/LoadAudio + 槽位键；免 uiapi 文件选择器分支与 UI 行合成；注入 id 用数字字符串）；**计数口径=模板 8/1/1 行、node 上限 9/3/3**（7a 目标 images count=8，勿写 9）；7a 登记后必须补全 slots/features（add_local 默认全空）；验证=两级判据（在线注入后 API dict 断言 + 真实提交）；**7c 双通道硬约束（tag 集合==列表索引集合，tools.py 校验报错）**；备选 A 成本=参数化已有函数（grow_slots/_wire_slot）+6 缺口，非从零构建；**7a 须双注册（capabilities.json + config/pipeline.json——不入库，spark 就地改）**；**官方文档三条**（BasicScheduler simple→参考密集用 beta/normal；ref_image_size 参数化 match/max；原生 2K 待探测）；探测失败→如实归档不臆造 |
 | S1（§1） | gallery caption/可用性 | 读时计算不持久 |
 | S4（§4） | `idea2prompts --segments-json` 对齐 h3_batch `--prompts-file`；真 LLM 验证**在 spark 本机** | `config/llm.json` 别手改；deploy.py --set 管 base_url |
 | S5（§5） | `svc_main.py` 增 `selfcheck-llm`：前置 `llm_mem.comfy_queue_idle()`、复用 `llm_mem.nap()`、恢复窗口 **≥300s**、与 restart-llm 互补、`selfcheck` 与 `selfcheck-llm` 一并对齐 `--yes` | 一次性改动三处（docstring/choices/分派）+ 注册 nap vs supervisor 冲突（book-13 #16） |
@@ -125,6 +125,8 @@ python runs/dev.py logs view -N / check / clean [--yes]
 | ComfyUI schema | `UpscaleModelLoader` 输入键=`model_name`；`ImageUpscaleWithModel`=`upscale_model`；LoadImage 需 `input/` 根目录（user_uploads 子目录不被解析）；`/queue` item[1]=prompt_id；运行中取消=`POST /interrupt`（本 build `/queue {"interrupt":true}` 无效）；pending 取消=`/queue {"delete":[pid]}`；`/history/{pid}` 未知=运行中均返回 `{}`（须靠队列判别） |
 | Ref2VA 链（十审定稿） | `LoadVideo`=io.Combo(file+video_upload 标记)→VIDEO；`LoadAudio`=io.Combo(audio+audio_upload)→AUDIO；`MiniMaxH3ReferenceToVideo` 四 AUTOGROW 槽：ref_images（**模板 8 行**/上限 9，IMAGE）/ref_videos（**模板 1 行**/上限 3，**IMAGE=24fps 帧序列**）/ref_video_audios（模板 1 行/上限 3，AUDIO 与同号视频配对）/ref_audios（模板 1 行/上限 3，AUDIO）；**LoadVideo/LoadAudio 的 UI widgets_values=[文件名,image] 双值**——uiapi 通用路径会抛 UiUnsupported（设计 B 主案下注入在 API 层、转换器遇不到，属已知边界）；拆帧链=LoadVideo→GetVideoComponents（VIDEO→images IMAGE+audio AUDIO+fps）；UI 行合成先例=grow_slots（refimage.py:497-526）；模板簿记 last_node_id=140/last_link_id=282/nodes=29/links=25 |
 | 上传链（十二审定稿） | `/upload/image` 端点：字段名 name="image"（与类型无关，:52）/Content-Type: application/octet-stream（:53）/type=input（:42）/subfolder 非空才追加→默认落 input/ 根目录（:58）；**ComfyClient.upload_image 可直接复用于视频/音频**（唯一未验证项=服务端是否校验扩展名/MIME——S7 7a 复核清单已加 curl .mp4 验证）；提交链=本地源文件上传→API 返回名 bind，input/user_uploads 镜像仅服务 refimage 列举（LoadImage 不认子目录，六审实测；ui_app.py:825 注释已修正） |
+| 模板树（十四审定案） | **权威=workflows/remote_workflows**（win+spark 的 config/pipeline.json templates_dir 均指它；sync_remote_workflows.bat 同步目标；capabilities/refimage 基准）；config/templates=历史副本（6 文件全分叉、缺 flf2v，仅显式指定才生效；未清理）——S7 只认 remote_workflows；pipeline.example.json 默认值已改正 |7a 除 capabilities.json 外必须注册 config/pipeline.json（机器配置不入库，spark 就地改：stages/remote_workflow_templates/templates_dir 三处） |
+| 官方模板文档（MarkdownNote id 116，模板内嵌） | Sampler=res_multistep；**BasicScheduler 模板值 simple**（官方建议参考密集用 beta/normal）；**ref_image_size 固定 match**（max=2048px short edge 更强身份保真、速度代价）；模型**原生 up to 2K**（链路上限 768p 来源待查，原生 1080p 待探测）；tag 契约原文=按连接顺序引用、精确匹配标签效果最佳 |
 | ffmpeg | volume dB 语义：`0.0`=-91dB 静音、`-12.0`=0dB 削波、`-12dB`=正确衰减；amix 需 `normalize=0`；`-shortest` 会截断（用 apad+`-t duration`）；音轨替换用 tmp+rename（原地写会 EIO） |
 | argparse | `--rate -8%` 会被当旗标 → 必须 `--rate=-8%`；`--tts-voice` choices=[xiaoxiao,yunxi,两全名] |
 | TTS | edge-tts 经 CLI 子进程调用（`_edge_tts_cmd` 三路探测 qwen-agent-venv）；**偶发 NoAudioReceived 网络抖动**（会以 `tts_error err=ValueError` 落日志，主产物不受影响——这不是代码缺陷，重试即好） |

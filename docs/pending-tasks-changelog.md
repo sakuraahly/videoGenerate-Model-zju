@@ -244,3 +244,21 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **元观察回应**：剩余未审查=changelog 本身（~227 行，承载全部修订历史，仅抽查过零星 spark 实测数值）、S13 模型可得性依据、§15.3 GPU 预算表——**登记为下一轮覆盖计划**（建议先 changelog，其事实性声明对后续轮次响应具有基准作用）。
 
 **机制**：零代码改动（S12 待实施）；"成立/采纳"均按证据行 grep 核对；用户要求"慎重采纳、不引入副作用"已落实——所有定案选择均优先"独立文件/复用既有机制/不碰热路径"。
+---
+
+## 25. 十四审应答（2026-09-05 · changelog 核验 + 模板树专项）
+
+**一、changelog 抽查（正面确认）**：簿记四值（140/282/29/25）精确；165 例绿可复现（仓库根 `py -3.13 -m pytest runs/h3/tests -q` → 165 passed，跳过项=ffmpeg 依赖 test_mix_tracks，符合 docstring）；官方 tag 原文命中；COMFY_AUTOGROW 上限与官方一致；差 1 更正记录准确；两处自我归因记录完整——§18 后"声明后 grep 落点"机制确证生效。
+
+**二、【高】双模板树分叉——定案完成（一条命令级探测，非推测）**：
+- 实测：win 双树 r2v=32283B/a0b6e74f9be7/29 节点/8 LoadImage/8 图槽 vs 28839B/51023413dfea/23 节点/2 LoadImage/3 图槽（与十四审完全一致）；**且 i2v/t2v/api_* 5 个共享文件亦分叉**（节点数相同、字段级差异；config/templates 缺 flf2v）；
+- **定案（ssh 实测）**：win 与 spark 的 `config/pipeline.json`（机器配置不入库）`templates_dir` **均=workflows/remote_workflows**；`bats/workflow/sync_remote_workflows.bat`→`shell/sync_remote_workflows.ps1` 同步目标=remote_workflows；capabilities/refimage/template_health 均以它为基准 → **权威=remote_workflows**；pipeline.example.json 默认值 config/templates=陈旧（仅显式指定才生效）；
+- **处置（零副作用）**：不改 config/templates 内容（不覆盖/不删除）；修正 `pipeline.example.json`（templates_dir→workflows/remote_workflows + _comment 说明）；`tools.py:159` 描述与 :35-38 allowlist 一致化（两棵均允许、spark 同事模板只读）；§7 新增"双模板树事实"段 + 7a 补 **pipeline.json 注册**（stages/remote_workflow_templates 键/templates_dir 确认；pipenline.json 不入库→spark 就地改）——缺此则 7a 登记后 stage 不可提交。
+
+**三、【高】模板内嵌官方文档三条回填（MarkdownNote id 116，14 轮来首读）**：① BasicScheduler=simple（:124）而官方建议参考密集用 beta/normal（KSamplerSelect=res_multistep :123 一致）→ §7 登记零成本改进（stage.py:292 同点覆写 scheduler_name；验证档 simple/交付档 beta）；② ref_image_size 从未参数化（固定 match；uiapi.py:129 注释是唯一提及）→ 7a 目标 params 增 ref_image_size（match 验证档/max 交付档+速度代价官方原文登记）；③ 官方"up to 2K"→ §13 1080p 行标注改为"原生 1080p/2K 待探测（不带 LoRA 提交一次）+768p 上限来源待查"，撤除"非原生"定论；④ tag 契约原文（in the exact order...matching the reference tags precisely）→ §7c 提升为**厂商契约依据**。
+
+**四、【中】images=8 vs 官方 9**：§7a 已补显式取舍登记（count=8=模板现状+template_health 口径；第 9 位=grow_slots 可选增强；**注意**：count=8 时 agent 会拒绝第 9 张参考图——注册表与实际能力一致性如实标注）。
+
+**五、【低】测试套需从仓库根运行**：确认（runs/ 下 discover → 3 个 ModuleNotFoundError: No module named runs；仓库根 → 165 OK）；**已采纳**：handoff §2 单测命令补"必须从仓库根运行"；本应答记录（含十四审自述"第一次误判"的复现路径）。
+
+**机制**：本轮改动=代码/配置 2 处小修（tools.py:159 描述、pipeline.example.json 值+注释；均无行为面扩大：描述与 allowlist 一致化/example 默认值向运行配置对齐）+文档（§7/§7a/§7c/§13 回填）+changelog/session/handoff；单测基线 165 例重跑确认。

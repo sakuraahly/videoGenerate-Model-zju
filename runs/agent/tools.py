@@ -156,7 +156,7 @@ class RunScript(BaseTool):
 class ModifyWorkflow(BaseTool):
     description = (
         '修改工作流 JSON 文件中指定节点的字段。'
-        '仅允许修改 workflows/remote_workflows/ 下的文件。'
+        '仅允许修改本地镜像模板（workflows/remote_workflows/ 与 config/templates/；spark 同事模板与远端只读）。'
         '用于调整参考图路径（LoadImage 的 widgets_values）、分辨率等结构性参数。'
     )
     parameters = {
