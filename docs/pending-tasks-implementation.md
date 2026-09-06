@@ -86,7 +86,7 @@
 ## 6. S6 男/女声可选 + 字幕字号可调
 
 **实现（七审定稿+八审定稿——引擎已预接通，含 else 路径）**：`tts.py` 已支持 voice（XiaoxiaoNeural 女 / YunxiNeural 男）。**引擎（commit 93c1533+1d3e3bb+八审修复）**：`h3_submit --tts-voice`（**choices=[xiaoxiao, yunxi, 两全名]**，默认女声；**短名/全名映射层 `VOICE_ALIASES`（八审提升为 `tts.py` 公开常量，原 main() 局部 `_V_ALIASES` 工具侧无法复用——勿再还原到函数内**；h3_submit 入口归一：xiaoxiao→Xiaoxiao、yunxi→Yunxi，记录/CLI 统一全名））+ 任务记录 `tts_voice` + 完成钩子**两条路径均传 voice**（合并链 prepare_speech / **非合并链 attach_speech_and_subtitle（七审补修 else）**）+ `tts_done` 日志实际 voice。**八审补充（钩子回归修复）**：`_voice` 与 `_tj` 在 fast/非 fast 两分支共用前置归一（原 if 内赋值→else 引用 UnboundLocalError，且被 except 吞成“无语音无字幕”）；钩子已抽为模块级 `_run_tts_hook` + 分支单测（tests 7 例，无 ffmpeg）。**S6 剩余项**：① `tools.py` schema 增 `tts_voice`（**enum=短名 xiaoxiao|yunxi**，LLM 友好；**八审 Option A：tools 直接透传短名、不做映射**——归一由 h3_submit 入口完成；勿再写“tools 侧复用映射”）；② `tts_font_size` 字段（CLI `--font-size` 对应；**schema 字段名=tts_font_size**，与 CLI 名区分——七审统一）；③ SYSTEM_MESSAGE 台词规则补一句。
-> **状态：✅ 已实施（2026-09-06，见 changelog §35）**——tools schema+转发+font-size 全链；真机=队列空闲窗补验。
+> **状态：✅ 已实施（2026-09-06，见 changelog §35）**——tools schema+转发+font-size 全链；真机=已验证通过（2026-09-06 窗口期）。
 
 **验证**：真实链指定 yunxi → `start argv` 含 `--tts-voice yunxi`（**八审判据更正：tools 透传短名**）且 `tts_done ... voice=zh-CN-YunxiNeural`（**记录/日志=归一全名**）；且 `TTS_OUT:` 出现、产物含 AAC 音轨+字幕（**八审重新强调：仅 `TTS_OUT:` 出现即验证语音链生效**）；字号=抽帧目检。工作量：小。
 

@@ -850,6 +850,10 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.54 S6 真机补验通过（队列窗口期）——2026-09-06
+- **全链证据**：agent 提交 argv=--tts-text 该回家了。 --tts-voice yunxi（tools 透传短名）；job 记录 tts_voice=zh-CN-YunxiNeural+pp=fast（归一持久化）；tts_done voice=zh-CN-YunxiNeural speech=1.94s srt=yes merged_encode=1；产物=outputs/video_40_pp.mp4（1216×704 增强+字幕+男声 TTS，已取回 win outputs/video_45.mp4）。
+- **抽帧目检**：1.2s 帧=日出海岸+海鸥剪影+字幕“该回家了。”清晰（白字黑描边≈49px 等比字号）——**S6 判据全过**（argv/tts_done/TTS_OUT/字号目检）。
+- **窗口备注**：期间因用户任务 c1d99c2b 断点（三人聊天，未清——用户自己的任务）→ agent 以 force-new 语义重发（尊重用户断点）。
 ### 20.53 S10 质量看板（quality-report）——2026-09-06
 - **实现**：新建 runs/h3/quality.py（append=probe_av 双流记录（ts/prompt_id/width/height/fps/frames/video+audio/时长/size=同源择一）；compare=ffmpeg SSIM；report/render=汇总（总条数/音频缺失计数/最近 N 条）；日志 logs/quality.jsonl append-only）；h3_submit PROBE 后自动 append（prompt_id 传参；失败不阻断）；dev.py quality-report 子命令（--json/--limit）；probe_av timeout 30→60（十八审低项对齐）。
 - **测试**：tests/test_quality_cmd.py 3 例（字段映射/读写/汇总）；165 绿。**★spark 真机**：补记 3 条（probe_av 双流 aac+立体声+size）；report JSON 完整；**compare video_19 vs video_24 SSIM=0.864483（与已知 0.864 复算一致）**。

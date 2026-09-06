@@ -447,3 +447,9 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **一、实现**：quality.py（append/compare/report）+ h3_submit PROBE 接线 + dev quality-report + probe_av timeout 对齐 60。
 
 **二、验证**：3 单测+165 绿；spark 真机 report JSON 完整（3 条双流记录）+ SSIM 复算 0.864483（一致）。
+
+---
+
+## 41. S6 真机补验记录（2026-09-06 队列窗口期）
+
+**证据**：argv（yunxi/TTS 文本）+ job 归一全名 + tts_done（YunxiNeural/1.94s/srt/合并编码）+ 产物 1216×704 字幕清晰目检——判据全过；样例=win outputs/video_45.mp4。
