@@ -850,6 +850,10 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.50 S4 idea2prompts segments-json 与 batch 衔接（2026-09-06）
+- **实现**：槽名对齐 _is_flf2v_slot（flf2v/video_flf2v/api_flf2v）+ blueprints 键对齐 _blueprint_slot（flf2v→video_flf2v）；0-based JSON=_segments_dict_0based（与 h3_batch --prompts-file 对齐）+ --segments-json 参数；**段数守卫**=模型返回数!=N → ParamError 拒写（防静默错位）；顺手修复死代码：_write_segments 内 from h3 import h3prompts（不存在的名，segments 从未真机跑过所以潜伏）。
+- **真机（spark）**：deploy.py --set spark-local（llm.json :8011→:8000，按纪律经 deploy 切换）；idea2prompts 3 段验证：**模型返回 1 段→守卫正确拦截拒绝写入**（语义验证通过）；--segments-json 输出未达（模型单段）；**登记遗留（不阻塞）**：Qwen3.8-27B 分段遵循度弱（输出单段），提示词强化=轻优化待下轮（更大/更稳模型或直接拼接式分段生成）。
+- **测试**：tests/test_segments_json.py 5 例（槽名/蓝图键/0-based 键序/缺省空）；165+全绿。
 ### 20.49 S1 上传预览可判定性（gallery caption 会话/可用性）——2026-09-06
 - **实现**（ui_app.py，spark-only 验证口径）：_caption_for(cid) 生成 caption（会话来历+已用）；_previews_for_cid 输出统一规格 [(path, caption)]；第三个生产者（并行 _th/串行 _thumbs）同元组化+失败无 None 混入（不回退源路径 的现存安全行为保留）；gr.Gallery 直接收元组。
 - **spark-only ☆验证**（Windows 只改码不宣称）：spark 真机调用 _previews_for_cid 断言=4 条元组+caption 含'会话/已用'——PASS；浏览器目检=用户下次上传时可见（登记）。

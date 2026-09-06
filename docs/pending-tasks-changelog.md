@@ -415,3 +415,11 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **一、实现**：ui_app gallery 元组化（path, caption）=会话来历+已用；三改动点（_previews_for_cid/并行 _th/串行 _thumbs）统一；安全回退保持（不可用隐藏不回退源路径）。spark-only。
 
 **二、验证**：spark 真机 _previews_for_cid 断言 PAAS=元组+caption（4 条）；Windows 仅改码+编译。
+
+---
+
+## 37. S4 实施记录（2026-09-06）
+
+**一、实现**：槽名/蓝图键对齐、--segments-json 0-based、段数守卫、死 import 修复（h3prompts）。真机：deploy 切 spark-local（按纪律）；模型 1 段→守卫拒写（验证通过）。
+
+**二、登记**：Qwen3.8-27B 分段遵循度弱（单段输出）——提示词强化待下轮（不阻塞 S4 本体）。

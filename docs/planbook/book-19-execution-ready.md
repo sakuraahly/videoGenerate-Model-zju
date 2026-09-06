@@ -35,7 +35,7 @@
 | 3 | **S8**：批量状态重写（queue_pids+决策树）｜✅已实施（2026-09-06） | §8 | 中 | ☆1 次 | 前置=task_watch.poll_batch 缺 pathlib 修复已在场须确认；cancelled/never-queued 不可区分如实标注 |
 | 4 | **S6**：男/女声+schema tts_voice/tts_font_size+SYSTEM 一句｜✅已实施（2026-09-06；真机=队列空闲窗补验） | §6 | 小 | ☆1 次 | 引擎已预接通（VOICE_ALIASES）；tools 透传短名不映射；判据=argv 短名+tts_done 全名 |
 | 5 | **S1**：gallery caption/可用性｜✅已实施（2026-09-06；spark-only 断言 PASS） | §1 | 小-中 | ☆（spark-only） | _asset_available=文件系统存在性（非 _known_shas）；第三改动点 :1411-1417 元组化+回退兜底 |
-| 6 | **S4**：idea2prompts --segments-json | §4 | 小-中 | ☆LLM spark 本机 | 十八审前置：双向槽名对齐+0-based 统一+段数守卫；验证读落盘 manifest JSON |
+| 6 | **S4**：idea2prompts --segments-json｜✅已实施（2026-09-06；登记：27B 分段遵循度弱） | §4 | 小-中 | ☆LLM spark 本机 | 十八审前置：双向槽名对齐+0-based 统一+段数守卫；验证读落盘 manifest JSON |
 | 7 | **S5**：selfcheck-llm | §5 | 小 | ☆1 次（授权+空闲） | 三处改动点（docstring/choices/分派）；复用 nap()+comfy_queue_idle；恢复窗口≥300s；--yes 一致化 |
 | 8 | **S9**：dev.py sessions | §9 | 小 | ☆ | CHATS_DIR 双定义（实施时抽公共常量）；spark-only |
 | 9 | **S10**：quality.py+quality-report | §10 | 小-中 | ☆?（只读探测） | probe_av 为主取值源（timeout=30 注意）；bytes 择一 |

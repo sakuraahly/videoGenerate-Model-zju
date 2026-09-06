@@ -204,9 +204,28 @@ def parse_segments_json(text: str) -> list:
         return [{"positive": str(text).strip(), "negative": ""}]
 
 
-def _write_segments(project_dir, idea, slot, blueprints, m, cfg, n, dry_run) -> int:
-    """book-13 P1#5：N 段转场提示词 → prompts/workflows/video_flf2v.segment_<i>.positive/negative.txt。"""
-    from h3 import h3prompts
+def _is_flf2v_slot(slot: str) -> bool:
+    """book-19 S4：槽名对齐——segments 只对 flf2v（蓝图键 video_flf2v）生效。"""
+    return str(slot or "").lower() in ("flf2v", "video_flf2v", "api_flf2v")
+
+
+def _blueprint_slot(slot: str) -> str:
+    """blueprints 查表键：flf2v 裸名→真实蓝图键 video_flf2v。"""
+    return "video_flf2v" if str(slot or "").lower() == "flf2v" else str(slot or "")
+
+
+def _segments_dict_0based(segs: list) -> dict:
+    """book-19 S4：段提示词 → 0-based JSON 字典（与 h3_batch --prompts-file 对齐）。"""
+    return {str(i): str(s.get("positive") or "") for i, s in enumerate(segs)}
+
+
+def _write_segments(project_dir, idea, slot, blueprints, m, cfg, n, dry_run,
+                    segments_json: str = "") -> int:
+    """book-13 P1#5：N 段转场提示词 → prompts/workflows/video_flf2v.segment_<i>.positive/negative.txt。
+
+    book-19 S4：可选 --segments-json 输出 0-based JSON（与 h3_batch --prompts-file 对齐）；
+    段数守卫=模型返回数 != 期望 → ParamError（拒绝写入，防静默错位）。
+    """
     from h3 import logutil as _log
     try:
         if not cfg.get("enabled"):
@@ -215,7 +234,16 @@ def _write_segments(project_dir, idea, slot, blueprints, m, cfg, n, dry_run) -> 
         raw = chat_once(cfg, msgs)
         segs = parse_segments_json(raw)
         if len(segs) != n:
-            print(f"      [警告] 模型返回 {len(segs)} 段（期望 {n}），以后者为准", file=sys.stderr)
+            # S4：段数守卫——不符即拒绝（防静默错位：idx 回退/段被漏消费）
+            raise ParamError(
+                f"模型返回 {len(segs)} 段（期望 {n}）。未写入任何文件；"
+                "请调整 --segments 或重试（分段生成必须与图数-1 严格一致）。")
+        if segments_json:
+            _d = _segments_dict_0based(segs)
+            _p = Path(segments_json)
+            _p.parent.mkdir(parents=True, exist_ok=True)
+            _p.write_text(json.dumps(_d, ensure_ascii=False, indent=2) + chr(10), encoding="utf-8")
+            print(f"      segments-json(0-based) 已写入: {_p}", flush=True)
         out_root = Path(project_dir) / "prompts" / "workflows"
         out_root.mkdir(parents=True, exist_ok=True)
         for i, s in enumerate(segs, 1):
@@ -282,7 +310,8 @@ def _enforce_ref_tag_contract(out: dict, slot: str, idea: str, blueprints: dict,
 
 def build_segment_messages(idea: str, slot: str, blueprints: dict, m, n: int) -> list:
     """构造分段提示词请求：要求 N 段（转场）各自独立的 positive/negative。"""
-    bp = blueprints.get(slot) or {}
+    # S4：蓝图键对齐（flf2v 裸名→video_flf2v），否则丢 label/extra 专属指导
+    bp = blueprints.get(_blueprint_slot(slot)) or {}
     bp_str = json.dumps(bp, ensure_ascii=False)[:800]
     seg = ("请把下列创意拆分为 " + str(n)
            + " 个连续转场镜头段，每段独立给出英文 positive 提示词（视觉/镜头/光影/逻辑承接）"
@@ -303,6 +332,9 @@ def main(argv=None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="只打印消息/计划，不发请求不写文件")
     ap.add_argument("--segments", type=int, default=0,
                 help="book-13 P1#5：flf2v 转场生成 N 段分段提示词（写 video_flf2v.segment_<i>.positive.txt）")
+    ap.add_argument("--segments-json", type=str, default="",
+                help="book-19 S4：另输出 0-based 分段提示词 JSON（与 h3_batch --prompts-file 对齐；"
+                     "键=段索引 0..N-1）到指定路径")
     ap.add_argument("--force", action="store_true", help="AI 关闭时也允许纯文本占位写入（测试用）")
     args = ap.parse_args(argv)
 
@@ -335,9 +367,10 @@ def main(argv=None) -> int:
     print(f"[idea2prompts] 创意: {idea[:120]}{'...' if len(idea) > 120 else ''}")
     ok_slots = 0
     for slot in slots:
-        if segments and slot == "flf2v":
+        if segments and _is_flf2v_slot(slot):
             ok_slots += _write_segments(project_dir, idea, slot, blueprints, m, cfg,
-                                        segments, args.dry_run)
+                                        segments, args.dry_run,
+                                        segments_json=args.segments_json or "")
             continue
         msgs = build_messages(idea, slot, blueprints, m)
         print(f"  - {slot}")
