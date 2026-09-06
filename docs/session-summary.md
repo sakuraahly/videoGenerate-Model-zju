@@ -850,6 +850,14 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.26 十七审闭环：高爆炸半径专项（BasicScheduler键名勘误/连线覆写/设计B生产证据/768p=LoRA定案）（2026-09-05）
+- **键名勘误（最高影响）**：BasicScheduler 实际键=scheduler（required=[model,scheduler,steps,denoise]；COMBO options 含 simple/beta/normal）；16 份生产提交键集一致、全仓 scheduler_name 0 命中——§7 line 84 已改（stage.py:292 同点覆写 scheduler 键 + "scheduler" in ins 守卫），杜绝"决策记录无落地"与"无守卫直写每次 400"双失败。
+- **连线输入被标量覆写（最高影响）**：node 136 width/height/length=连线输入（115 ResolutionSelector/131 ComfyMathExpression），提交时被 apply_generation_params 覆写（608/352/124 实证）；node 115/131/132=零下游死重量（prune 早于覆写）；**length 侧等价**（snap_length vs 厂商表达式 111 点 0 差异，5s→124/15s→362——覆写安全）；**分辨率侧不等价：megapixels 杠杆不可达**（被 PRESETS 覆盖）→ §13 修正（唯一杠杆=预设表/--width/--height 逃生口）；§0 补输入链+死重量依赖（comfyui-logicutils 三节点，缺包提交 400）。
+- **设计 B 生产证据（正面定案）**：12 份真实 r2v 提交 node 136 键集一致（点分子键接受/无组选择器键/ref_videos+audios 全新增）→ 前提从推理升为既成事实；AUTOGROW 机制根因（COMFY_AUTOGROW_V3≠_DYNAMIC→组不进 items）；**注入 id 必须 >146**（UI id 至 146、被 prune 9 个=3 Note+6 未接 LoadImage）；LoadImage 口径=8 是 UI 文件侧（提交 dict 仅 2 个，template_health 以模板文件计）。
+- **设计 A 首要缺口**：合成 link=None 行对 API dict 零贡献（ui_to_api:195 continue）——行合成+接线两步都做对才生效；错=提交成功/产物正常/参考关系静默缺失（同型 §7c 静默错配）——已列备选 A 第 0 条缺口。
+- **768p 上限定案=LoRA 非模型**：lora_name 文件名标签（fl2v/ref2v_8step=768p；ref2v_4step=v0.1 无标签）；交付档互斥取舍登记（1080p+--lora none ≈5×；§15.3/§15.5 登记）；lora.files/steps/choices 与 COMBO 逐字符一致（无错配）；ref2va=**int8 剪量化**权重（2.1MP 显存正面信号）；ref2v_4step v0.1=探测最不确定环节。
+- **上传复用升级为源码级确证**（server.py image_upload 无类型校验/裸写字节/重传哈希不经 PIL 安全）→ §7a curl 从必要降抽验；§7b 上传段升级。
+- **其他**：lora.dir=spark 绝对路径入库（低项登记，与 pipeline.json 不入库口径不一致，本轮不动）；仍不可验证=1920×1088 探测（不单方执行）。
 ### 20.25 十六审闭环：spark 全量只读取证 + 768p 真相 + 孤儿模板/设计B边界（2026-09-05）
 - **正面确认**：§0/§7/§13 spark 断言全部实测为真；ref_image_size 口径更正（required COMBO [match,max]，API 必须携带）；§15.5 项 1/3 闭合（节点名更正=MinNode/comfyui-logicutils）。
 - **768p 真相（高·强于待探测）**：模型本体不施加（width/height max=16384 step=32 / ResolutionSelector megapixels max=16.0）；768p=项目侧硬编码 6 处列出；**探测无需改代码**（params.py:200-204 width+height 逃生口 + h3_submit --width/--height；CLI-only——tools.py 无 width/height，agent 够不着）；**口径冲突**：逃生口 %8 vs 节点 step=32 → 正确值=1920×1088；§13 已改写（三合一探测：1920×1088+--lora none，待队列窗口；若原生成立 P1b 立论消失、S2-v2 重排）。

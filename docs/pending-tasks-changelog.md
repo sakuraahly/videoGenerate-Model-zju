@@ -89,7 +89,7 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 1. ~~ComfyUI `/object_info`：ImageUpscaleWithModel / SaveImage / Min v（v2 超分工作流 schema）~~（**已闭合（十六审 spark 实测）**：三者存在；**更正节点名**：spark 1317 个 class 中无 Min v，真名=**MinNode**（display_name Min，custom_nodes.comfyui-logicutils，Category Math，input1/input2 通配→输出通配——S2-v2 这条依赖属 logicutils 而非 §0 所记 KJNodes）；ImageUpscaleWithModel required={upscale_model, image}→IMAGE；SaveImage required={images, filename_prefix}）
 2. 魔搭模型真实 ID：RIFE、SD1.5/SDXL-Inpaint、Wav2Lip(含 S3FD)、FunASR/Paraformer、F5-TTS（下一条=下载时长与大小登记）；
 3. ~~Ref2VA 节点/模板（spark `/object_info` + 同事模板目录）~~（**已闭合（九十六审全部取证）**：MiniMaxH3ReferenceToVideo 四 AUTOGROW 槽位 9/3/3/3、ref_videos=IMAGE 帧序列、LoadVideo/LoadAudio/GetVideoComponents 存在且输出槽序一致、双模板树定案=remote_workflows 权威——§7 十～十六审定稿）
-4. ~~混音扩展 mix_audio 双轨音量配比~~（**已由三审完成并回填**：mix_tracks 新建+接线+dB 修正+spark 测试通过）；**新增**：ESRGAN 批处理并行的**单卡并发路数与显存上限实测**（3-6min=待验证目标，非承诺）；**新增（五审）**：**建立 requirements/lock 文件口径**——仓库无任何依赖 pin 文件，S13/P2-P6 将引入 modelscope/FunASR/Wav2Lip/F5-TTS 等多套新依赖（独立 venv），无 lock 会快速产生依赖漂移与 venv 边界问题。
+4. ~~混音扩展 mix_audio 双轨音量配比~~（**已由三审完成并回填**：mix_tracks 新建+接线+dB 修正+spark 测试通过）；**新增**：ESRGAN 批处理并行的**单卡并发路数与显存上限实测**（3-6min=待验证目标，非承诺）；**新增（十七审）**：交付档升档预算（1080p+`--lora none`20 步 ≈5× 于现行交付档：8→20 步 2.5× × 1.03→2.09MP 2.02×——比表内任何项贵，待原生 1080p 探测成立后启用）；**新增（五审）**：**建立 requirements/lock 文件口径**——仓库无任何依赖 pin 文件，S13/P2-P6 将引入 modelscope/FunASR/Wav2Lip/F5-TTS 等多套新依赖（独立 venv），无 lock 会快速产生依赖漂移与 venv 边界问题。
 
 **审核闭环**：以上即对审阅意见的完整应答；如审核方复轮，仅需针对 §15.1 未接受项说明理由。
 ---
@@ -279,3 +279,28 @@ P4 参考图 Inpaint 修复 → P5 音色/人脸增强 → P6 RIFE+伪1080p
 **六、唯一待真机项（不单方执行）**：1920×1088 + --lora none（20 步）探测提交（定：墙钟/显存、LoRA 768p+ 可用性、服务端 step 强制）——已登记 §13 + §15.5 对应更新（项 5 待用户授权队列窗口）；§15.5 第 2 项（魔搭真实模型 ID）仍未闭合（本轮=通道级验证 ≠ 模型可得）→ §13 三项"可行"维持通道级结论。
 
 **机制**：本轮文档/配置修订（§0/§7/§13/§15.3/§15.5 + pipeline.example.json 注释修正）；零行为面扩大；165 例单测基线重跑确认。
+---
+
+## 27. 十七审应答（2026-09-05 · 高爆炸半径专项：每次提交/静默失效/设计前提）
+
+**一、最高影响·BasicScheduler 键名勘误（scheduler_name→scheduler）**：成立并已修——object_info required=[model,scheduler,steps,denoise]（scheduler=COMBO，options 含 simple/beta/normal）；16 份生产提交键集=denoise/model/scheduler/steps（无 scheduler_name）；全仓 scheduler_name 0 命中。§7 line 84 已改：落点=stage.py:292 同点覆写 **scheduler** 键，守卫=("scheduler" in ins)（防"决策记录、正文未落地"与"无守卫直写→每次 400"双失败模式）；denoise required（FLOAT 1.0）与模板 widgets 3 值+model 连线=4 吻合（转换无残留）。
+
+**二、最高影响·连线输入被标量覆写（width/height/length）**：成立并已修——实测 node 136 三键为连线输入（115 ResolutionSelector 槽 0/1→276/277；131 ComfyMathExpression 槽 1→275），ui_to_api 按连线发键+widget 值跳过（stale=3），apply_generation_params 标量覆写（真实提交 608/352/124）；node 115/131/132=零下游死重量（prune 在 ui_to_api 内部、早于覆写）。**length 侧语义等价（111 点逐点对比 0 差异：5s→124、15s→362——snap_length 与厂商表达式一致，覆写安全）；分辨率侧不等价：megapixels 杠杆不可达**（被 PRESETS 标量覆盖）→ §13 已修正（唯一杠杆=RESOLUTION_PRESETS 或 --width/--height 逃生口）；§0 新增"分辨率/长度输入链+死重量节点依赖（custom_nodes.comfyui-logicutils 三节点：ResolutionSelector/ComfyMathExpression/MinNode——对产物零贡献但缺包提交 400）"事实行。
+
+**三、高（正面定案）设计 B 生产证据**：spark 12 份真实 r2v 提交 node 136 键集完全一致（含 ref_images.ref_image_0/1 点分键、无裸组选择器键、ref_videos/ref_video_audios/ref_audios 全为新增）→ **设计 B 核心前提=既成事实**（不是推理）；**AUTOGROW 机制根因记录**（COMFY_AUTOGROW_V3≠_DYNAMIC→connectable→组不进 items→组不消费 widget、子槽仅由已连线 UI 行产生）；**注入 id 空间具体化>146**（UI 文件 id 至 146；prune 后 20 节点={92,115,119-132,136,137,138,139}；被 prune=3 MarkdownNote+6 未接 LoadImage）；**LoadImage 口径**（8=UI 文件事实/提交 dict 仅 2 个；template_health 以模板文件侧数=8，验收先声明口径）。→ 全部写入 §7。
+
+**四、高·设计 A 首要缺口（比已登记六条严重）**：ui_to_api:195 link=None 行继续→**合成行不接线对 API dict 贡献为零**；grow_slots 只追加行+克隆占位，接线=_wire_slot 独立步骤 → A 必须行合成+接线两步都对；错误后果=提交照常成功/产物照常出/参考关系静默缺失（与 §7c tag 硬约束同型静默错配）→ §7 备选 A 缺口清单已补为第 0 条（首要缺口）。
+
+**五、高·768p 上限定案=LoRA（非模型）**：lora_name options=3（fl2v_4step→…768p/ref2v_4step→…v0.1 无标签/ref2v_8step→…768p）→ 待查划掉；**产品级取舍登记**：交付档（720p/768p+ref2v_8step）与原生 1080p（+--lora none 20 步）互斥，≈5× 成本（8→20 步 2.5× × 1.03→2.09MP 2.02×）→ §13 已写+§15.3/§15.5 登记（比表内任何项贵）；**正面确证**：capabilities.json lora.files/steps/choices 与 COMBO options 逐字符一致（无错配=无 400 风险来源）；UNETLoader unet_name 含 ref2va **int8 剪量化**权重（2.1MP 探测显存余量正面信号）。
+
+**六、中高**：%8 vs %32 口径（预设表全 %32 干净；逃生口仅 %8——正确探测值=1920×1088）+CLI-only（tools.py width/height 0 命中）→ §13 已写（十六审同）。
+
+**七、中**：设计 B 注入 id 空间→具体化 >146（见三）；template_health 验收口径（以模板文件 UI 侧计）→ §7 已写。
+
+**八、正面确证·上传复用升级**：spark server.py 源码级——image_upload（:397-441）无 MIME/扩展名/内容校验（仅 commonpath 逃逸检查+裸写字节）；get_dir_by_type（:370-381）type=input→input/ 根；compare_image_hash（:383-395）裸字节哈希不经 PIL→mp4/mp3 同名重传安全 → §7b 上传段升级为"源码确证（含重传路径）"；§7a 复核清单 curl .mp4 从"必要"降"抽验"（不阻塞）。
+
+**九、低**：① 死重量三节点=comfyui-logicutils（§0 已补；KJNodes 表述精确化）；② ref_images tooltip 2048 短边（§13 Inpaint 已登记）；③ capabilities.json lora.dir=spark 绝对路径入库（与 pipeline.json 不入库口径不一致；Windows 恒无效）→ **登记低项**（机器相关值不该入库；下次涉及 capabilities 改动时一并回退为相对/注释——本轮不动避免行为面）。
+
+**十、仍不可验证**（不单方执行）：1920×1088+--lora none 探测（定：2.1MP 墙钟/显存、服务端 step=32 强制、原生画质）；**ref2v_4step v0.1 无标签=探测最不确定环节**（验证档 768p+ 行为未声明）；§15.5 项 2（魔搭真实模型 ID）未闭合（通道级≠模型级）。
+
+**机制**：本轮全部文档修订（§0/§7/§13/§15.3/§15.5/handoff），零代码改动；关键断言本地双抽查（16 份生产 BasicScheduler 键集、snap_length 111 点对比）后落地；决策与正文同步（回应"决策记录必须实际修改"）。
