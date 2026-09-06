@@ -850,6 +850,10 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.56 计划书登记（2026-09-06 用户指示）
+- 产物对照说明（book-19 §12b：ComfyUI=裸片母版，项目 outputs/*_pp.mp4=成品）。
+- **本地化集成路线**（book-19 §13）：人声/字幕改用魔搭/本地小模型（edge-tts/ffmpeg=过渡），集成形态（ComfyUI 节点化 vs 引擎管线化）实施前评估；与 S13/P 链联动。
+
 ### 20.55 断点自动清理 + 字幕/人声添加机制说明（2026-09-06）
 - **断点**：user 反馈新任务总被拦→已实施 clear_breakpoint_on_done（task_watch 终态清同 pid 断点；3 单测+重启生效）；book-19 §12 登记。未完成/超时任务断点仍保留（防重复提交职责不变）。
 - **字幕/人声机制（用户疑问）**：ComfyUI 产物=裸视频（模型原生音频，无字幕）；人声/字幕由**后处理链**加：任务完成→edge-tts 合成（yunxi 男声）→SRT 生成→ffmpeg 合并编码（2x 增强+字幕烧录同一 -vf）+音轨替换→产出 *_pp.mp4（项目 outputs/，非 ComfyUI output）。
