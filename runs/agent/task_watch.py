@@ -54,6 +54,30 @@ def _log_tw(event: str) -> None:
         pass
 
 
+_bp_cleared_logged: set = set()
+
+
+def clear_breakpoint_on_done(prompt_id: str) -> None:
+    """book-19 §12（用户反馈）：任务完成/失败时自动清除 last_job.json 断点
+    （同 pid 才清；防“已完成任务断点残留→新任务被拦”）。幂等；失败静默。
+    """
+    try:
+        import json as _j
+        p = Path(_PROJECT_ROOT) / "last_job.json"
+        if not p.is_file():
+            return
+        d = _j.loads(p.read_text(encoding="utf-8"))
+        if str(d.get("prompt_id") or "") != str(prompt_id):
+            return
+        p.unlink(missing_ok=True)
+        key = "bp:" + str(prompt_id)
+        if key not in _bp_cleared_logged:
+            _bp_cleared_logged.add(key)
+            _log_tw("breakpoint_cleared pid=%s" % str(prompt_id)[:8])
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _emit(kind: str, key: str, result: dict) -> dict:
     """状态或进度变化时落一行日志，随后返回 result（原行为不变）。"""
     try:
@@ -81,9 +105,11 @@ def poll_single(prompt_id: str) -> dict:
             result = history[prompt_id]
             status_obj = result.get('status', {})
             if status_obj.get('completed', False):
+                clear_breakpoint_on_done(prompt_id)
                 return _emit('single', prompt_id, {'status': 'completed', 'progress': '✅ 已完成'})
             elif status_obj.get('status_str') == 'error':
                 error_msg = result.get('outputs', {}).get('error', '未知错误')
+                clear_breakpoint_on_done(prompt_id)
                 return _emit('single', prompt_id, {'status': 'failed', 'progress': f'❌ 失败: {error_msg}'})
         
         # 再查队列队

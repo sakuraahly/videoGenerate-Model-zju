@@ -850,6 +850,10 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.55 断点自动清理 + 字幕/人声添加机制说明（2026-09-06）
+- **断点**：user 反馈新任务总被拦→已实施 clear_breakpoint_on_done（task_watch 终态清同 pid 断点；3 单测+重启生效）；book-19 §12 登记。未完成/超时任务断点仍保留（防重复提交职责不变）。
+- **字幕/人声机制（用户疑问）**：ComfyUI 产物=裸视频（模型原生音频，无字幕）；人声/字幕由**后处理链**加：任务完成→edge-tts 合成（yunxi 男声）→SRT 生成→ffmpeg 合并编码（2x 增强+字幕烧录同一 -vf）+音轨替换→产出 *_pp.mp4（项目 outputs/，非 ComfyUI output）。
+
 ### 20.54 S6 真机补验通过（队列窗口期）——2026-09-06
 - **全链证据**：agent 提交 argv=--tts-text 该回家了。 --tts-voice yunxi（tools 透传短名）；job 记录 tts_voice=zh-CN-YunxiNeural+pp=fast（归一持久化）；tts_done voice=zh-CN-YunxiNeural speech=1.94s srt=yes merged_encode=1；产物=outputs/video_40_pp.mp4（1216×704 增强+字幕+男声 TTS，已取回 win outputs/video_45.mp4）。
 - **抽帧目检**：1.2s 帧=日出海岸+海鸥剪影+字幕“该回家了。”清晰（白字黑描边≈49px 等比字号）——**S6 判据全过**（argv/tts_done/TTS_OUT/字号目检）。
