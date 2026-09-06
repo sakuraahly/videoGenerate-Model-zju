@@ -850,6 +850,12 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 3. book-13 P2-9b 历史会话预览重建 + C3–C5。
 4. 有素材/多人称（r2v/人物“说话口型”）链：真实链再验（list 已过；r2v 待有图后验）。
 
+### 20.31 现场事故三次修复（2026-09-06 · 批量提交通道缺口定案）
+- **现象**：3 段 r2v 分镜——第一次 batch_submit 中文描述失败→模型 list 拿到 up:0..3→**重试仍失败**（“找不到图片”/序号错位）→ 两次[系统自动续接]后模型重复陈述“现在按分镜重新批量提交”却不发出工具调用→“等待输入”。
+- **根因（run log 铁证）**：batch_submit call ×2 均 det_fail——①`h3_batch._resolve_image` **不支持池:序号**（up:N）且与 refimage list 的序号口径不一致（会话过滤差异）②**BatchSubmit schema 无逐段提示词/逐段台词**（3 段不同 prompt+tts 无法表达→模型“宣布提交但不发起调用”）③h3_batch 无 tts 参数。
+- **已修（h3_batch.py+tools.py）**：①池:序号解析（复用 refimage list 口径 _filter_rows；非图素材 kind 校验——log.jsonl 不再入池）②**新增 --prompts-file 透传（tools: prompts JSON→临时文件）、--tts-texts（逐段）、--tts-text（共享）、--tts-voice**——多段分镜批量一次完成 ③tools.py images 描述引导“文件名/sha8 前缀”优先（跨会话唯一；池:序号仅在无同名冲突时）④失败重试不占频控（上轮）——三级闭环。
+- **验证**：spark dry-run 全链路（文件名解析/prompts-file/tts-texts/tts-voice/manifest 生成 ✓）；COMPILE_OK+165 基线；**agent 重启**（AGENT_VERSION=2d3c881、SMOKE_OK）。
+- **遗留**：SYSTEM_MESSAGE 铁律（提交前 list_references；多段用 batch_submit；不重述已完成段）待实施；池序号跨会话错位已通过“文件名优先”引导规避。
 ### 20.30 现场事故二次修复（2026-09-06 · 批量提交中断 + InvalidPathError 根因定案）
 - **现象**：3 段 r2v 分镜批量提交——第一次 batch_submit 因中文描述“客厅内景”未解析失败（错误提示正确→模型 list 拿 id）→ 模型说“拿到真实素材 id 了，现在重新批量提交”→ **再次中断（等待输入）**。
 - **根因 A（等待输入定案）**：`InvalidPathError: Cannot move uploads/20260905/d6fa15ee_沙朗.png…`（agent.log ×多次、跨会话复现）——**预览重建 `_previews_for_cid`（ui_app.py:954-956）与上传回退（:1416）在缩略图缺失时把归档/源路径填进 Gallery**（沙朗=09-05 归档、缩略图缺失即回退）→ 归档路径进入组件值，一旦被前端/进程回传即被 Gradio 判“非用户上传对象”→ preprocess 崩溃→事件链断→“等待输入”。**已修**：两处回退改为“按需生成缩略图，失败即隐藏”（绝不回退源路径）；demo.load 清空 up_btn（上轮已加，本轮经重启才生效——**教训：UI 改动必须重启 agent；重启=AGENT_VERSION+SMOKE_OK 双验证（9494a11/SMOKE_OK）**）。

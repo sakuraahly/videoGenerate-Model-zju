@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import subprocess
 import sys
 from pathlib import Path
@@ -498,7 +499,7 @@ class BatchSubmit(BaseTool):
             },
             'images': {
                 'type': 'string',
-                'description': '逗号分隔的图片路径列表',
+                'description': '逗号分隔的参考图【文件名或 sha8 前缀】（推荐，跨会话唯一；如 634c34c8_新游戏眼镜.png；池:序号如 up:0 仅在无同名冲突时可用）',
             },
             'resolution': {
                 'type': 'string',
@@ -510,7 +511,20 @@ class BatchSubmit(BaseTool):
             },
             'prompt': {
                 'type': 'string',
-                'description': '提示词（可选）',
+                'description': '提示词（可选；全部段共享）',
+            },
+            'prompts': {
+                'type': 'string',
+                'description': '可选：逐段提示词 JSON 字典 {"0":"…","1":"…"}（按段索引；缺省用 prompt 共享）',
+            },
+            'tts_texts': {
+                'type': 'string',
+                'description': '可选：逐段台词 JSON 字典 {"0":"…","1":"…"}（按段索引；与单段 call_comfyui 的 tts_text 同语义，多段分镜批量提交用）',
+            },
+            'tts_voice': {
+                'type': 'string',
+                'enum': ['xiaoxiao', 'yunxi'],
+                'description': '台词音色（短名，默认 xiaoxiao）',
             },
             'dry_run': {
                 'type': 'boolean',
@@ -535,6 +549,20 @@ class BatchSubmit(BaseTool):
             cmd.extend(['--seconds', str(params['seconds'])])
         if params.get('prompt'):
             cmd.extend(['--prompt', params['prompt']])
+        if params.get('prompts'):
+            # 现场修缮（2026-09-06）：逐段提示词——写临时 JSON 供 --prompts-file（多段分镜批量）
+            try:
+                _pj = json.loads(params['prompts'])
+                _pf = os.path.join(PROJECT_ROOT, 'runs', f'batch_prompts_{int(time.time() * 1000)}.json')
+                with open(_pf, 'w', encoding='utf-8') as _f:
+                    json.dump(_pj, _f, ensure_ascii=False)
+                cmd.extend(['--prompts-file', _pf])
+            except Exception as e:  # noqa: BLE001
+                return f'[错误] prompts 参数不是有效 JSON 字典: {e}'
+        if params.get('tts_texts'):
+            cmd.extend(['--tts-texts', str(params['tts_texts'])])
+        if params.get('tts_voice'):
+            cmd.extend(['--tts-voice', str(params['tts_voice'])])
         if params.get('dry_run'):
             cmd.append('--dry-run')
         try:

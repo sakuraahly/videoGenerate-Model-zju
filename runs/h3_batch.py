@@ -68,6 +68,14 @@ def _save_manifest(manifest_dir: Path, manifest: dict):
 
 def _resolve_image(name: str) -> Path:
     """解析图片路径：支持裸文件名（在 uploads/ 或 ComfyUI input/ 中查找）或绝对路径。"""
+    # 现场修复（2026-09-06）：支持 refimage 池:序号（up:0/out:3/in:1）——模型按 list 输出传素材 id
+    if ":" in name and name.split(":", 1)[0] in ("in", "out", "up"):
+        from h3 import refimage as _rf
+        rows = _rf._filter_rows(_rf._rows(_rf.comfy_dirs()))  # 与 refimage list 同口径（排除非图素材，保证池:序号一致）
+        r = _rf._resolve_sel(rows, name)
+        if r.get('kind') != 'image':
+            raise ValueError(f'{name} 不是图片素材（池中有效图片以 list 输出为准）')
+        return Path(r['full'])
     p = Path(name).expanduser()
     if p.is_file():
         return p
@@ -139,8 +147,17 @@ def cmd_submit(args) -> int:
         except Exception as e:  # noqa: BLE001
             print(f'[错误] 解析 --prompts-file 失败: {e}', file=sys.stderr)
             return 3
+    # 现场修复（2026-09-06）：逐段台词（--tts-texts JSON 字典；与共享 --tts-text 互斥）
+    per_seg_tts = {}
+    if args.tts_texts:
+        try:
+            per_seg_tts = {str(k): str(v) for k, v in json.loads(args.tts_texts).items()}
+        except Exception as e:  # noqa: BLE001
+            print(f'[错误] 解析 --tts-texts 失败: {e}', file=sys.stderr)
+            return 3
     for seg in segments:
         seg['prompt'] = per_seg_prompts.get(str(seg['idx'])) or args.prompt or ''
+        seg['tts_text'] = per_seg_tts.get(str(seg['idx'])) or args.tts_text or ''
 
     manifest = {
         'batch_id': batch_id,
@@ -177,6 +194,10 @@ def cmd_submit(args) -> int:
                 cmd.extend(['--seconds', str(args.seconds)])
             if seg.get('prompt'):
                 cmd.extend(['--prompt', seg['prompt']])  # book-06：按段注入各自提示词
+            if seg.get('tts_text'):
+                cmd.extend(['--tts-text', seg['tts_text']])  # 现场修复：逐段台词
+                if args.tts_voice:
+                    cmd.extend(['--tts-voice', args.tts_voice])
             cmd.extend(['--force-new'])
 
             seg['submit_time'] = time.time()
@@ -370,6 +391,9 @@ def main(argv=None) -> int:
     p_sub.add_argument('--resolution', default=None)
     p_sub.add_argument('--prompt', default='')
     p_sub.add_argument('--prompts-file', default='', help='逐段提示词 JSON 文件：{"0":"...","1":"..."}（按段索引；缺省用 --prompt 共享）')
+    p_sub.add_argument('--tts-text', default='', help='旁白台词（全部段共享；与 --tts-texts 互斥）')
+    p_sub.add_argument('--tts-texts', default='', help='逐段台词 JSON 字典（按段索引）；与 --tts-text 互斥')
+    p_sub.add_argument('--tts-voice', default='', choices=['xiaoxiao', 'yunxi'], help='台词音色（短名，默认 xiaoxiao）')
     p_sub.add_argument('--dry-run', action='store_true')
 
     p_stat = sub.add_parser('status')
