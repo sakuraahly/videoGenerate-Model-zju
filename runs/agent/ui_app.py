@@ -441,7 +441,8 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     from runs.agent.scheduler import LLM_CFG, TOOL_NAMES, get_system_message
     system_message = get_system_message()  # book-12 A4：注册表动态工作流段
     from runs.agent import turn_state
-    _last_tool = None  # P0 受控续接：本轮最后工具（名, 摘要）
+    global _LAST_TOOL  # P0 受控续接：模块级（run_turn 写入 / send 读取）
+    _LAST_TOOL = ('', '')
     global _pending_batch_id
     turn_state.begin_turn(batch_id=_pending_batch_id)
     _pending_batch_id = None
@@ -595,8 +596,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
                                 cur.append({'role': 'user', 'content': '（任务已在队列中，直接查询取回即可，不要再提交）'})
                                 continue
                         _tool_count[fname] = _tool_count.get(fname, 0) + 1
-                        out = _run_tool(fname, fc.get('arguments'))
-                        _last_tool = (fname, str(out or '')[:180])  # P0 受控续接：供 should_continue 与续接消息（进度摘要）
+                        _LAST_TOOL = (fname, str(out or '')[:180])  # P0 受控续接：供 should_continue 与续接消息（进度摘要）
                         _tool_call_cache[tkey] = out
                         if out.startswith('[错误]') or out.startswith('提交失败') or out.startswith('错误：'):
                             # 现场修缮（2026-09-06）：失败不占用频控名额——模型修正参数后重试合法
@@ -755,6 +755,7 @@ def _comfy_input_dir() -> Path:
 _LOG_MTIME = -1.0
 _SEEN_SHA = set()
 _current_cid = ''  # book：当前会话 cid（_auto_new/_new/_load 维护；send 兜底，防止"发消息触发新建会话"）
+_LAST_TOOL = ('', '')  # P0 受控续接：最后工具（名, 摘要）——模块级（run_turn 写入 / send 读取）
 
 
 def _known_shas() -> set:
@@ -1238,7 +1239,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
 
                     needs_continuation = should_continue(
                         user_text, final_text, prompt_ids,
-                        last_tool=(_last_tool or ('', ''))[0], last_tool_hint=(_last_tool or ('', ''))[1])
+                        last_tool=(_LAST_TOOL or ('', ''))[0], last_tool_hint=(_last_tool or ('', ''))[1])
 
                     # book-16: spin-stop (empty-progress repeat)
                     if _prev_final and (final_text.startswith(_prev_final[:80])
@@ -1251,7 +1252,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                         break
 
                     msgs.append({"role": "user", "content": '[系统自动续接] 请继续完成当前任务。'
-                                 + (('[上一步] ' + ((_last_tool or ('', ''))[1])[:140]) if _last_tool else '') + '（重试/继续需按真实工具结果；不得虚构提交结果）'})
+                                 + (('[上一步] ' + ((_LAST_TOOL or ('', ''))[1])[:140]) if _last_tool else '') + '（重试/继续需按真实工具结果；不得虚构提交结果）'})
                     user_text = None
                     yield (shown, BUSY_HTML('自动续接中...'), ' 自动续接中...', noop, cid, msgs, noop)
 
@@ -1412,6 +1413,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             return gr.update(choices=_choices())
 
         def _upload(files, cid):
+            cid = str(cid or '') or str(_current_cid or '')  # P0：cid_state 异常时兜底当前会话（否则上传素材被记错会话=\"上传了却认为没有\"）
             global _upload_in_progress
             n = len(files) if files else 0
             _upload_in_progress = True
@@ -1455,7 +1457,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                             th = _make_thumb(Path(src), sha) if Path(src).exists() else None
                             if th:
                                 _thumbs.append(str(th))  # 现场修缮：缩略图失败不回退源路径（防归档/缓存路径进组件值）
-                    _gal_by_cid[cid] = (_gal_by_cid.get(cid) or []) + list(_thumbs)
+                    _gal_by_cid[cid] = _previews_for_cid(cid)  # P0：全量重建（缩略图已缓存）——并发/重复上传不再互相覆盖
                     yield html, _gal_by_cid[cid]
                 except Exception as e:  # noqa: BLE001
                     yield (_pill(f'❌ 上传处理异常：{type(e).__name__}: {e}',
@@ -1484,7 +1486,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             return UP_IDLE
         if getattr(up_btn, 'select', None):
             up_btn.select(_up_select, up_btn, up_status)
-        up_btn.upload(_upload, [up_btn, cid_state], [up_status, gallery])
+        up_btn.upload(_upload, [up_btn, cid_state], [up_status, gallery], concurrency_limit=1)  # P0：上传串行（并发上传曾致预览竞态丢失/异常图标）
         def _continue(hist, cid):
             yield from send(hist, cid, '继续')
         send_btn.click(send, [hist_state, cid_state, box], send_out,
