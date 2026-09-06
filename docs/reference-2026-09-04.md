@@ -150,7 +150,7 @@ outputs/ logs/ uploads/ refs/  skills/ docs/ ai_daily_reports/(已删) agent_cha
 |---|---|---|
 | 界面红错 | ~/qwen-agent.log 尾部 Traceback | 多为组件/接线异常；按堆栈修复后重启 agent |
 | 上传无反馈/慢 | 并发被长回合占用？(旧版已修)；预览是否走 thumbs | Ctrl+F5；单文件测；看 up_status 横幅 |
-| 分次快速上传后预览丢失/素材“消失了” | uploads/log.jsonl 该批 cid（记错会话则 list 空）；agent.log NameError | **已修（2026-09-06）**：上传事件串行（concurrency_limit=1）+预览全量重建（_previews_for_cid）+cid 兜底（cid or _current_cid）+P0 _LAST_TOOL 模块级（曾因跨函数局部变量导致 NameError=错误图标） |
+| _last_tool 大小写混用（1243/1256 一行内改一半）曾致 NameError——**已 0 残留校验**（win/spark grep=0；函数级验证 fail_retry/submit_continue/batch_done 三态正确）| 分次快速上传后预览丢失/素材“消失了” | uploads/log.jsonl 该批 cid（记错会话则 list 空）；agent.log NameError | **已修（2026-09-06）**：上传事件串行（concurrency_limit=1）+预览全量重建（_previews_for_cid）+cid 兜底（cid or _current_cid）+P0 _LAST_TOOL 模块级（曾因跨函数局部变量导致 NameError=错误图标） |
 | 上传成功但无预览 | thumbs 是否存在/allowed_paths | 检查 logs/agent_chats/thumbs/ 与 demo allowed |
 | agent“无输出卡死” | 状态条 LLM/引擎行、~sglang.log、logs/run_*.log | 是否在唤醒(1-3min)；否则点⏹中止并复现记录 |
 | 提交后 8000 停了 | 正常：nap 让位 | 下一轮自动 wake |

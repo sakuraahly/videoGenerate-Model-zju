@@ -1240,7 +1240,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
 
                     needs_continuation = should_continue(
                         user_text, final_text, prompt_ids,
-                        last_tool=(_LAST_TOOL or ('', ''))[0], last_tool_hint=(_last_tool or ('', ''))[1])
+                        last_tool=(_LAST_TOOL or ('', ''))[0], last_tool_hint=(_LAST_TOOL or ('', ''))[1])
 
                     # book-16: spin-stop (empty-progress repeat)
                     if _prev_final and (final_text.startswith(_prev_final[:80])
@@ -1253,7 +1253,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                         break
 
                     msgs.append({"role": "user", "content": '[系统自动续接] 请继续完成当前任务。'
-                                 + (('[上一步] ' + ((_LAST_TOOL or ('', ''))[1])[:140]) if _last_tool else '') + '（重试/继续需按真实工具结果；不得虚构提交结果）'})
+                                 + (('[上一步] ' + ((_LAST_TOOL or ('', ''))[1])[:140]) if _LAST_TOOL else '') + '（重试/继续需按真实工具结果；不得虚构提交结果）'})
                     user_text = None
                     yield (shown, BUSY_HTML('自动续接中...'), ' 自动续接中...', noop, cid, msgs, noop)
 
