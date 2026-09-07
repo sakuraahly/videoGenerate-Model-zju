@@ -60,7 +60,7 @@ class TestComfyModelsPath(unittest.TestCase):
             with mock.patch.object(_tl, '_CACHE', Path('/nonexistent/cache')):
                 with mock.patch.object(_tl, '_VOCOS', Path('/nonexistent/vocos')):
                     ckpt, vocos = _tl._comfy_paths()
-        self.assertTrue(str(ckpt).endswith('F5TTS_v1_Base/model_1250000.safetensors'))
+        self.assertEqual(ckpt.parts[-2:], ('F5TTS_v1_Base', 'model_1250000.safetensors'))
 
 
 class TestAsrSimilarity(unittest.TestCase):
