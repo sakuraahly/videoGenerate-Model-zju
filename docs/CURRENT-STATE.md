@@ -78,7 +78,7 @@ H3 主模型（fl2va/ref2va int8 + qwen3vl text encoder + 双 VAE）在 `diffusi
 
 **白天可干**：①用户听测确认（cosy 中文女声/aria 英文音色）；②镜头片 f8217f22 交付取回（对话"继续"）；
 ③"一句话出片"回归（≤768p 全链）；④~~一体模板桥接节点~~✅（VIDEO→路径桥接+模板接线, ComfyUI 已重启激活）；⑤S12 真机演练（需用户配合一轮对话）；
-**夜间自动**：⑥1080p 探测（night_runner --auto + cron 已装）；對話类：⑦口型冒烟 ⑧RIFE ⑨4x 叠加（agent 对话认领）。
+**夜间自动（2026-09-07 首轮执行记录）**：⑥1080p 原生探测 ✅PASS（1920×1088/无LoRA/20步/5s→`MiniMax_H3_00174_.mp4`（h264+aac,5.167s,124帧）→ outputs/video_53.mp4；night_runner 自动验证+标记完成）⑦口型冒烟 ✅（Wav2Lip：权重 HF camenduru（wav2lip_gan 436MB+s3fd 90MB）经 Windows hf-mirror 下载再 scp；代码 codeload；依赖=tts-venv torch2.14+cv2+librosa（清华 pip 源）；首测产出 `outputs/w2l_smoke_talk.mp4`（864x480 h264+aac，输入=00171 人脸+cosy 台词 6.04s；前后帧嘴型差异确认）；排障：librosa1.0 mel 签名、opencv5(arm64)无 FFMPEG 写后端→PNG 序列+mux；证据 w2l_before/after_2s.png）⑧RIFE ⛔仍阻塞（复核：MS 无官方/精简不兼容、GH 无 release（README=GDrive+colab）、HF 仅 train_log 副本、SVFI=C++源码——官方权重今晚不可达→转远期）⑨4x 叠加 ✅PASS（00170_ 1216×672 12.25s → RealESRGAN 4x-UltraSharp → outputs/upscale4x_00170.mp4 4864×2688/12.46s h264+aac；排障：首跑整体提交致 ComfyUI 内存压力崩溃→重启+分 3 段×4s 逐段超分再 concat，稳定完成）。**夜间收尾**：night_runner 4/4 已结算（probe/wav2lip/upscale=done PASS；rife=done(blocked,渠道复核属实,转远期)；状态=config/night-tasks.state.json）；Windows outputs 已同步 video_58_1080p_probe/video_59_w2l_smoke/upscale4x_00170 + w2l 前后帧证据图。
 **§22 定稿任务序（用户批评 2026-09-07）——全部完成 ✅（2026-09-07）**：T1 音色库（manifest+英男 daler 样本+三处显式选择器/词表）✅ → T2 字幕自适应档（harmony 默认+kai/song/black/classic；_subtitle_style+三下拉+引擎参数+13 测试绿）✅ → T3 ComfyUI 一体 GUI 终验（21e3e652：生成→SaveVideo→H3Finalize(cosy+kai)→H3AsrCheck 全链 success；成片在 output/video h3_bridge_2373727_final.mp4（864×480+配音+字幕烧录）；ASR 回环 0.889 ok；字幕截图确认无突兀）✅ → T4 文档/词表同步 ✅（本表+planbook §22；双端提交；agent SYSTEM 词表更新待重启生效）。
 
 ## 10. 夜间自动化机制（2026-09-07 用户需求：不用手动喊话）
