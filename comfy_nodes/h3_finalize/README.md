@@ -24,8 +24,9 @@
 - 模型（用户指示统一放 ComfyUI models）：`~/ai/ComfyUI/models/f5-tts/{F5TTS_v1_Base,vocos}`、
   `~/ai/ComfyUI/models/asr/sensevoice`（SenseVoice ONNX 量化）；
 - 合成/ASR 执行：`~/ai/tts-venv` / `~/ai/asr-venv`（独立 venv，避免污染 ComfyUI 环境）；
-- 参考音色样本：项目 `assets/tts_refs/{xiaoxiao,yunxi,aria}.wav`（edge-tts 预生成；
-  aria=英文样本）；
+- 参考音色样本：项目 `assets/tts_refs/{xiaoxiao,yunxi,aria}.wav`（2026-09-07 起全为真人大模型级音频：
+  xiaoxiao=CosyVoice 官方 zero_shot_prompt.wav（配套官方文本）；yunxi=真人男声素材（ASR 转写文本）；
+  aria=LJSpeech 真人英文女声——公开领域数据，配套官方转写文本）；
 - 业务代码：项目 `runs/h3/{tts_local_check,asr_check}.py`（节点经 subprocess 调用，
   路径由 H3_REPO/H3_TTS_PY/H3_ASR_PY 环境变量可覆盖）。
 

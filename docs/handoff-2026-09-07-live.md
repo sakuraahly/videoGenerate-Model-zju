@@ -10,9 +10,9 @@
 
 | 项 | 变更 |
 |---|---|
-| 参考音色 | xiaoxiao(默认女声)=**CosyVoice 官方 zero_shot_prompt.wav**（真人大模型官方音色，配套官方文本）；yunxi(男声)=**真人男声素材**（ASR 转写文本）；aria 暂保留（登记后续换） |
+| 参考音色 | xiaoxiao(默认女声)=**CosyVoice 官方 zero_shot_prompt.wav**（真人大模型官方音色，配套官方文本）；yunxi(男声)=**真人男声素材**（ASR 转写文本）；aria(英文女声)=**LJSpeech 真人英文女声**（公开领域数据，配套官方转写文本；详见 §6 已闭环） |
 | 默认后端 | h3_submit `--tts-backend` 默认 **edge→local**（语音大模型为默认；edge 仅在显式 `--tts-backend edge` 时降级使用） |
-| 听感样 | `outputs/voice_demo_official.mp3`（官方女声 F5-TTS 合成，请听） |
+| 听感样 | `outputs/voice_demo_official.mp3`（官方女声 F5-TTS 合成，请听）；`outputs/voice_demo_aria_en.mp3`（aria 真人英文女声 F5-TTS 合成，请听） |
 
 ## 3. 语音+字幕生成的两条路径（均可得到最终成品）
 
@@ -40,6 +40,6 @@
 ## 6. 下一步
 
 1. （用户听测 `voice_demo_official.mp3` 与 `outputs/video_53.mp4` 的音色）→ 若满意：以官方音色重出实战片；
-2. aria 英文音色换官方/真人样本；
+2. ~~aria 英文音色换官方/真人样本~~ ✅（2026-09-07 后续已闭环：aria=LJSpeech 真人英文女声（LJ006-0006，公开领域，官方转写文本）；真机 F5-TTS 合成英句 ASR 回环 **1.000**；听测样 `outputs/voice_demo_aria_en.mp3`）；
 3. ComfyUI 一体模板（生成+Finalize 合并）打磨（可选）；
 4. S13 远期：CosyVoice2 全链后端（音色库）/口型/1080p 探测（授权项）。
