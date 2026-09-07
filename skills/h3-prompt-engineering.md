@@ -174,3 +174,15 @@ No text, no music.
 - Chinese characters should appear only as **quoted target text**, not as prompt language
 - Use English cinematography terms (tracking shot, close-up, etc.)
 - Specify Chinese script style in both English and Chinese: `regular script (楷体)`
+
+---
+
+## 8. 参考图/参考媒体 tag 契约（R2V 与分镜剧本必守，2026-09-07 沉淀）
+
+- **`<Picture N>` 从 1 起**，与 `--image` 参数顺序**一一对应**（第 1 张=Picture 1）；tag 数量=参考图数量，多余/缺失会触发引擎校验拒绝（`--no-check-ref-tags` 仅调试）。用户分镜工具脚本里的 `<Picture 0>` 需改写为 1 起。
+- **明确"谁管什么"**：第一段必须逐图声明用途，如 `<Picture 1> is the interior room ... <Picture 2> is the protagonist ... <Picture 3> is the prop ...`，并紧跟 "Use them as exact references --- match their art style, color and lighting exactly."——防止模型把参考图当首尾关键帧。
+- **参考贯穿全片**（身份/风格保真）：加固定语义句 "All references define identity and style that persist through the whole shot; they are not first-frame or last-frame keyframes."
+- **S7 媒体**：`<Video N>`（运动/镜头参考）与 `<Audio N>`（氛围/音色参考）同样一一对应；只能参考**同镜头**素材（错误示例：2026-09-07 把另一镜头分镜当运动参考会带偏）。
+- **剧本块（多时间点连续单镜）写法**：`Shot N -- scene ...:` 后逐行 `0.0-1.2s: 动作描述`——每行写**物理可见动作**（人从哪跑到哪、看什么、表情变化），不写抽象情绪；结尾补镜头语言（"Keep the action natural and the camera steady but slightly following him."）。
+- **负面清单有效写法**（直接给出排除集）：`no warped or distorted human bodies, no mumbling or slurred speech, no missing characters, no distorted faces, no improper limb proportions, no unnatural motion, no blurred facial expressions, no unclear speech, no noise covering dialogue, no text, no watermark, no extra people`。
+- **实战样例**：`docs/handoff-2026-09-07-live.md` §7（镜头17：3 参考图 + 时间轴剧本 + 上述负面集，抽帧全过）。

@@ -9,6 +9,8 @@
 ## 1. 执行总纲
 
 **目标**：按推荐序把 S1-S13 待做项逐一落地，每项过"单测全绿 → ☆真机验收 → 文档回写 → dev.py sync+commit"闭环。
+
+> ⚠️ **结构说明**：本文档=执行计划与验收长卷；**章节编号含历史轮次、非顺序**（§10-§16 为 2026-09-06 轮次追加，含 11/11b-11d/12/12b 变体）——当前进度以**文件头状态表（§1）**为准；每节标注日期；新内容末尾追加新节号。当前事实见 `docs/CURRENT-STATE.md`。
 **红线（每项动工前重读）**：ComfyUI systemd 勿动（唯一动作=`POST /free` 完整 body）；共享队列取消/删除必须归属校验（已修复为定向中断）；共享模板只读、绑定用任务副本；模型下载走魔搭；中文经 ssh 一律临时脚本文件；单测从仓库根运行。
 **执行者纪律**："已修正必 grep 落点"；新钩子/新分支必有单测；两条路径共用变量必须前置初始化；决策记录必须同步正文修改。
 
@@ -211,7 +213,7 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 - 系统提示：scheduler SYSTEM_MESSAGE 素材边界②落地（线索→请授权→grant_refs→shared-<cid>）；TOOL_NAMES/_TOOL_LIMITS/_TOOL_NAMES/_wrap_call 四注册点齐。
 **验证**：14 单测（tests/test_s12_grant.py：原子写/轮末/过期/缺失/无轮/启发式正反/共享分支过滤与拒绝/随会话删）+ 全套 251 绿；CLI 冒烟（grant→list 共享过滤）通过；☆真机（agent 真实轮：授权→签发→list shared）待队列窗口。
 **剩余登记**：① grants 文件属纯磁盘态，agent 重启后 turn_id 归零→旧授权自动失效（fail-closed，符合预期）；② 弱在环启发式可被绕过（audit 留痕；UI 瞬态确认弹窗=未来增强）；③ --scope-all 暴露面收窄=另立项。
-## 16. S7 实施记录（2026-09-06；7a/7b/7c 已实施，二级真机待窗口）
+## 16. S7 实施记录（2026-09-06；7a/7b/7c 已实施，**二级真机 2026-09-06 已 PASS**（video_46 608×352/124f，参考视频+参考音频采纳；抽帧目检场景锁定+推近运镜；音频采纳判据=待用户/ASR——P 链④ 已落地））
 
 - **7a 登记（十九审定稿：扩展现有 video_r2v，不新建 stage）**：capabilities video_r2v 增 slots.videos=[reference×3]、slots.audios=[reference×3]、features.reference_videos=true、params.reference_media note；object_info 在线复核四节点全绿（ref_videos/ref_video_audios/ref_audios 均 COMFY_AUTOGROW_V3、prefix=ref_video_/ref_video_audio_/ref_audio_、max=3、子输入 IMAGE/AUDIO；LoadVideo file/LoadAudio audio 均 COMBO+input 根；GetVideoComponents 输出 images/audio）；workflow_registry add_local 扩展 slots=/features= kw；template_health 设计 B 分型（videos/audios 不数模板行；仅复核注入目标前缀节点存在）+ 注入前缀取 inject_spec.class_prefix；pipeline.json 无需新 stage（r2v 已存在，templates_dir 已确认）。
 - **7b 引擎接线（主案=API 层注入）**：stage.py `inject_media_refs(wf, video_names, audio_names)`——LoadVideo(file)→GetVideoComponents(video) 拆帧/拆声，槽位键 `ref_videos.ref_video_i`=[gvc,0]、`ref_video_audios.ref_video_audio_i`=[gvc,1]、`ref_audios.ref_audio_j`=[la,0]；注入 id=数字串且 > 现有 max id（避开 apply_lora 字符串 id 脆弱史）；守卫=目标节点缺失/视频>3/音频>3 抛 ParamError；h3_submit `--videos/--audios`（append）+ 上传复用 client.upload_image（落 input/ 根）+ 引擎层 tag 契约校验（--no-check-media-tags 降级开关）+ job 持久化/resume 恢复；dry-run 仅打印计划。

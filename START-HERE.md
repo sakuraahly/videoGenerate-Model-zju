@@ -28,11 +28,14 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 |---|---|---|---|
 | 1 | **`START-HERE.md`（本文件）** | 总入口：架构速览、阅读索引、路径/红线、参与规范 | 所有新参与模型/Agent |
 | 2 | `README.md` | 功能清单、快速开始、目录结构 | 所有 |
-| 3 | `docs/session-summary.md` | **历史事实源**：逐批次做了什么/当前状态/双端路径（§14 文件夹速查） | 所有（事实以它为准） |
-| 4 | `docs/handoff-2026-09-06-continue.md` | **最新交接（2026-09-06 用户首验后）**：仓库事实/已完成（P0 受控续接等）/待做（**P1.5 参考语义修复**=最高优先）/未决/纪律；旧版 `handoff-2026-09-05-continue.md` 归档 | 所有（接手下一轮工作前） |
+| 3 | **`docs/CURRENT-STATE.md`** | ⭐⭐ **当前事实唯一权威**（服务/模型/参数/音色/通道/纪律/待办） | 所有（事实以它为准） |
+| 3b | `docs/session-summary.md` | 🗄 历史状态快照 + 20.x 轮次审计志（只读；冲突以 CURRENT-STATE 为准） | 追溯 |
+| 3c | `docs/README.md` | **文档地图**：各文档角色/权威/更新规则（新增文档先登记） | 所有 |
+| 4 | `docs/handoff-2026-09-07-live.md` | **当日现场交接**：音色链真相（F5-TTS 本地=大模型）/aria 双轨/镜头17 实战演/CosyVoice2 试点/运维记录（跨日则新建当日 handoff；旧版 09-03~09-06 为历史） | 所有（接手当日工作前） |
 | 5 | `docs/reference-2026-09-04.md` | 详细工程参考：配置注册表、引擎/工具/Agent 契约、模板明细、故障字典 | 所有（查参数/契约/排障） |
 | 6 | `skills/h3-video-generation.md` | 生成任务全流程技能卡（§0b 路径速查与 Z 盘红线、§1.3c 上下文预算机制） | Agent/操作者做生成任务 |
-| 7 | `skills/h3-prompt-engineering.md` | 提示词工程规则（结构/中文渲染/音频句等） | 写任何生成提示词前 |
+| 6b | `skills/h3-postproduction.md` | 成品链技能卡（TTS 音色/字幕/音效/ASR 验收/超分/交付） | 生成后装配/验收前 |
+| 7 | `skills/h3-prompt-engineering.md` | 提示词工程规则（结构/中文渲染/音频句等；含参考图 tag 契约/剧本块） | 写任何生成提示词前 |
 | 8 | `docs/agent-workflow.md`、`docs/agent-reading/00–04` | 7860 Agent 工作链手册与执行协议（提交/续传/取件、素材链、输出纪律） | 调度/使用 Agent 完成任务 |
 | 9 | `docs/quickstart.md` / `docs/user-guide.md` / `docs/deploy-modes.md` / `docs/llm-memory-optimization.md` / `docs/qwen38-deployment.md` / `docs/h3-workflow-architecture.md` / `docs/h3-troubleshooting.md` / `docs/long-term-maintenance.md` 等 | 新手入门 / 用户手册 / 部署形态 / 内存账本 / Qwen 部署 / 工作流架构 / 故障排查 / 长期维护 | 按需定向阅读 |
 | 10 | **`docs/planbook/book-00-overview.md`**（+ book-01…book-17） | **系统性修复计划书**：痛点→阶段映射、基座/可信部署、前端/输出/自动完成/资源隔离/工作流/引擎/风格、验收门禁与黄金路径 | 修复负责人（多轮校验先读 book-00） |

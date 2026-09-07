@@ -8,7 +8,8 @@
 ---
 
 ## 1. 执行任务（先读后做，先取证后动手）
-- 先读 `START-HERE.md §2`、`docs/session-summary.md`（事实源）、相关 skill/文档。
+- 先读 `START-HERE.md §2`、**`docs/CURRENT-STATE.md`（当前事实唯一权威，2026-09-07 起）**、当日 `docs/handoff-<日期>-live.md`、相关 skill/文档。
+- `docs/session-summary.md`=历史快照+审计志（只读；冲突处以 CURRENT-STATE 为准）。
 - 先判断「问题根因」四选一：①代码没写 ②写了没同步 ③同步了进程没重启 ④文档先行、代码滞后。
 - 涉及运行实例：先确认 spark 跑的版本（`git rev-parse HEAD` / 版本指纹），别一上来就改代码。
 
@@ -28,11 +29,12 @@
 - 五项全满足才叫过：①改的是 Windows 主库且 spark 经部署/重启一致 ②有真实执行证据 ③双端一致 ④口径一致 ⑤未越红线。
 
 ## 5. 写入文档 / skills
-- 状态类：`docs/session-summary.md`、`docs/handoff-2026-09-04.md`。
-- 参考类：`docs/reference-2026-09-04.md`、`docs/agent-workflow.md`、`docs/robustness-and-modularity.md`。
-- 计划类：`docs/planbook/`（各阶段计划与验收结果）。
-- **索引同步**：新增/改/删任何 `docs/`、`skills/` → 更新 `START-HERE.md §2` 与 `README.md` 文档表、`START-HERE.md §6` 版本记录。
-- 口径一致：同事实四处核对，不得打架；冲突处以运行代码为准并登记。
+- **状态类（当前）**：`docs/CURRENT-STATE.md`（事实权威，每轮核对）+ 当日 `docs/handoff-<日期>-live.md`。
+- **Agent 能力类**：`docs/agent-reading/`（改后 agent 重启生效）；讲解类：`docs/tts-pipeline-explain.md` 等。
+- **参考类**：`docs/code-fact-registry.md`、`docs/agent-workflow.md`、`docs/robustness-and-modularity.md`。
+- **计划类**：`docs/planbook/`（各阶段计划与验收结果）。
+- **索引同步**：新增/改/删任何 `docs/`、`skills/` → **先登记 `docs/README.md` 文档地图**，再更新 `START-HERE.md §2` 与 `README.md` 文档表、`START-HERE.md §6` 版本记录。
+- 口径一致：同事实以 CURRENT-STATE/运行代码为准并登记；历史文档只读不重写。
 
 ## 6. spark 与本机端相互检查并更新
 - 集中同步：`python runs/sync_to_spark.py`（增量，`--dry-run` 先看；`--clean` 慎用）。
@@ -49,7 +51,8 @@
 ---
 
 ## 红线速查（再次强调）
-- ComfyUI = systemd，勿重启/勿改 systemd；只 `POST /free` 腾内存。
+- **ComfyUI = tmux `comfy`(8188)**（2026-09-07 起；systemd 已停用/勿用 systemctl），重启=授权项；只 `POST /free` 腾内存。
+- **通道**：spark 模型下载=魔搭；GitHub 源码=codeload/raw（git clone 不通）；HF 文件=Windows 侧 hf-mirror 再 scp。
 - spark 同事模板只读，永不修改；只改 `workflows/remote_workflows/`、`config/templates/`。
 - `api_*` 云模板不提及不调用；本地用 `video_*`。
 - 禁 `Z:/` 路径；一律 `~/...` 或 Windows 主库。

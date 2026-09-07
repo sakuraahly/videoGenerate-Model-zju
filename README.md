@@ -63,31 +63,22 @@ outputs/      生成产物（不入库）
 ## 文档
 
 | 文档 | 内容 |
-|---|---|
-| `docs/planbook/book-00-overview.md` | ⭐ **系统性修复计划书**（书-00 总览 + 书-01..13）：痛点→阶段矩阵、基座/可信部署、前端/输出/自动完成/资源隔离/工作流/引擎/风格、验收门禁与黄金路径 |
-| `docs/dev-workflow.md` / `skills/dev-workflow.md` | ⭐ **变更与交付工作流**：执行→修改→测试→自测通过→写入文档→双端核对→git 提交（含如何操作） |
-| `docs/code-fact-registry.md` | ⭐ **代码事实登记表**（路径/端口/常量/工具数/部署形态唯一口径，冲突以运行代码为准） |
-| `docs/prompt-taxonomy.md` | ⭐ **H3 提示词属性词库**：10 正向 + 9 负向分类（book-06 保留/注入的图像属性词） |
+| `docs/README.md` | ⭐ **文档地图与治理**：每个文档的角色/权威/状态 + 更新规则（新增文档先登记此表） |
+| `docs/CURRENT-STATE.md` | ⭐⭐ **当前事实唯一权威**（2026-09-07 起）：服务/模型/参数/音色/通道/纪律/待办 |
+| `docs/handoff-2026-09-07-live.md` | ⭐**当日现场交接**：音色链真相/实战演（镜头17）/CosyVoice2 试点/运维记录（跨日新建当日 handoff） |
 | `START-HERE.md` | ⭐⭐ **新参与模型/Agent 总入口**：架构速览 + 必读索引 + 路径/红线 + 同步规则 |
-| `docs/handoff-2026-09-04.md` | ⭐ 最新交接：服务现状、7860 能力、测试清单（接手下一轮前必读） |
-| `docs/reference-2026-09-04.md` | ⭐ 总参考手册：配置注册表、契约、故障字典、测试模板 |
-| `docs/session-summary.md` | ⭐ 项目状态与待办（跨 Agent 事实源，先读它） |
-| `docs/quickstart.md` | ⭐ 新手快速上手（三步出片 + 模板/参考图选择） |
-| `docs/workflow-and-prompt.md` | 指定工作流与提示词：有/无本地模型两种情形 |
-| `docs/deploy-modes.md` | 运行形态 win-remote / spark-local（spark 交付用法） |
-| `docs/user-guide.md` | 用户手册：入口、配置、常见流程、断点恢复 |
-| `docs/agent-workflow.md` | ⭐ 本地 Agent(Qwen) 工作链手册：两入口、工具、提交/续传/取件、素材链、异常处置 |
-| `docs/session-summary.md` | 项目状态与待办（跨 Agent 事实源，先读它） |
-| `docs/robustness-and-modularity.md` | 架构分层、扩展方法、可靠性设计 |
-| `docs/h3-workflow-architecture.md` | 14 节点 API 工作流、模型文件、帧数网格 |
-| `docs/h3-troubleshooting.md` | 故障排查手册 |
-| `docs/comfyui-startup-and-access.md` | ComfyUI 启动、SSH 隧道与 NAT keepalive |
-| `docs/manual-use-6-workflows.md` | 6 个官方工作流模板的手动使用法 |
-| `docs/h3-manual-operations.md` | 全手动 SSH 操作流程（备用） |
-| `docs/long-term-maintenance.md` | 长期维护：清理、更新、巡检 |
-| `docs/capabilities-ai.md` | 项目生成能力注册表（由 config/capabilities.json 生成） |
-| `skills/h3-video-generation.md` | AI agent 生成任务技能卡 |
-| `skills/h3-prompt-engineering.md` | H3 提示词工程规则 |
+| `skills/h3-video-generation.md` | ⭐ 生成任务技能卡（工作流/S7 参考媒体/队列纪律/通道事实） |
+| `skills/h3-postproduction.md` | ⭐ **成品链技能卡**（TTS 音色/字幕/音效/ASR 验收/超分/交付） |
+| `skills/h3-prompt-engineering.md` | ⭐ 提示词工程规则（含参考图 tag 契约/剧本块） |
+| `skills/dev-workflow.md` | ⭐ **变更与交付工作流**速查（改→测→证据→文档→双端→提交） |
+| `docs/tts-pipeline-explain.md` | TTS 管道详解（模型/原理/复现命令） |
+| `docs/code-fact-registry.md` | ⭐ **代码事实登记表**（节点 schema/模型 ID/行号级事实） |
+| `docs/planbook/book-19-execution-ready.md` | **执行就绪计划书**（S1-S13 状态表；章节编号含历史轮次，进度看 §1 表） |
+| `docs/session-summary.md` | 🗄 历史状态快照 + 20.x 轮次审计志（只读；事实以 CURRENT-STATE 为准） |
+| `docs/handoff-2026-09-03/04/05-*/06-continue.md` | 🗄 各日交接历史（只读） |
+| `docs/pending-tasks-changelog.md` / `pending-tasks-implementation.md` | 🗄 S 系列审计/实现长卷（历史，只读） |
+| `docs/reference-2026-09-04.md` / `-status-2026-09-04.md` / `optimization-plan-2026-09-04.md` | 🗄 早前参考/状态/计划快照（只读） |
+| `docs/quickstart.md` / `user-guide.md` / `manual-use-6-workflows.md` / `h3-manual-operations.md` / `h3-troubleshooting.md` / `h3-workflow-architecture.md` / `workflow-and-prompt.md` / `prompt-taxonomy.md` / `comfyui-startup-and-access.md` / `deploy-modes.md` / `style-guide.md` / `agent-workflow.md` / `send-integration-guide.md` / `capabilities-ai.md` / `long-term-maintenance.md` / `robustness-and-modularity.md` / `llm-memory-optimization.md` / `qwen38-deployment.md` / `local-model/*` | 操作/指南/专题（按需查阅；与现状冲突处以 CURRENT-STATE 为准） |
 
 ## 说明
 

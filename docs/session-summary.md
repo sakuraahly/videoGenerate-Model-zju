@@ -2,6 +2,10 @@
 
 > 用途：把本项目的当前状态一次性交给“新对话/AI”继续工作。本文件随项目维护，
 > 请先读它再读其他文档。**项目根 = `D:\MY_CODING_PROGRAM\videoGenerate-Model-zju`**
+>
+> ⚠️ **状态定位（2026-09-07 起）**：本文件=**2026-09-05 前的状态快照 + 20.x 轮次审计志**（历史档案，只读，
+> 不追加新事实）；**当前事实以 `docs/CURRENT-STATE.md` 为准**，当日事项见 `docs/handoff-2026-09-07-live.md`，
+> 文档地图见 `docs/README.md`（冲突处以 CURRENT-STATE 为准并就地标注）。
 > （旧目录 `videoGenerate_Model&zju` 已于 2026-09-02 删除，勿再引用旧路径）。
 
 ---
@@ -69,6 +73,8 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
    **端口探测**（`ss -ltn | grep :8188`）判断是否在跑，不要假设 tmux 一定存在；
    重启/看日志用 `ssh spark 'sudo systemctl restart comfyui.service'` /
    `journalctl -u comfyui.service`（注意：**sudo 需交互密码，自动化改配置不可行**）。
+   ⚠️ **2026-09-07 起：形态=tmux `comfy`（8188）**，systemd 单位已停用（root 侧可恢复）；重启=授权项；
+   端口探测判断法仍适用。历史注明：≥2026-09-07 不要再用 systemctl 重启 ComfyUI。
    ⚠️ `--enable-manager` 仍在（用户决定保留，勿擅动；其 GitHub 拉取超时是“假卡死”来源之一，见 §12）。
 
 ## 4. 入口与常规流程

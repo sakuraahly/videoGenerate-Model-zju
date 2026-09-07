@@ -44,10 +44,10 @@ Local Windows repo + remote `spark` (ComfyUI + H3 models). The toolbox:
 |---|---|
 | `D:\MY_CODING_PROGRAM\videoGenerate-Model-zju`（Windows 主库） | git 主库，唯一推 GitHub（sakuraahly/videoGenerate-Model-zju）的一端；代码/文档都改这里再同步 |
 | `~/videoGenerate-Model-zju`（spark 运行时） | 同仓库 spark-local 运行时；agent 与引擎在此跑；`logs/agent_chats/`=会话存档；`runs/agent/`=调度器代码 |
-| `~/ai`（spark） | AI 平台：`ComfyUI/`（systemd 服务 8188，勿重启）、`venv/`、`models_dl/`、H3 清单 sha |
-| `~/ai/ComfyUI/` | `models/`=H3 四件套；`input/`（含 `user_uploads/` 上传镜像）；`output/`（视频产物在 `output/video/`）；`user/default/workflows/`=同事模板（**只读，永不修改**） |
+| `~/ai`（spark） | AI 平台：`ComfyUI/`（⚠️ **当前=tmux `comfy`(8188)**——2026-09-07 起 systemd 已停用；重启=授权项）、`ComfyUI/models/`（H3 主模型+**P 链模型**见下）、`tts-venv/`、`asr-venv/`、`cosy-venv/`、`CosyVoice2-0.5B/`、`cosyvoice-src/` |
+| `~/ai/ComfyUI/` | `models/`=H3 主模型（diffusion_models/text_encoders/vae）+ **P 链**：`f5-tts/`（F5TTS_v1_Base+vocos）、`asr/sensevoice`、`upscale_models/`（4x-UltraSharp+RealESRGAN_x4plus.*）、`diffusers/stable-diffusion-inpainting`；`input/`（含 `user_uploads/` 上传镜像）；`output/`（视频产物在 `output/video/`）；`user/default/workflows/`=同事模板（**只读，永不修改**） |
 | `~/Qwen3.8-27B/`（spark） | Qwen 全家桶：`models/`（NVFP4 ≈21GB / bf16）、`sglang-venv/`（8000）、`vllm-venv/`、启动脚本、`start_qwen_agent.py`（7860 入口）、`PROJECT-STATUS.md` |
-| agent（spark） | 代码=仓库 `runs/agent/`；venv=`~/qwen-agent-venv`；入口=`~/Qwen3.8-27B/start_qwen_agent.py`；tmux `qwen-agent`；日志 `~/qwen-agent.log` |
+| agent（spark） | 代码=仓库 `runs/agent/`；venv=`~/qwen-agent-venv`；入口=`runs/agent/scheduler.py`；tmux **`agent`**（⚠️ 会话名非 `qwen-agent`）；重启=`python3 runs/agent/svc_main.py restart-agent`；日志 `~/agent.log` |
 | 注意 | Windows 侧 `C:\Users\39163\ai`、`C:\Users\39163\videoGenerate-Model-zju` 是残留部分副本，勿用；全表见 `docs/session-summary.md §14` |
 
 ---
@@ -217,6 +217,19 @@ Facts to remember:
 - Each run writes `logs\run_<timestamp>_<ms>.log` (PS steps + Python events in one file;
   task folder `job.json` records `log_file` for two-way lookup).
 
+### 1.4b S7 参考媒体（视频/音频作参考，2026-09-06 实施）
+
+- 用法（r2v 仅）：`--videos <路径> --audios <路径>`（各 ≤3，可 append）；引擎上传后经
+  `stage.inject_media_refs` 注入 `LoadVideo→GetVideoComponents→ref_videos(+ref_video_audios)`、
+  `LoadAudio→ref_audios` 槽位（数字串 id >146）。
+- **tag 契约**：提示词必须含 `<Video N>`（=第 N 个参考视频，驱动动作/运动参考）与
+  `<Audio N>`（=第 N 个参考音频，氛围/声音参考），与列表顺序一一对应；缺 tag 校验会拒绝
+  （`--no-check-media-tags` 降级，仅调试用）。
+- 边界（实测）：模型把参考视频/音频当**语义/运动参考**，不是逐帧复刻/音频复刻——精确声效
+  用成品链音效（`sfx_mix`）而非参考音频；运动参考请提供**同镜头**分镜片段（示例：2026-09-07
+  分镜文件 MiniMax_H3_00128_.mp4 实为另一镜头，误用作参考会带偏）。
+- 真机记录：video_46（360p/5s+客厅参考图×2+分镜视频+参考音频）PASS。
+
 ### 1.5 Reliability built in- Breakpoint/resume: `last_job.json` holds the last `prompt_id`; on network drops the
   pipeline auto-resumes (`--resume`), never regenerating. After a successful download the
   breakpoint is cleared.
@@ -287,6 +300,23 @@ path, status) — the modern replacement for manual run logs.
 10. **上下文纪律**：SGLang ctx=8192 + 每轮固定开销 ≈3.1k token ⇒ 对话预算有限；单轮回复
     精炼 ≤600 字，长内容分轮 + “继续”，不要单轮塞长历史（预算机制详见 §1.3c 与
     `runs/agent/ctx_budget.py`）。
+11. **队列纪律**：共享 GPU——不取消/不打断他人任务（ComfyUI /queue 只读）；不擅自 `--force-new`；
+    提交=排队 FIFO（`POST /prompt` 即入队）；重启 ComfyUI/服务=授权项；提交前先查
+    `/queue`（1 running + n pending 时照常排队，别催）。
+12. **通道事实（2026-09-07 实测）**：spark `github.com:443`(git clone)✗ → 用
+    codeload/raw/api ✓；modelscope ✓（模型下载首选）；`hf-mirror.com` 仅在 Windows 侧可达；
+    **下载策略：spark 侧魔搭，GitHub 源码 zip（codeload），HF 文件走 Windows hf-mirror 再 scp**。
+
+---
+
+## 3b. 成品链（语音/字幕/验收——生成后标准工作流）
+
+- **一键成品**：`python runs/h3_submit.py --stage r2v ... --tts-text "<台词>" --tts-backend local
+  --finalize --asr-check`（F5-TTS 本地大模型=**默认**；`edge` 需显式降级）。
+- 音色：`--tts-voice xiaoxiao(默认女)/yunxi(男)/aria(英文女)`——样本在
+  `assets/tts_refs/{voice}.wav+.txt`（克隆源，音色=f(参考样本)）；aria 双轨见 CURRENT-STATE §5。
+- 更完整能力（字幕/混音/音效/SenseVoice 验收/超分/听测样）：**`skills/h3-postproduction.md`** 与
+  `docs/tts-pipeline-explain.md`。
 
 ---
 
