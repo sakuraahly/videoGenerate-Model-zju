@@ -16,7 +16,7 @@ QUEUE_IDLE_CONFIRMED（exit 0）；复检期间任何任务进场都会重置复
        3=参数错误/初始化失败。
 
 队列纪律（book-19 §5）：确认空闲后仍建议 --submit-only 提交（任务进排队、不阻塞），
-运行结果由 h3_submit.py（query/--prompt-id 轮询）或 task_watch 监听收取。
+运行结果由 h3_submit.py（无参重跑/--resume 轮询续传）或 task_watch 监听收取。
 """
 from __future__ import annotations
 

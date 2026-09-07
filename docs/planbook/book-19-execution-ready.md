@@ -165,6 +165,36 @@
 **ComfyUI 节点化成品链（2026-09-07 真机 PASS）**：`comfy_nodes/h3_finalize/`（H3LocalTTS/H3Finalize/H3AsrCheck；部署 shell/deploy_h3_nodes.sh → custom_nodes/h3_finalize，ComfyUI 下次重启生效——不自动重启服务纪律；节点经独立 tts-venv/asr-venv subprocess，不污染 ComfyUI）→ H3Finalize 直出 `video_45_final_mix.mp4`（本地 TTS+字幕+音轨替换+老人声 -12dB 混音；h264 5.167s+aac 5.111s）→ H3AsrCheck 回环 **ASR_SCORE=0.75 ok**。项目侧 h3_submit 钩子链（引擎管线化）保留并存。
 **P 链① 接入生产（2026-09-07 真机链 PASS）**：h3_submit `--tts-backend local`（+`--tts-mix-bed`、`--asr-check`）→ 任务 a7432834：TTS_OUT 3.58s srt=yes（F5-TTS 本地）+ ASR_SCORE=1.000；edge-tts 保留默认过渡（`--tts-backend local` 显式切换；CPU 53s/句=已知成本，GPU 分担=登记后续）。
 **S7 二级实测登记（2026-09-06）**：参考音频《老人缓慢讲述.mp3》被模型采纳（产物含人声音轨），但生成声为**快速讲述**、不复刻原声语速/音色——模型把参考音频当氛围语义参考而非音频复刻；如需精确复刻=音效链（独立音效轨+混音，§11 ②③ 同链）或参考音频上传为模板/后续 TTS 链（登记，不阻塞）。ASR 客观验收（P 链④）落地后自动判可辨析。
+
+## 17. 2026-09-07 晚间 UI/Agent 异常清单（用户报告→根因→状态）
+
+**异常 1：上下文 8192 超限（提交前必现；压缩提示后仍 8204/8195 vs 8192）**——
+根因：SGLang ctx=8192 硬顶被系统性触碰（对话 + 工具往返）；且服务端 400 后"仅保留最新重试"的兜底
+仅认 ModelServiceError 类型，裸 `ValueError: HTTP 400 {...}` 不命中 → 兜底未触发。
+**状态：已修**——① ctx 放松至 16384（start_sglang_coexist.sh 默认 + ctx_budget/runtime_check 常量 +
+  各文档口径）；② is_context_overflow_error 兼容裸 400 + 'context length'（ctx_budget.py）。
+
+**异常 2：参考图 `up:0` 无法解析为有效路径（用户已上传图片）**——
+根因：CallComfyUI images 参数描述宣传"池:序号如 up:0"写法，但引擎解析只认文件名/sha8 前缀——
+描述与实现不一致；模型照描述填写必然 400/失败（本次靠回落文件名自愈）。
+**状态：已修**——tools.py images 描述改为只推荐文件名/sha8 前缀 + 明示"不支持 up: 序号写法"。
+
+**异常 3：模型自称可用 `--prompt-id` 查询（h3_submit.py 无此参数）**——
+根因：RunScript 工具描述"使用边界"把 --prompt-id 列入 h3_submit 合法参数（实为 dev.py/golden_path.py
+的参数）；queue_watch 文档同错。**状态：已修**——tools.py 参数白名单改正+明示"查询/续传=无参或 --resume"；
+queue_watch docstring 更正；调度器 SYSTEM 工具铁律同步（禁止 --prompt-id）。
+
+**异常 4：输入框 Enter 无效**——根因：Gradio Textbox lines=2 多行模式下 Enter=换行（占位符却写"Enter 发送"）。
+**状态：已修**——输入框改 lines=1（Enter 发送；多行建议分次发送）。
+
+**异常 5：长剧本（多镜头 integrated_multimodal_description）→ 模型响应超时**——
+根因：长 prompt + 长工具输出 + 8192 顶格 → 响应超时/复读风险（投机解码 NextN 为已知复读风险源，默认 on）。
+**状态：缓解**——ctx 放大至 16384（主解）；响应超时提示已有；后续如果仍复读→关闭投机解码（SGLANG_SPEC=off 登记）。
+
+**异常 6：时长/清晰度决策权**（用户要求：模型按理解自设；用户给且合理→用；不合理→模型自控并说明）——
+**状态：已修**——调度器 SYSTEM 参数行新增决策规则（默认自行判断，用户显式合理值采用，不合理则调整+说明）。
+
+**待窗口登记**：SGLang 重启生效（ctx 16384）=队列空闲窗口（restart-llm 前置=队列空闲）；重启后需 runtime_check 全量 OK 复核。
 **魔搭真实 ID 闭合（2026-09-06，API Code:200 逐项验证）**：
 - 人声-TTS：`AI-ModelScope/F5-TTS`、`iic/CosyVoice-300M`、`iic/CosyVoice2-0.5B`（推荐 2-0.5B 优先冒烟；edge-tts 过渡保留）；
 - 字幕-ASR：`iic/SenseVoiceSmall`（短语音/多语/可辨析验收首选）、`iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch`（长文本简体）；

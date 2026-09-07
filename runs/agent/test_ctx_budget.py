@@ -55,22 +55,22 @@ def test_short_history_not_trimmed():
 def test_long_history_trimmed_to_budget():
     msgs = _hist(25)  # 远超大预算
     msgs.append({'role': 'user', 'content': '继续'})  # 本轮新消息（界面语义）
-    out, dropped = cb.trim_messages(msgs)
+    out, dropped = cb.trim_messages(msgs, budget_tokens=2200)  # 固定预算测行为（UI_TRIM_TOKENS 随 ctx 放大）
     assert dropped and 0 < len(out) < len(msgs)
     # 最新消息必须保留
     assert out[-1]['content'] == msgs[-1]['content']
     assert out[-1]['role'] == 'user'
     # 预算合规（head 已含在预算计算内）
     total = sum(cb.count_tokens(m.get('content', '')) for m in out)
-    assert total <= cb.UI_TRIM_TOKENS, total
+    assert total <= 2200, total
     # 保留的头以 user 开头（首轮意图尽量在）
     roles = [m['role'] for m in out]
     assert roles[0] == 'user'
 
 
 def test_head_first_user_kept_when_affordable():
-    msgs = _hist(20, per_msg=2)   # 精确 tokenizer 下总长仍 > UI_TRIM_TOKENS
-    out, dropped = cb.trim_messages(msgs)
+    msgs = _hist(20, per_msg=2)   # 固定预算 2200 测行为（UI_TRIM_TOKENS 已随 ctx 放大）
+    out, dropped = cb.trim_messages(msgs, budget_tokens=2200)
     assert dropped
     # 预算内应尽量保留首轮意图
     assert out[0]['content'] == msgs[0]['content'], out[0]

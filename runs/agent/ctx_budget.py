@@ -24,10 +24,10 @@ from __future__ import annotations
 
 # 服务端上下文上限（SGLang max_model_len；与 config/llm_mem.json context_length 同源，
 # 若调服务端配置需同步本文件与 llm_mem.json）
-MODEL_MAX_CTX_TOKENS = 8192
+MODEL_MAX_CTX_TOKENS = 16384  # 2026-09-07 用户指示放松上下文（原 8192 超限；Qwen3.8-27B 能力发挥）
 
 # 单轮回复 token 上限；同时 = 每次请求预留给 completion 的预算
-# （8192 − 2048 ⇒ 输入部分最多 6144 token，超出即服务端 400）
+# （16384 − 2048 ⇒ 输入部分最多 14336 token，超出即服务端 400）
 REPLY_MAX_TOKENS = 800  # book-16 复读根治：2048→800（2048 长回复+超长 system 触发复读/ReadTimeout；实测 256/512 完全正常；不足 800 token 的长输出由工具轮/续接补足）
 
 # nous 工具定义/模板固定开销（不含 SYSTEM_MESSAGE）：实测 5 工具 tool_descs 1207t
@@ -39,11 +39,11 @@ SAFETY_TOKENS = 300
 
 # 界面/CLI 存档历史裁剪预算（本地计数口径；对话部分在 qwen_agent 层的硬上限
 # 为 framework 预算，本值略小，给「本回合内」工具往返结果留余量）
-UI_TRIM_TOKENS = 2200
+UI_TRIM_TOKENS = 8000  # ctx 16384 后余量放大（原 2200）
 
 # 对话消息（user/assistant/function 往返，不含 system）在 qwen_agent 截断层允许的
 # 本地计数预算：6144 − 固定开销(~3090~3130) − SAFETY ≈ 2500。
-CONV_MSG_BUDGET_TOKENS = 2500
+CONV_MSG_BUDGET_TOKENS = 9000  # ctx 16384 后对话预算放大（原 2500）
 
 _tokenizer = None
 
@@ -147,7 +147,8 @@ def request_budgets(system_message: str = '') -> tuple:
 
 
 def is_context_overflow_error(exc) -> bool:
-    """判断异常是否 SGLang「请求超上下文」400（ModelServiceError 或 HTTP 400）。"""
+    """判断异常是否 SGLang「请求超上下文」400（ModelServiceError/裸 ValueError HTTP 400 均兼容）。"""
     text = f'{type(exc).__name__}: {exc}'
     return ('maximum context length' in text
-            or 'Requested token count exceeds' in text)
+            or 'Requested token count exceeds' in text
+            or ('context length' in text and '400' in text))

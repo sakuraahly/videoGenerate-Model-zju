@@ -1399,8 +1399,8 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                                      file_types=['image', 'video'],
                                      file_count='multiple', scale=3)
             continue_btn = gr.Button('继续承接任务', size='sm', scale=1)
-            box = gr.Textbox(placeholder='描述你的创意，我来生成视频…（Enter 发送）',
-                             show_label=False, lines=2, scale=5)
+            box = gr.Textbox(placeholder='描述你的创意，我来生成视频…（Enter 发送；多行建议分次发送）',
+                             show_label=False, lines=1, scale=5)
             send_btn = gr.Button('开始生成', variant='primary', scale=1)
         up_status = gr.HTML(UP_IDLE)
         gallery = gr.Gallery(label='上传预览',

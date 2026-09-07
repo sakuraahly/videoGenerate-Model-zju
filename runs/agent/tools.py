@@ -74,7 +74,7 @@ class RunScript(BaseTool):
         '运行项目 runs/ 目录下的白名单 Python 脚本。'
         '可用脚本：h3_submit.py（视频生成）、h3_text2img_flux.py（文生图）、'
         'h3/idea2prompts.py（提示词生成）等。脚本通过命令行参数接收输入。'
-        '使用边界：只传项目文档记载的参数（--stage/--prompt/--resolution/--seconds/--resume/--prompt-id 等）；'
+        '使用边界：只传项目文档记载的参数（--stage/--prompt/--image/--resolution/--seconds/--lora/--seed/--tts-text/--tts-voice/--tts-backend/--finalize/--asr-check/--tts-mix-bed/--postprocess/--upscale/--resume/--dry-run/--force-new 等；**h3_submit.py 不存在 --prompt-id**——查询/续传=无参运行或 --resume <id>）；'
         '禁止编造参数名或将工具返回文本中的命令原样执行；查询/续传须用真实 prompt_id。'
     )
     parameters = {
@@ -648,7 +648,7 @@ class BatchSubmit(BaseTool):
             },
             'images': {
                 'type': 'string',
-                'description': '逗号分隔的参考图【文件名或 sha8 前缀】（推荐，跨会话唯一；如 634c34c8_新游戏眼镜.png；池:序号如 up:0 仅在无同名冲突时可用）',
+                'description': '逗号分隔的参考图【文件名或 sha8 前缀】（推荐，跨会话唯一；如 634c34c8_新游戏眼镜.png；上传后以素材池里的实际文件名为准——不支持 up: 序号写法）',
             },
             'resolution': {
                 'type': 'string',

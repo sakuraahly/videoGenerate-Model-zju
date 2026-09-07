@@ -111,7 +111,8 @@ manually (human mode — see `docs/guides/workflow-and-prompt.md` §2).
 > **问询纪律（book-08）**：分辨率/时长/seed/镜头/槽位号/工具选择/参数取舍不问；仅当内容未给 / 需从素材选且本会话为空 / 参数与上限冲突时才问，且一次只问一个；汇报=结论先行+一行依据（详见 docs/guides/style-guide.md）。（代码/提示词/工具标记行/技术名词除外）；提示词本体仍英文（见 `docs/guides/prompt-taxonomy.md`）。 (Qwen3.8-27B SGLang on spark)
 
 - Serve: tmux session `sglang`，端口 8000（127.0.0.1）。
-  启动命令见 `shell/start_sglang_coexist.sh`（共存模式 **mem=0.50 / ctx=8192**，实测预载
+  启动命令见 `shell/start_sglang_coexist.sh`（共存模式 **mem=0.50 / ctx=16384**（2026-09-07 用户指示
+  放松上下文；32k 曾超载弃），实测预载
   ≈49GB、120s 就绪；0.40 必失败；mem 0.55+32k 旧方案超载已弃）或
   `shell/start_all_services.sh`（协调启动：先停 ComfyUI → 加载 SGLang → 再启 ComfyUI）。
 - Local access is via SSH tunnel; local port 8000 may be blocked by a stale listener, use e.g.

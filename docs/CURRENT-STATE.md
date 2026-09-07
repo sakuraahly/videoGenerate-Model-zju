@@ -17,7 +17,7 @@
 |---|---|---|
 | ComfyUI | tmux `comfy` / 8188 | systemd 单位已停用（root 侧可恢复）；重启=授权项（可用 `dev.py services restart-llm` 类工具先查队列） |
 | agent（Qwen 调度器） | tmux `agent` / 7860 | venv `~/qwen-agent-venv`；重启=`python3 runs/agent/svc_main.py restart-agent`（版本见日志 `AGENT_VERSION`） |
-| SGLang（Qwen3.8-27B） | tmux `sglang` / 8000 | guard 自动管理；与 ComfyUI 共存 mem 0.55 |
+| SGLang（Qwen3.8-27B） | tmux `sglang` / 8000 | guard 自动管理；与 ComfyUI 共存 mem 0.50、**ctx=16384**（2026-09-07 用户指示放松） |
 | Open WebUI | / 3000 | 纯聊天（无工具） |
 
 ## 3. 模型（统一在 ComfyUI models，用户指示）
