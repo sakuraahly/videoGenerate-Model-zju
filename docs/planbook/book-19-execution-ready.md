@@ -155,9 +155,13 @@
 **目标（登记/远期）**：人声、字幕**全部改用魔搭社区模型或现有小模型**本地处理：
 ① 人声：edge-tts（在线云 API）→ 本地 TTS（魔搭：F5-TTS/CosyVoice 等，见 S13/P 链待魔搭真实 ID 闭合项）；
 ② 字幕：SRT 生成与烧录本地化（当前 ffmpeg 本地已用；ASR/文本对齐可下沉魔搭 FunASR 等）；
-③ 集成形态评估：ComfyUI 工作流内节点化（如 ComfyUI-TTS 节点）vs 引擎管线化（现 h3_submit 钩子链）——实施前评估取舍（登记，不预设）；
+③ 集成形态评估：ComfyUI 工作流内节点化（如 ComfyUI-TTS 节点）vs 引擎管线化（现 h3_submit 钩子链）——实施前评估取舍（登记，不预设）；**定案（2026-09-07 用户指示）**：走 ComfyUI 节点化——`comfy_nodes/h3_finalize/`（H3LocalTTS/H3Finalize/H3AsrCheck 三节点，部署 shell/deploy_h3_nodes.sh → custom_nodes，**ComfyUI 下次重启生效**；节点经独立 tts/asr venv subprocess 执行，避免污染 ComfyUI 环境）；
 ④ 现有链（edge-tts/ffmpeg）=过渡方案，保留直至替代就绪；与 S13/P 链（魔搭 ID 闭合）联动排期。
 **P 链① 人声·F5-TTS 本地冒烟 PASS（2026-09-06）**：spark `~/ai/tts-venv`（f5-tts pip + torch；权重=魔搭 F5TTS_v1_Base/safetensors 1.35G + vocos-mel-24khz 54M（HF 直连不通，**经 hf-mirror.com 下载**；bigvgan vocoder 需 git submodule，pip 包不含→放弃，改 vocos 路线）；新工具 `runs/h3/tts_local_check.py`（--text/--ref-file/--ref-text/--output；自动探测权重路径）→ 中文句合成 CPU 53s/句、输出 24kHz wav，**ASR 回环验证=还原原句**（“欢迎使用本地语音合成系统这是摩达 f t t s 的中文冒烟测试”）→ 可辨析 ✓。**接入生产（2026-09-07 真机链 PASS）**：h3_submit `--tts-backend local`（+`--tts-mix-bed <音频>` 音效链底轨、`--asr-check` 回环验收）→ 真实任务 `a7432834`（t2v 360p/5s）产物 video_45：**TTS_OUT speech_s=3.58s srt=yes（本地 F5-TTS 后端）→ ASR_CHECK ASR_SCORE=1.000 ASR_MATCH=ok（SenseVoice 回环还原原句）**；混音直验 video_45_mix.mp4（TTS 主轨+老人声 -12dB 底轨，608×352/5.167s）——**P 链① 接入生产完成**（edge-tts 保留为默认过渡，`--tts-backend local` 显式切换；CPU 53s/句 为已知成本，GPU 分担=后续优化登记）。
+
+**模型位置（2026-09-07 用户指示统一放 ComfyUI models）**：`~/ai/ComfyUI/models/f5-tts/{F5TTS_v1_Base,vocos}`（1.35G+54M）、`~/ai/ComfyUI/models/asr/sensevoice`（ONNX 量化 241M+config/am.mvn/bpe）；工具探测已改 ComfyUI models 优先（tts_local_check/asr_check 回落旧缓存）。
+**ComfyUI 节点化成品链（2026-09-07 真机 PASS）**：`comfy_nodes/h3_finalize/`（H3LocalTTS/H3Finalize/H3AsrCheck；部署 shell/deploy_h3_nodes.sh → custom_nodes/h3_finalize，ComfyUI 下次重启生效——不自动重启服务纪律；节点经独立 tts-venv/asr-venv subprocess，不污染 ComfyUI）→ H3Finalize 直出 `video_45_final_mix.mp4`（本地 TTS+字幕+音轨替换+老人声 -12dB 混音；h264 5.167s+aac 5.111s）→ H3AsrCheck 回环 **ASR_SCORE=0.75 ok**。项目侧 h3_submit 钩子链（引擎管线化）保留并存。
+**P 链① 接入生产（2026-09-07 真机链 PASS）**：h3_submit `--tts-backend local`（+`--tts-mix-bed`、`--asr-check`）→ 任务 a7432834：TTS_OUT 3.58s srt=yes（F5-TTS 本地）+ ASR_SCORE=1.000；edge-tts 保留默认过渡（`--tts-backend local` 显式切换；CPU 53s/句=已知成本，GPU 分担=登记后续）。
 **S7 二级实测登记（2026-09-06）**：参考音频《老人缓慢讲述.mp3》被模型采纳（产物含人声音轨），但生成声为**快速讲述**、不复刻原声语速/音色——模型把参考音频当氛围语义参考而非音频复刻；如需精确复刻=音效链（独立音效轨+混音，§11 ②③ 同链）或参考音频上传为模板/后续 TTS 链（登记，不阻塞）。ASR 客观验收（P 链④）落地后自动判可辨析。
 **魔搭真实 ID 闭合（2026-09-06，API Code:200 逐项验证）**：
 - 人声-TTS：`AI-ModelScope/F5-TTS`、`iic/CosyVoice-300M`、`iic/CosyVoice2-0.5B`（推荐 2-0.5B 优先冒烟；edge-tts 过渡保留）；

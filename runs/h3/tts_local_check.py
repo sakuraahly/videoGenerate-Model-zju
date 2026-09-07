@@ -21,16 +21,26 @@ import time
 from pathlib import Path
 
 _HOME = Path.home()
+_COMFY = _HOME / "ai/ComfyUI/models"
 _CACHE = _HOME / ".cache/modelscope/models/AI-ModelScope--F5-TTS/snapshots/master"
 _VOCOS = _HOME / "ai/vocos-mel-24khz"
 
 
+def _comfy_paths():
+    """ComfyUI models 目录（2026-09-07 用户指示：模型统一放 ComfyUI models 下；回落旧缓存）。"""
+    ckpt = _COMFY / "f5-tts/F5TTS_v1_Base/model_1250000.safetensors"
+    vocos = _COMFY / "f5-tts/vocos"
+    if ckpt.exists() and (vocos / "pytorch_model.bin").exists():
+        return ckpt, vocos
+    return _CACHE / "F5TTS_v1_Base/model_1250000.safetensors", _VOCOS
+
+
 def _resolve():
-    ckpt = _CACHE / "F5TTS_v1_Base/model_1250000.safetensors"
+    ckpt, vocos = _comfy_paths()
     if not ckpt.exists():
         raise FileNotFoundError(f"模型未下载: {ckpt}（先 python -c \"from modelscope import snapshot_download; "
                                 f"snapshot_download('AI-ModelScope/F5-TTS', allow_patterns=['F5TTS_v1_Base/*'])\"）")
-    vocos = _VOCOS / "pytorch_model.bin"
+    vocos = vocos / "pytorch_model.bin"
     if not vocos.exists():
         raise FileNotFoundError(f"vocos 权重未下载: {vocos}（HF_ENDPOINT=https://hf-mirror.com 下载 "
                                 f"charactr/vocos-mel-24khz）")

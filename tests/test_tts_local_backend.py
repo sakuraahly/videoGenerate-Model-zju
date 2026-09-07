@@ -52,6 +52,17 @@ class TestBackends(unittest.TestCase):
                       _tts.attach_speech_and_subtitle.__doc__ or '')  # docstring 声明返回含 speech
 
 
+class TestComfyModelsPath(unittest.TestCase):
+    def test_tts_check_comfy_priority(self):
+        # ComfyUI models 优先逻辑（无实际文件时回落缓存路径）
+        from h3 import tts_local_check as _tl
+        with mock.patch.object(_tl, '_COMFY', Path('/nonexistent/comfy')):
+            with mock.patch.object(_tl, '_CACHE', Path('/nonexistent/cache')):
+                with mock.patch.object(_tl, '_VOCOS', Path('/nonexistent/vocos')):
+                    ckpt, vocos = _tl._comfy_paths()
+        self.assertTrue(str(ckpt).endswith('F5TTS_v1_Base/model_1250000.safetensors'))
+
+
 class TestAsrSimilarity(unittest.TestCase):
     def test_similarity_exact(self):
         t = '欢迎使用本地语音合成系统这是魔搭的中文冒烟测试'

@@ -21,6 +21,9 @@ _HOME = Path.home()
 
 
 def _onnx_dir() -> Path:
+    comfy = _HOME / "ai/ComfyUI/models/asr/sensevoice"
+    if (comfy / "model_quant.onnx").exists():
+        return comfy  # 2026-09-07：模型统一放 ComfyUI models 下
     snap = _HOME / ".cache/modelscope/models/iic--SenseVoiceSmall-onnx/snapshots/master"
     if not (snap / "model_quant.onnx").exists():
         raise FileNotFoundError(f"模型未下载: 先运行 python -c "
