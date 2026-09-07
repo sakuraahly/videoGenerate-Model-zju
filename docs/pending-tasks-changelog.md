@@ -497,3 +497,10 @@ uns/h3/asr_check.py（ffmpeg 16k wav→SenseVoiceSmall(quantize)→ASR_TEXT/VERD
 **真机（a7432834 / t2v 360p 5s）**：TTS_OUT speech_s=3.58 srt=yes（local 后端）→ ASR_CHECK：ASR_TEXT=大家好这是本地语音合成的正式接入测试、**ASR_SCORE=1.000 / ASR_MATCH=ok**（SenseVoice 回环 100% 还原）；混音=手动直验 mix_tracks（video_45_mix.mp4 608×352/5.167s，TTS 主轨+老人声 -12dB 底轨）→ **win outputs/video_47.mp4**（听测请用户）。
 **登记**：CPU 53s/句=已知成本（edge-tts≈2s）；GPU 分担/常驻=后续优化；aria 参考样本=英文句（英文音色中文化失败记录）。
 
+
+## 50. S13 局部重绘 Inpaint 落地（2026-09-07 进行中）
+
+**模型通道**：HF 官方 runwayml/stable-diffusion-inpainting 单文件（sd-v1-5-inpainting.safetensors/.pt）**已下架**（HF 2024 移除；hf-mirror 同步 404）→ 改走**魔搭 AI-ModelScope/stable-diffusion-inpainting（diffusers 多文件格式）**，ComfyUI 内置 DiffusersLoader 节点直载（models/diffusers/stable-diffusion-inpainting/，~6.2G+）；DiffusersLoader 输出 MODEL/CLIP/VAE（object_info 在线确认）。
+**模板**：workflows/remote_workflows/sd_inpaint_fix.json（UI 格式 10 节点：LoadImage(原图)+LoadImage(掩码)+DiffusersLoader+CLIPTextEncode(pos/neg)+InpaintModelConditioning+KSampler(euler/20 步/cfg7)+VAEDecode+ImageCompositeMasked+SaveImage——先 Convert 在线转 API 提交；ComfyUI 打开=手动接线可用）。
+**登记**：冒烟=待模型下载完成→queue_watch 复检→真实 inpaint 提交（原图+局部掩码）→抽帧目检修复效果；Win-remote 侧无模型（spark-only）。
+
