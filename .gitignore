@@ -61,3 +61,6 @@ docs/agent-communication/state.yaml
 
 # 两端同步基线（sync_merge.py 用；各端各自维护，不入库）
 .sync-state.json
+# 夜间任务运行状态（machine runtime；定义在 config/night-tasks.json）
+config/night-tasks.state.json
+.night.lock

@@ -201,6 +201,14 @@ queue_watch docstring 更正；调度器 SYSTEM 工具铁律同步（禁止 --pr
 - **原则**：1080p 及更高清晰度的图片/视频生成（含原生 1080p 探测、电影级 4x 超分叠加等重活）**一律改到夜间机器空闲时执行**；白天队列只跑验证档/交付档（≤768p）。
 - **落地**：①本计划书 §4/§13 的 1080p 探测标记=夜间窗口；②调度器 SYSTEM 已加规则（用户要求 ≥1080p→告知夜间；当前上限 768p）；③Agent/引擎不再提交任何 1080p/4x 超分任务（用户取消 2026-09-07 拟执行的 1080p 探测）。
 - **夜间清单**：原生 1080p 探测（1920×1088+无 LoRA）；Wav2Lip 口型冒烟（GPU 推理重活，同列夜间）；RIFE 插帧（渠道阻塞，夜间补下）；电影级 4x 超分叠加验证。
+
+## 19. 夜间自动化机制（2026-09-07 实现）
+
+- 需求：用户不想每晚手动对助手喊话；方案=**夜间任务队列**（`runs/agent/night_runner.py` + `config/night-tasks.json`），
+  引擎类由 spark crontab（`0 22-23,0-6 * * *`）自动执行（限夜间窗口 22-08 北京 + ComfyUI 队列空闲）；
+  对话类（口型/RIFE/4x）由 agent 在用户说"开始夜间任务"时经 `run_script(night_runner.py, --list)` 认领执行；
+- Agent SYSTEM 已内建待做/夜间清单规则；单测 5 绿（状态合并/done/门控/入库模式）。
+- 现场：cron 安装后次日 22:00 起自动运行 1080p 探测（单实例锁+门控防误跑）；日志 ~/night_runner.log。
 **魔搭真实 ID 闭合（2026-09-06，API Code:200 逐项验证）**：
 - 人声-TTS：`AI-ModelScope/F5-TTS`、`iic/CosyVoice-300M`、`iic/CosyVoice2-0.5B`（推荐 2-0.5B 优先冒烟；edge-tts 过渡保留）；
 - 字幕-ASR：`iic/SenseVoiceSmall`（短语音/多语/可辨析验收首选）、`iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch`（长文本简体）；

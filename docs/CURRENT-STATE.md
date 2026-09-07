@@ -75,7 +75,18 @@ H3 主模型（fl2va/ref2va int8 + qwen3vl text encoder + 双 VAE）在 `diffusi
 
 ## 9. 当前待办（快照；详见当日 handoff + planbook 状态表）
 
-1. 用户最终听测确认：`voice_demo_cosy_zh_final.mp3`（新默认中文女声）与 aria 定案样（官方 cross-lingual 英文音色）。
-2. 原生 1080p 探测与 Wav2Lip 口型冒烟=**空闲大窗口**（已授权，排队）。
+**白天可干**：①用户听测确认（cosy 中文女声/aria 英文音色）；②镜头片 f8217f22 交付取回（对话"继续"）；
+③"一句话出片"回归（≤768p 全链）；④一体模板 H3Finalize 视频→路径桥接节点（开发+干跑，不用大 GPU）；⑤S12 真机演练（需用户配合一轮对话）；
+**夜间自动**：⑥1080p 探测（night_runner --auto + cron 已装）；對話类：⑦口型冒烟 ⑧RIFE ⑨4x 叠加（agent 对话认领）。
+
+## 10. 夜间自动化机制（2026-09-07 用户需求：不用手动喊话）
+
+- **队列**：`config/night-tasks.json`（定义，入库）+ `config/night-tasks.state.json`（状态，gitignore）；
+  工具 `runs/agent/night_runner.py`（--list/--status/--add/--done/--auto/--now）。
+- **引擎类**（engine）：cron（spark：`0 22-23,0-6 * * *` 每小时）自动触发 `--auto`——
+  仅「夜间窗口(北京 22-08)+ComfyUI 队列空闲」执行；先测项=原生 1080p 探测（1920×1088/无 LoRA/5s）。
+- **对话类**（agent）：Wav2Lip 口型冒烟/RIFE 插帧/4x 超分叠加——需 agent 协同；
+  用法=用户说“开始夜间任务”→agent `night_runner.py --list` 查看→提出计划→逐项执行→`--done`。
+- **Agent 已内建**：SYSTEM 工具清单+待做/夜间清单规则（agenda 类命令）。
 3. ComfyUI 一体模板（生成+Finalize 合并）打磨（可选）。
 4. S13 远期：音色库（CosyVoice2 全链）/口型（Wav2Lip·GitHub 官方权重）/原生 1080p 探测（1920×1088+无 LoRA）。

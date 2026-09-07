@@ -1,0 +1,14 @@
+{
+  "_comment": "夜间/空闲窗口任务队列（种子定义；运行状态写 night-tasks.state.json）",
+  "tasks": [
+    {"id": "nt-1080p-probe", "name": "原生1080p探测(1920×1088,无LoRA,5s)",
+     "kind": "engine", "window": "night",
+     "exec": "cd ~/videoGenerate-Model-zju && python3 runs/h3_submit.py --stage t2v --prompt \"Cinematic aerial establishing shot of a futuristic cyberpunk city street at dawn, warm light, one continuous 5-second take, no text, no watermark\" --seconds 5 --width 1920 --height 1088 --lora none --steps 20 --seed auto"},
+    {"id": "nt-wav2lip", "name": "Wav2Lip 口型冒烟(专题,需agent对话)",
+     "kind": "agent", "window": "night", "exec": ""},
+    {"id": "nt-rife", "name": "RIFE 插帧补下(渠道阻塞,需下载验证)",
+     "kind": "agent", "window": "night", "exec": ""},
+    {"id": "nt-upscale4x", "name": "4x 超分电影级叠加验证(需选定成品)",
+     "kind": "agent", "window": "night", "exec": ""}
+  ]
+}
