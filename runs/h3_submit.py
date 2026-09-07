@@ -284,8 +284,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
                 help="七审（S6）：TTS 音色——短名 xiaoxiao(女)/yunxi(男)/aria(英文女声) 或全名；均归一为全名后传给 edge-tts")
     p.add_argument("--tts-text", type=str, default="",
                 help="中文台词/旁白文本：完成后将该文本合成中文语音并替换视频音轨（T2b）")
-    p.add_argument("--tts-backend", type=str, default="edge", choices=["edge", "local"],
-                   help="S13 P链①: edge=在线 edge-tts(默认,过渡)/local=魔搭 F5-TTS 本地(spark ~/ai/tts-venv, CPU≈53s/句)")
+    p.add_argument("--tts-backend", type=str, default="local", choices=["local", "edge"],
+                   help="S13 P链①: local=语音生成大模型 F5-TTS 本地(默认,音色=F5-TTS 克隆官方/真人参考样本)/edge=edge-tts 在线(降级保留,显式指定)")
     p.add_argument("--asr-check", action="store_true",
                    help="S13 P链④: 完成后用本地 SenseVoice(FunASR) 对语音产物做 ASR 回环验收(需 spark asr-venv；失败不阻断)")
     p.add_argument("--tts-mix-bed", type=str, default="",

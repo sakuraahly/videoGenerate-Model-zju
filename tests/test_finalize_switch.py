@@ -19,11 +19,16 @@ class TestFinalizeSwitch(unittest.TestCase):
         self.assertEqual(a.tts_backend, 'local')
         self.assertTrue(a.asr_check)
 
-    def test_no_finalize_keeps_default_edge(self):
+    def test_no_finalize_default_local(self):
         a = _args(['--stage', 't2v', '--tts-text', '你好'])
         apply_finalize(a)
-        self.assertEqual(a.tts_backend, 'edge')
+        self.assertEqual(a.tts_backend, 'local')  # 2026-09-07: 语音大模型为默认,edge 显式降级
         self.assertFalse(a.asr_check)
+
+    def test_explicit_edge_kept(self):
+        a = _args(['--stage', 't2v', '--tts-text', '你好', '--tts-backend', 'edge'])
+        apply_finalize(a)
+        self.assertEqual(a.tts_backend, 'edge')
 
     def test_finalize_coexists_with_mix_bed(self):
         a = _args(['--stage', 'r2v', '--finalize',
