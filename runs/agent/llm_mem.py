@@ -33,7 +33,7 @@ PROJECT_ROOT = Path(os.environ.get(
     os.path.expanduser('~/videoGenerate-Model-zju'),
 ))
 CFG_FILE = PROJECT_ROOT / 'config' / 'llm_mem.json'
-DEFAULT_CFG = {'enabled': True, 'mem_fraction': 0.50, 'context_length': 8192,
+DEFAULT_CFG = {'enabled': True, 'mem_fraction': 0.50, 'context_length': 16384,  # 2026-09-07 用户指示放松（原 8192）
               'max_running_requests': 0,  # 0=不限制（ComfyUI 未满载时）；共享显存局促时设 2~4
               'speculative': None}  # None=跟随脚本默认(on)；False=关闭投机（book-16 E1）
 HEALTH_URL = 'http://127.0.0.1:8000/v1/models'

@@ -71,6 +71,7 @@ H3 主模型（fl2va/ref2va int8 + qwen3vl text encoder + 双 VAE）在 `diffusi
 4. **Agent**：无 shell/任意文件/服务管理；能力=白名单工具（run_script/modify_workflow/call_comfyui/read_doc 等）；SYSTEM_MESSAGE 2608t 预算，扩展走 `docs/agent-reading/`。
 5. 改动闭环：`skil‌ls/dev-workflow.md`（改→测→证据→文档→双端→提交）。
 6. 产物命名：生成=任务目录 `workflows/h3_<ts>_<ms>/`；交付=Windows `outputs/video_<N>[_描述].mp4`；听测样=`outputs/voice_demo_*.mp3`（产出后 scp 回 Windows）。
+7. **夜间策略（2026-09-07 用户指示）**：≥1080p/高清重活（1080p 探测、口型冒烟、4x 超分叠加等）一律夜间机器空闲执行；白天仅 ≤768p 档。
 
 ## 9. 当前待办（快照；详见当日 handoff + planbook 状态表）
 
