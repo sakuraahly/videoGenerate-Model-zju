@@ -3,7 +3,7 @@
 > 基于通信协议的实际协作流程和操作规范
 >
 > ⚠️ 与 protocol.md 同理：本文"实际协作示例"（FlashInfer/NVFP4/SGLang 等）是**示例**，
-> 勿按字面执行；真实现状见 `docs/session-summary.md`。消息落盘见 protocol.md §9
+> 勿按字面执行；真实现状见 `docs/history/session-summary.md`。消息落盘见 protocol.md §9
 > （inbox 目录 + session-summary 为事实源）。
 
 ## 审查工作流

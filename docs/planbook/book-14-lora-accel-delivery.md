@@ -2,7 +2,7 @@
 
 > 状态：**部分实施**（T1/T2/T2b v1/T6/L1–L5 已完成；**T2b 语音链 2026-09-05 升级 P0**） · 日期：2026-09-05 · 来源：用户指令（加速 LoRA 用法/质量链/90 天会话清理/刷新语义/自检自动化）+ 用户四问（语音不可辨析/验收口径）
 > 优先级：🟠 中（其中 L 类**低耦合任务**拆给另外的 agent 执行）
-> 红线（升级纪律，来自既往事故——**千万不能踩之前的坑**，先读 docs/dev-workflow.md §10 与 §11）：
+> 红线（升级纪律，来自既往事故——**千万不能踩之前的坑**，先读 docs/guides/dev-workflow.md §10 与 §11）：
 >   - 文件写入 EIO(1175)/JS 转义/引号嵌套陷阱；**作用域 NameError**（本次 imgs 事故：引用别函数局部变量）；
 >   - **绑图不得写共享模板**（须副本，防污染）；断点锁（--force-new 明确）；**队列为共享服务器**——任务可能属于他人，
 >     删除/取消必须按 last_job/任务目录登记的 prompt_id 归属校验后才允许；
@@ -94,14 +94,14 @@
 > 双端 sync/commit 用 python runs/dev.py；不重启 ComfyUI、不碰生成引擎核心、不可修改共享模板。
 
 - [x] L1 90 天会话清理脚本（纯新增：runs/agent/session_cleanup.py + 配置 + 单测 + 文档；不接生成流程）。**已完成 2026-09-05**：`session_cleanup.py`（status/clean，默认 dry-run，只删 `<cid>.jsonl`+`.meta.json`、thumbs 不删、判定基准=mtime 与 meta.ts 较新者）+ `config/session_retention.json`（tracked）+ `test_session_cleanup.py`（6 例）+ code-fact-registry §9；全量单测 138 绿。
-- [x] L2 UI 刷新语义（runs/agent/ui_app.py 文案与事件名小改；只读校验 /config 文案变化）。**代码已完成并提交 master 2026-09-05**：`刷新`→`刷新历史列表` + 相邻 Markdown 提示（仅刷新左侧历史下拉），`.click` 事件绑定未动；docs/agent-workflow.md 同步。⚠️ **spark /config 文案验证待两端 reconcile 后随一次 agent 重启确认**（协作裁定 #3：不 sync/覆盖 spark；当前 spark ui_app 为分叉版本）。
-- [x] L3 加速 LoRA 事实登记（只写 docs/code-fact-registry.md 新章 + capabilities.json 的 lora 段 + 文档图表；
+- [x] L2 UI 刷新语义（runs/agent/ui_app.py 文案与事件名小改；只读校验 /config 文案变化）。**代码已完成并提交 master 2026-09-05**：`刷新`→`刷新历史列表` + 相邻 Markdown 提示（仅刷新左侧历史下拉），`.click` 事件绑定未动；docs/guides/agent-workflow.md 同步。⚠️ **spark /config 文案验证待两端 reconcile 后随一次 agent 重启确认**（协作裁定 #3：不 sync/覆盖 spark；当前 spark ui_app 为分叉版本）。
+- [x] L3 加速 LoRA 事实登记（只写 docs/guides/code-fact-registry.md 新章 + capabilities.json 的 lora 段 + 文档图表；
       不改引擎）。**已完成（被 T1 吸收）2026-09-05**：capabilities.json 顶层 `lora` 段以 **T1 引擎 schema 为准**（`choices/files/steps/stages`），按协作裁定 #1 **不再改**；L3 保留 code-fact-registry §10 登记小节（3 个 LoRA 路径/步数/用途）。
 - [x] L4 book-13↔book-14 条目迁移核对（仅文档：把 book-13 §3.1/3.2/见闻迁移到本册，串引用）。**已完成 2026-09-05**：book-13 参考视频支持(P2#10)→T8、§3.1/§3.2/§3.3 各加「关联 book-14」前向指针；本册 §4 加「架构优化项归属」；git diff 仅增标注、原文无损。
 - [x] L5 dev.py queue status（只读：队列清单+归属判定=本会话登记/未知/他人；**禁止**实现删除——删除/取消由 **T9** 实现，含归属校验）。**L5 已完成**（book-12 A5：`dev.py queue`，只读+归属，spark 实测）。**2026-09-05 补**：dev.py 加 `queue status` 动作（`queue`/`queue status` 均可）、queue_probe 输出加节点数；grep 确认无 delete/cancel 写路径。⚠️ 与 spark 侧 T9（`queue cancel`）在 dev.py/queue_probe.py 上分叉，待 reconcile 合并。
 
 > **协作裁定（2026-09-05，给执行 L 类的 agent）**：
-> 1. **L3 已由 T1 吸收**：capabilities.json 顶层 `lora` 段以 **T1 引擎 schema 为准**（`files` 值为 ComfyUI 枚举名，含 `MiniMax_H3/` 前缀；`choices/steps/stages` 为运行字段）——**不要再改 capabilities.json 的 lora 段**；L3 仅需在 docs/code-fact-registry.md 追加登记小节（3 个 LoRA 路径/步数/用途）。
+> 1. **L3 已由 T1 吸收**：capabilities.json 顶层 `lora` 段以 **T1 引擎 schema 为准**（`files` 值为 ComfyUI 枚举名，含 `MiniMax_H3/` 前缀；`choices/steps/stages` 为运行字段）——**不要再改 capabilities.json 的 lora 段**；L3 仅需在 docs/guides/code-fact-registry.md 追加登记小节（3 个 LoRA 路径/步数/用途）。
 > 2. **L2 验证**：改 runs/agent/ui_app.py 后需重启 agent 并跑 e2e smoke（命令见 handoff-2026-09-05-L-tasks.md §6）。
 > 3. **spark 未提交改动**：如看到 spark 有未提交改动（如 T9 在制品），**不要动、不要 sync/覆盖**；L 类只提交自己的文件（dev.py commit 只带自己的文件列表；必要时手动 git add 精确路径）。
 > 4. **进度勾选**：完成项在 L1–L5 上改为 [x] 即可。

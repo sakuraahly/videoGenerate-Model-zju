@@ -38,7 +38,7 @@
 
 ### 4.2 最小可用消息总线（比全文重实现更务实）
 - 新增目录约定：`docs/agent-communication/inbox/`（写方落 `msg-<任务id>-<type>.json`，命名遵循 collaboration.md）；
-- 每个会话 Agent 开工/收工扫描 inbox，并把结论写进 `docs/session-summary.md`（**该文件应作为跨 Agent 事实源，协议补充互相引用**）；
+- 每个会话 Agent 开工/收工扫描 inbox，并把结论写进 `docs/history/session-summary.md`（**该文件应作为跨 Agent 事实源，协议补充互相引用**）；
 - 暂态消息 gitignore，需追溯的评审/决策入库。
 
 ### 4.3 区分示例与真实
@@ -50,7 +50,7 @@ protocol/collaboration 中 SGLang、NVFP4(RadixArk)、FlashInfer（真实）、s
 
 ### 4.5 与本会话 Agent 的衔接约定
 - 优化者专注 spark 服务侧（FlashInfer/vLLM/模型服务）；本 Agent 专注本地引擎/文档/仓库一致性；
-- 每次跨 Agent 交接：更新 `docs/session-summary.md`（含新脚本、服务状态、本评审结论）；
+- 每次跨 Agent 交接：更新 `docs/history/session-summary.md`（含新脚本、服务状态、本评审结论）；
 - 本 Agent 不改动其它 Agent 的未完成文件；发现冲突先在 session-summary 记录并提示。
 
 ## 5. 附：评审时的环境快照

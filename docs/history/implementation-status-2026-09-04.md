@@ -119,7 +119,7 @@
 | `runs/agent/task_watch.py` | ✅ 完成 | 175 | 任务监控 |
 | `runs/agent/ui_app.py` | ⏳ 部分 | +30 | extract_prompt_ids |
 | `runs/agent/new_send_function.py` | ✅ 待集成 | ~200 | 新send()实现 |
-| `docs/session-summary.md` | ✅ 完成 | +45 | §18 文档记录 |
+| `docs/history/session-summary.md` | ✅ 完成 | +45 | §18 文档记录 |
 
 ---
 

@@ -4,7 +4,7 @@
 > 请先读它再读其他文档。**项目根 = `D:\MY_CODING_PROGRAM\videoGenerate-Model-zju`**
 >
 > ⚠️ **状态定位（2026-09-07 起）**：本文件=**2026-09-05 前的状态快照 + 20.x 轮次审计志**（历史档案，只读，
-> 不追加新事实）；**当前事实以 `docs/CURRENT-STATE.md` 为准**，当日事项见 `docs/handoff-2026-09-07-live.md`，
+> 不追加新事实）；**当前事实以 `docs/CURRENT-STATE.md` 为准**，当日事项见 `docs/handoff/handoff-2026-09-07-live.md`，
 > 文档地图见 `docs/README.md`（冲突处以 CURRENT-STATE 为准并就地标注）。
 > （旧目录 `videoGenerate_Model&zju` 已于 2026-09-02 删除，勿再引用旧路径）。
 
@@ -81,7 +81,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - 环境自检：`bats\generate\menu.bat → [5]`（本地依赖、ssh、ComfyUI、4 模型，缺失可自动下载）。
 - 立即生成：`run.bat` 或 `menu [1]`（内置本地 T2V；参数 parameters\video.txt=360p/5s）。
 - 定时/延迟：`menu [2]/[3]`（先预检再倒计时）。
-- 6 工作流手动（GUI 最稳）：见 `docs/manual-use-6-workflows.md`。
+- 6 工作流手动（GUI 最稳）：见 `docs/guides/manual-use-6-workflows.md`。
 - 脚本/CLI 多工作流：
   `python runs\h3_submit.py --stage r2v --image a.png` / `--template <file>` /
   `--workflow-file saved_api.json` / `--dry-run`；占位符 `{{prompt}}{{image0}}...`；
@@ -212,7 +212,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
    - 同事更新 spark 模板后，`bats\workflow\sync_remote_workflows.bat` 拉齐镜像。
    - spark 服务管理统一用 `manage_services.sh`（不再手动 tmux）。
    - ComfyUI venv 在 `~/ai/venv/`（非 `~/ai/ComfyUI/venv/`）。
-   - 每次工作后更新 `skills/h3-video-generation.md` 和 `docs/session-summary.md`。
+   - 每次工作后更新 `skills/h3-video-generation.md` 和 `docs/history/session-summary.md`。
    - **新增/修订任何文档或 skills → 回写根目录 `START-HERE.md` 的 §2 索引与版本记录**（它是所有新参与模型的总入口，见其 §5 同步规则）。
 9. 可选项：把”创意→提示词”做成单页 GUI/Web 入口；为 6 工作流补”参考图自动回传/占位符”
    自动化；modify_workflow 端到端实测（test_tool_calling3.py 在 spark 上跑）。
@@ -271,7 +271,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   spark-local 交付形态）+ `runs/h3/deploy.py`（--show/--set，自动同步 llm.json base_url
   8011↔8000 并备份 .bak）；入口 `bats\config\mode.bat`。`generate_video.ps1` 按形态分支：
   spark-local 跳隧道、本机 HTTP 探活、产物本机复制（Download-RemoteVideo -LocalCopy）；
-  finally 中 spark-local 不清理隧道。文档 `docs/deploy-modes.md`（双形态手册），+3 单测
+  finally 中 spark-local 不清理隧道。文档 `docs/guides/deploy-modes.md`（双形态手册），+3 单测
   （套件 86）。spark-local 交付用法：仓库移到 spark → --set spark-local → python CLI +
   本地模型(Qwen 8000)直调 → 同机 ComfyUI 出片，无需隧道。
 - 镜像同步：`sync_remote_workflows.ps1` 拉齐 6/6（当时 4 份过期）。
@@ -291,7 +291,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
     `shell/spark_chat_terminal.py`（OpenAI 兼容终端聊天）、`shell/spark_vllm_start.sh`（服务启动）。
 - 提示词：`prompts/workflows/video_r2v.positive.txt`、`video_i2v.positive.txt` 已按
   skills/h3-prompt-engineering.md 填写（空槽位回退 default 见上）。
-- **文档/知识沉淀（2026-09-02）**：新增 `docs/quickstart.md`（新手三步上手）；
+- **文档/知识沉淀（2026-09-02）**：新增 `docs/guides/quickstart.md`（新手三步上手）；
   模板用途语义（video t2v=文生视频官方标准模板、i2v=首帧图生、r2v=多参考角色/场景连贯；
   api 三份=对应能力的 API 格式：扁平无 subgraph 坑、命令行更稳、走 Comfy 云通道需登录、
   《于勒》15 镜以 api_r2v 做内核、api_flf2v 示例图需自备）已写入
@@ -343,7 +343,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - **RAG 默认启用 + Agent 必读文档（2026-09-03 续）**：
   - `shell/start_all_services.sh`：移除 `ENABLE_RAG=false`，Open WebUI 启动即启用 RAG。
   - `shell/systemd/open-webui.service`：同步移除 `ENABLE_RAG=false`。
-  - `docs/qwen38-deployment.md`、`docs/local-model/quick-start.md`：更新启动命令和 RAG 说明。
+  - `docs/guides/qwen38-deployment.md`、`docs/local-model/quick-start.md`：更新启动命令和 RAG 说明。
   - `docs/agent-reading/` 新建 4 篇必读文档：
     - `00-project-overview.md` — 项目概览、能力清单、硬性限制、关键路径
     - `01-tools-reference.md` — 3 个工具的参数、用法、安全限制
@@ -364,7 +364,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
   - SYSTEM_MESSAGE 重写：从「强制读取」改为「已内嵌 + 可选 read_doc 深入参考」。
   - TOOL_NAMES 新增 'read_doc'，scheduler.py import 同步更新。
   - 安全测试 13/13 通过（原有测试未受影响）。
-  - **交接文档**：`docs/handoff-2026-09-03.md`（本地）+ `~/Qwen3.8-27B/PROJECT-STATUS.md`（spark），
+  - **交接文档**：`docs/handoff/handoff-2026-09-03.md`（本地）+ `~/Qwen3.8-27B/PROJECT-STATUS.md`（spark），
     包含服务状态、启动命令、已知缺陷、诊断结论、新对话快速启动清单。
 
 ---
@@ -439,7 +439,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 ### 12.6 本会话改动的文件清单
 - `runs/h3_submit.py`（日志修复，commit `20f89ae`）
 - `runs/h3/tests/test_h3.py`（+1 回归测试；套件 87）
-- `docs/session-summary.md`（本文件更新）
+- `docs/history/session-summary.md`（本文件更新）
 （以上均已通过 scp 同步 spark 并各自提交；transferred 时遵循“不含 .git”约定。）
 
 ### 12.7 后续会话：spark-local 交付形态验证与修复
@@ -513,7 +513,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
     因为未正确激活 venv；`start_all_services.sh` 用 `source activate` 方式已解决。
   - 协调启动实测：SGLang 加载 121s，全服务 2 分 15 秒就绪（共存模式 mem=0.55）。
 
-### 12.9 2026-09-04：Agent 界面/内存/上传 批次（交接见 docs/handoff-2026-09-04.md）
+### 12.9 2026-09-04：Agent 界面/内存/上传 批次（交接见 docs/handoff/handoff-2026-09-04.md）
 - 服务现状：ComfyUI(systemd, 勿动, 曾 /free 卸载权重 49→18GB)；SGLang mem 0.50/ctx 8192
   （0.40 实测不足：NVFP4 预载≈49GB）；7860 新自研界面运行中；Open WebUI/upload-watch 未运行（可 7860 直传替代）。
 - 自研界面 ui_app.py：自动新会话/历史加载/素材直传(两段式反馈+缩略图)/发送自动清空/幂等锁/
@@ -521,7 +521,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - 修复链：FileData 取值、allowed_paths、缩略图、st_mtime 格式化红错、残留 previews 清空、
   接线丢 _upload 定义、全局并发=1 排队。
 - 内存协同 llm_mem nap/wake 自动接线（TASK_SUBMITTED 后让位，下轮自动唤醒）；转场=逐对 flf2v 分镜法（SYSTEM+04）。
-- 下一轮测试清单与已知待观察项见 docs/handoff-2026-09-04.md §5/§6。
+- 下一轮测试清单与已知待观察项见 docs/handoff/handoff-2026-09-04.md §5/§6。
 
 ## 13. 2026-09-04 第二批：Agent 上下文 8192 溢出根因定位与 token 预算化修复（本批）
 
@@ -574,7 +574,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - count_tokens 用 qwen_agent 自带 QWen tokenizer 与 SGLang(Qwen3.8-27B) 服务端计数有 <3% 偏差，
   已由 SAFETY_TOKENS=300 覆盖。
 - 本批改动文件：runs/agent/{ctx_budget.py(新), ui_app.py, scheduler.py, test_ctx_budget.py(新)}；
-  文档：docs/{handoff,reference}-2026-09-04.md、docs/agent-workflow.md、本文件。
+  文档：docs/{handoff,reference}-2026-09-04.md、docs/guides/agent-workflow.md、本文件。
 
 ### 13.5 提交与同步记录（2026-09-04）
 - Windows 主库（D:\MY_CODING_PROGRAM\videoGenerate-Model-zju）commit：代码 `dd473e1`
@@ -650,7 +650,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 
 ## 17. 2026-09-04 第五批：Agent 体验/性能/隔离 6 阶段优化
 
-> 设计文档：`docs/optimization-plan-2026-09-04.md`（7 问题 → 6 Phase）
+> 设计文档：`docs/history/optimization-plan-2026-09-04.md`（7 问题 → 6 Phase）
 
 ### 17.1 Phase 1 — 上传多态状态 + 状态栏 HTML（P1+P6）
 - **文件**：`runs/agent/ui_app.py`
@@ -728,8 +728,8 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 | 6 | spark Open WebUI | venv `~/open-webui-venv2`、tmux `webui`（端口 3000，当前未运行） | 重启必须保留 `HF_HUB_OFFLINE=1` |
 | 7 | Windows 侧残留副本 | `C:\Users\39163\ai`（仅 `ComfyUI\input`）、`C:\Users\39163\videoGenerate-Model-zju`（仅 `uploads\`，含 2026-09-04 10:06 一次上传测试产物）——**早期/测试残留的部分副本，不是可用工作副本** | 勿在其中读写；正式路径见 #1/#2 |
 
-- 文档更新范围：本表与 `skills/h3-video-generation.md §0b`、`docs/reference-2026-09-04.md §1`、
-  `docs/handoff-2026-09-04.md §6` 口径一致（2026-09-04）。
+- 文档更新范围：本表与 `skills/h3-video-generation.md §0b`、`docs/history/reference-2026-09-04.md §1`、
+  `docs/handoff/handoff-2026-09-04.md §6` 口径一致（2026-09-04）。
 
 ## 18. 2026-09-04 第六批：会话状态管理 + 任务监控基础架构
 
@@ -811,8 +811,8 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 ### 19.4 改动文件
 | 文件 | 操作 |
 |---|---|
-| `docs/handoff-2026-09-04.md` | 新建（交接文档） |
-| `docs/session-summary.md` | 修改（+§19） |
+| `docs/handoff/handoff-2026-09-04.md` | 新建（交接文档） |
+| `docs/history/session-summary.md` | 修改（+§19） |
 
 ## 20. 2026-09-05 批次：复读根治（book-16）+ 用户四问反思 + 语音链 P0 升级
 
@@ -820,7 +820,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - **复读根因定案**：非模型/服务端；是 qwen_agent 0.0.34 function-call 循环协议与 SGLang 不合（自然文本被误判为未完成工具调用 → 反复重调 LLM 146 次 → 累增=复读观感）。用户最初「内容追加导致重复」判断方向正确。
 - **已根治**：自管工具循环（`_one_run` ≤6 轮 + 增量差分解码 + 工具三格式参数解析 + 同参数去重 + 频控 + 直连 SGLang `tools=` 格式 + 清洗回填 + SYSTEM_MESSAGE 铁律）。
 - **思维链定案**：`chat_template_kwargs={"enable_thinking": False}`（顶层字段无效且有 400 风险）为 qwen3 tools 模式标准；关闭的是「将英文推理链注入 content」而非内部思考；探针实证（默认 content 被英文链污染 / 关闭后干净中文+有效 `<tool_call>`）。
-- **验收口径加严**（docs/dev-workflow.md 新增 §12，强制）：真实 UI send 链 / 界面可见非空文本（done 且 text_len>0）/ 真实产物+可验证参数 / 语音要求时可辨析语音——四者缺一不得称「通过」。
+- **验收口径加严**（docs/guides/dev-workflow.md 新增 §12，强制）：真实 UI send 链 / 界面可见非空文本（done 且 text_len>0）/ 真实产物+可验证参数 / 语音要求时可辨析语音——四者缺一不得称「通过」。
 
 ### 20.2 用户四问处置（2026-09-05）
 | 用户问题 | 结论与处置 |
@@ -836,8 +836,8 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 | `runs/agent/ui_app.py` | 修改：工具回填促收尾指令 + 轮末空 final 兜底总结（防「（模型未返回内容）」） |
 | `docs/planbook/book-16-echo-root-cause.md` | 修改：台账 #5/#6 定案 + 新增 §6（四问反思/验收口径/UI 修复/思维链结论） |
 | `docs/planbook/book-14-lora-accel-delivery.md` | 修改：T2b 语音链升级 P0（P0-1 选型/P0-2 音轨替换/P0-3 自动接线 + 严完成标准） |
-| `docs/dev-workflow.md` | 修改：§8 反例补充 + 新增 §12 验收纪律（四条件+报告模板） |
-| `docs/session-summary.md` | 修改：+§20（本批） |
+| `docs/guides/dev-workflow.md` | 修改：§8 反例补充 + 新增 §12 验收纪律（四条件+报告模板） |
+| `docs/history/session-summary.md` | 修改：+§20（本批） |
 | `runs/agent/ui_app.py`（复验期再修） | done占位误追加；自动续接 content=None 的 400；工具结果错误体质兜底；schema 通用 int/bool/number 强转 |
 | `runs/agent/tools.py`（复验期再修） | `_coerce_fields` 校验前强转；异常时 audit ok=false |
 | `runs/agent/scheduler.py` | 铁律：如实报告工具结果/禁止虚构提交/参数类型/查询带真实 id |
@@ -984,7 +984,7 @@ docs\ 见 §9；skills\ h3-video-generation.md / h3-prompt-engineering.md
 - **现象**：3 段 r2v 产物每段“参考图=首帧+尾帧”（1:客厅→男主/2:男主→父亲/3:父亲→眼镜）；中间帧仅人物/道具部分参考、场景参考未发挥。
 - **归因（取证）**：3 段任务 workflow_api.json `<Picture` 计数=0——提示词未按官方 tag 契约引用参考图→模型按注入顺序把参考图解读为首→尾关键帧；模板 ref_image_size 固定 match（弱保真档；max=2048px 强保真、稍慢）。非绑定/脚本 bug（绑定此前取证正确）。
 - **处置**：book-19 新增 §10 **P1.5 参考语义修复**（最高优先）：提示词 tag 契约强制（SYSTEM+idea2prompts+生成后校验 tag 数==参考数）+"参考贯穿全片非首尾帧"语义句+ref_image_size 默认 max+开关；验证=3 段抽 3 帧目检；临时缓解=提示词手工加 <Picture N>。
-- **交接**：docs/handoff-2026-09-06-continue.md（最新交接，START-HERE §2 第 4 行改指；旧 09-05 归档）。
+- **交接**：docs/handoff/handoff-2026-09-06-continue.md（最新交接，START-HERE §2 第 4 行改指；旧 09-05 归档）。
 ### 20.34 计划书新增 P1：事件驱动完成通知（监听→模型，零轮询）（2026-09-06）
 - **需求**：不让模型轮询；监听脚本把任务完成/失败/超时作为事件注入模型会话（模型校验监听健康+timeout 分型）。
 - **已写入 book-19**：顺序表新行（0.5 P1，先于 S8，与 S8 复用状态判定）+ §9 完整规格——事件源复用 task_watch 结果通知钩子（仅 idle 才注入/防重复注入/心跳 90s 体检 watcher 健康/四类超时分型/与 stop_event、check_turn_valid 对齐/轮询工具保留为备用；回滚=通知钩子开关；工作量中）。

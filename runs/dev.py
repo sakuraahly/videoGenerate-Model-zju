@@ -17,7 +17,7 @@ runs/dev.py — 变更与交付工作流工具盒（节省 agent token / 提升�
     python runs/dev.py logs check           # 日志格式/坏行/轮转健康
     python runs/dev.py logs clean [--yes]   # 清 .1 轮转（默认 dry-run）
 
-约定与红线（见 docs/dev-workflow.md / START-HERE.md §3.4）：
+约定与红线（见 docs/guides/dev-workflow.md / START-HERE.md §3.4）：
   - 不重启/不改 ComfyUI systemd；不改 spark 同事模板；不提 api_*；禁 Z:/ 路径。
   - 机器差异化配置（deploy/llm/pipeline/transfer/autosync/upload_watch/.sync-state/last_job）两端本就不同，同步/提交一律排除。
   - spark 永不 push GitHub；spark commit 用内联身份（Developer/dev@spark）。

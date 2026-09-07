@@ -4,7 +4,7 @@
 > `shell/generate_video.ps1`), which already (a) refuses UI-format/subgraph workflows,
 > (b) validates flat API templates & placeholders, (c) retries network hiccups and resumes
 > from breakpoints. Run `bats\generate\menu.bat → [5]` for a full environment/model report first.
-> See `docs/user-guide.md` and `docs/robustness-and-modularity.md`.
+> See `docs/guides/user-guide.md` and `docs/guides/robustness-and-modularity.md`.
 
 ## Error: `Node '4c314f31-ecda-4b08-ae98-faaba1bf613f' not found`
 
@@ -142,7 +142,7 @@ ssh spark 'cat /tmp/h3_submit.log'
 > 启动后向 GitHub 拉取列表超时（journal 大量 `asyncio TimeoutError` /
 > `switching to local mode`，可达 ~7 分钟）；② 个别任务本身执行极慢
 > （实测一次 360p/5s i2v 从提交到出片 **~101 分钟**，客户端 timeout=3600s 先放弃，
-> 但 ComfyUI 实际完成并产出 mp4，见 `docs/session-summary.md §12`）。
+> 但 ComfyUI 实际完成并产出 mp4，见 `docs/history/session-summary.md §12`）。
 > 所以看到“卡住”时：先看 ComfyUI 是否仍在执行（`system_stats` 的 `queue_remaining`），
 > 再对比 journal 的 `Prompt executed in …` 与提交时间；客户端超时后**无参数重跑
 > h3_submit 会自动续传**，不会重复生成。

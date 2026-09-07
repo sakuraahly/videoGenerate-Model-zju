@@ -2,7 +2,7 @@
 
 > **When to use**: 生成出片后，需要"带人声台词/字幕/混音音效/ASR 客观验收/超分交付"的任一环节——
 > 即**标准成品链**（S13/P 链，2026-09-06/07 实施并多轮真机 PASS）。
-> **Audience**: AI agents 或操作者。原理详解见 `docs/tts-pipeline-explain.md`；当前事实见 `docs/CURRENT-STATE.md`。
+> **Audience**: AI agents 或操作者。原理详解见 `docs/guides/tts-pipeline-explain.md`；当前事实见 `docs/CURRENT-STATE.md`。
 
 ---
 

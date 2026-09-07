@@ -14,7 +14,7 @@
 ## 2. 现状与根因（实测核查）
 
 ### 2.1 已有雏形：capabilities.json 声明式注册表
-- `config/capabilities.json` 已有 tools/workflows/prompt_slots/note_for_llm 等；`runs/h3/capabilities.py --doc/--digest` 可生成 `docs/capabilities-ai.md`（人读）与模型 digest。
+- `config/capabilities.json` 已有 tools/workflows/prompt_slots/note_for_llm 等；`runs/h3/capabilities.py --doc/--digest` 可生成 `docs/guides/capabilities-ai.md`（人读）与模型 digest。
 - 但 workflows 条目**只有** id/engine/purpose/needs_images/slot——**缺**：模板文件名、槽位规格（LoadImage 数量与语义、ref_video）、提示词注入点（ui widget 下标/api key）、参数上限（resolutions/seconds）、特性位（参考视频/逐段转场/音频）、启停状态。
 
 ### 2.2 真正驱动执行的仍是硬编码（这就是"不灵动"的根源）
@@ -58,7 +58,7 @@
 | `runs/agent/doc_utils.py` / `docs/agent-reading/` | 自动生成 `05-workflows-registry.md`（含各工作流用法、参数范围、特性、启停状态） | 可查询 |
 | `runs/dev.py` | 新增 `workflows` 子命令（list/add/disable/enable/validate/swap） | 便捷管理 |
 | `runs/consistency_check.py` | 注册表 vs pipeline/manifest/templates/工具描述 一致性核对 | 防漂移 |
-| 文档 | `docs/reference-2026-09-04.md`/`skills/h3-video-generation.md`/`START-HERE.md`：注册表即工作流唯一来源 | 口径一致 |
+| 文档 | `docs/history/reference-2026-09-04.md`/`skills/h3-video-generation.md`/`START-HERE.md`：注册表即工作流唯一来源 | 口径一致 |
 
 ---
 

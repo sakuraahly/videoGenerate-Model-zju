@@ -1,10 +1,10 @@
 # 交接文档（2026-09-05 · 八审闭环后 · 新 Agent 接手专用）
 
 > 用途：**让新 Agent 无缝接手规划任务**（不依赖原会话上下文）。本档自包含；
-> 与 `docs/handoff-2026-09-05-L-tasks.md`（book-14 L1–L5，已完成）互不覆盖。
+> 与 `docs/handoff/handoff-2026-09-05-L-tasks.md`（book-14 L1–L5，已完成）互不覆盖。
 > 现状时间点：**十九轮外部审核闭环**（八轮=代码修复+真机验收；九-十一审=S7 规格专项；十二审=S1 专项+§7b 上传链；十三审=S12 专项；十五审（代码/验证轮）；十六审=spark 全量只读取证+768p 真相+孤儿模板/设计B边界；十七审=高爆炸半径专项；十八审=§3-§5/§8-§10 专项+共享队列安全（已修代码）；十九审=tools.py CallComfyUI 全链专项（非确定性 coerce/命名空间定案/导入期告警——已修代码）——权威见 changelog §20-§29 与 pending-tasks-implementation §1/§7/§12 最新审定稿）；仓库双端干净。
 >
-> 一句话现状：规划书 `docs/pending-tasks-implementation.md`（S1–S13 + P2–P6）经 **10 轮审核**定稿（十审=S7 计数修正 + 主案改 API 层注入（apply_lora 同型）/GetVideoComponents 链/登记补全/两级验证判据），
+> 一句话现状：规划书 `docs/history/pending-tasks-implementation.md`（S1–S13 + P2–P6）经 **10 轮审核**定稿（十审=S7 计数修正 + 主案改 API 层注入（apply_lora 同型）/GetVideoComponents 链/登记补全/两级验证判据），
 > 唯二被审出的**代码回归**（TTS 钩子两处 UnboundLocalError、workflow UI 存档缺失）已修复；
 > **剩余全部为待实施任务**，推荐从 S2-P1a → S3 → S8 开始（§5）。
 
@@ -24,11 +24,11 @@ spark commit 哈希与 win 不同是常态，spark 用内联身份提交）。�
 
 **必读文档（按顺序）**：
 1. `START-HERE.md`（§2 索引、§3 架构）
-2. `docs/dev-workflow.md` —— **全程遵守**（执行→修改→测试→自测通过→写入文档→双端核对→git 提交）；§10 环境坑
-3. `docs/pending-tasks-implementation.md` —— **当前定稿的待做任务规格**（§0 约束表/§1–§13 各任务 现状/实现/验证/风险；权威）
-4. `docs/pending-tasks-changelog.md` —— §14–§19 审核应答史（**仅供追溯**，含 8 轮意见与修复机制）
-5. `docs/session-summary.md`（历史事实源；§20.17/§20.18 为最近两个 bug 的完整记录）
-6. `docs/code-fact-registry.md`（代码事实唯一口径，改动须同步）
+2. `docs/guides/dev-workflow.md` —— **全程遵守**（执行→修改→测试→自测通过→写入文档→双端核对→git 提交）；§10 环境坑
+3. `docs/history/pending-tasks-implementation.md` —— **当前定稿的待做任务规格**（§0 约束表/§1–§13 各任务 现状/实现/验证/风险；权威）
+4. `docs/history/pending-tasks-changelog.md` —— §14–§19 审核应答史（**仅供追溯**，含 8 轮意见与修复机制）
+5. `docs/history/session-summary.md`（历史事实源；§20.17/§20.18 为最近两个 bug 的完整记录）
+6. `docs/guides/code-fact-registry.md`（代码事实唯一口径，改动须同步）
 7. `docs/planbook/book-13-backlog.md`（S1–S14 目录与来历）、`book-18`（质量提示词/清晰度，已归档）
 
 **铁律速查**（违反即返工）：
@@ -178,8 +178,8 @@ cd /home/Developer/videoGenerate-Model-zju || exit 2
 
 ## 8. 备忘（意外时查这里）
 
-- `docs/session-summary.md`：历史事实源（§14 文件夹速查、§20 逐批记录）；
-- `docs/reference-2026-09-04.md`：配置注册表/引擎契约/故障字典；
+- `docs/history/session-summary.md`：历史事实源（§14 文件夹速查、§20 逐批记录）；
+- `docs/history/reference-2026-09-04.md`：配置注册表/引擎契约/故障字典；
 - `docs/planbook/book-00-overview.md`：全局计划书与验收门禁；
 - `runs/h3/tests/`：165 例单测（当前基线）；`tests/`：e2e 冒烟等工具脚本；
 - 每个服务都由 supervisor/系统托管——**永远不要 kill ComfyUI 或手动重启**；必要时只 `POST /free`（完整 body）。

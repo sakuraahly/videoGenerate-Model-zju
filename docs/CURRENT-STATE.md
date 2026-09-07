@@ -1,7 +1,7 @@
 # CURRENT-STATE — 项目当前状态事实源（单一权威）
 
 > 定位：**当前事实**的唯一权威（2026-09-07 起）。历史/审计/轮次记录一律不在此维护——
-> 各历史文档只读；当日交接见 `docs/handoff-2026-09-07-live.md`（跨日后新建当日 handoff）。
+> 各历史文档只读；当日交接见 `docs/handoff/handoff-2026-09-07-live.md`（跨日后新建当日 handoff）。
 > 本文档每轮工作结束必须核对刷新（与 handoff 同日更新，冲突以本文档为准并登记）。
 
 ## 1. 双端与主库
@@ -44,7 +44,7 @@ H3 主模型（fl2va/ref2va int8 + qwen3vl text encoder + 双 VAE）在 `diffusi
 - 音效链：`runs/h3/sfx_mix.py --video <v> --music <底轨> --music-db -12 --events "开始秒:文件:dB,..." --out <成品>`（原音轨+底轨+分段事件三路混音；loudnorm -14）。
 - 验收：`runs/h3/asr_check.py <媒体> --compare "<原文>"` → `ASR_SCORE ≥ 0.6 = ok`（SenseVoice 回环）。
 - ComfyUI 路径：`workflows/remote_workflows/h3_finalize_chain.json`（H3LocalTTS/H3Finalize/H3AsrCheck；分类 h3；模型/venv 见节点 README；ComfyUI 重启后生效——服务重启为授权项）。
-- 详细讲解：`docs/tts-pipeline-explain.md`（原理/复现）。
+- 详细讲解：`docs/guides/tts-pipeline-explain.md`（原理/复现）。
 
 ## 6. 音色与 TTS 后端现状（2026-09-07）
 

@@ -1,7 +1,7 @@
 # MiniMax H3 视频生成 · 新手快速上手（小白版）
 
 > 适用：第一次用这台电脑跑视频的人。**不需要懂任何技术**，照着点就行。
-> 想看原理/更多命令：`docs/user-guide.md`；逐模板细步骤：`docs/manual-use-6-workflows.md`。
+> 想看原理/更多命令：`docs/guides/user-guide.md`；逐模板细步骤：`docs/guides/manual-use-6-workflows.md`。
 
 ---
 
@@ -196,9 +196,9 @@ H3 一次只生成**一个镜头**（最长约 15 秒）。想讲完整故事：
 
 | 文档 | 内容 |
 |---|---|
-| `docs/workflow-and-prompt.md` | 怎么选工作流、提示词写哪（有/无 AI 两种情形） |
-| `docs/deploy-modes.md` | 项目搬到 spark 上运行的形态切换（交付用） |
-| `docs/user-guide.md` | 全部入口与命令的完整说明（进阶） |
-| `docs/manual-use-6-workflows.md` | 每个模板的逐文件操作步骤 |
+| `docs/guides/workflow-and-prompt.md` | 怎么选工作流、提示词写哪（有/无 AI 两种情形） |
+| `docs/guides/deploy-modes.md` | 项目搬到 spark 上运行的形态切换（交付用） |
+| `docs/guides/user-guide.md` | 全部入口与命令的完整说明（进阶） |
+| `docs/guides/manual-use-6-workflows.md` | 每个模板的逐文件操作步骤 |
 | `skills/h3-prompt-engineering.md` | 怎么写剧本效果更好（提示词规则） |
-| `docs/session-summary.md` | 项目当前状态与待办（给开发/智能体） |
+| `docs/history/session-summary.md` | 项目当前状态与待办（给开发/智能体） |

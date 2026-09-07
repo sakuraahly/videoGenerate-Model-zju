@@ -3,7 +3,7 @@
 > 本文件是**详细工程参考**：配置注册表、运行形态语义、引擎/工具/Agent 接口契约、
 > 模板明细、服务与内存管理、日志/审计 schema、故障字典、测试模板。
 > 新模型/Agent 总入口与阅读索引：仓库根 **`START-HERE.md`**；
-> 快速交接与测试清单见 `docs/handoff-2026-09-04.md`；事实源 `docs/session-summary.md`。
+> 快速交接与测试清单见 `docs/handoff/handoff-2026-09-04.md`；事实源 `docs/history/session-summary.md`。
 > 双端：Windows 本机（git 主库→GitHub）与 spark `~/videoGenerate-Model-zju`（spark-local 运行时）。
 
 ---
@@ -19,7 +19,7 @@
 | 运行时形态 | `config/deploy.json` site：**spark-local（现状/交付）** / win-remote（本机+隧道） |
 | 时间口径 | 本地日志=北京时间；spark ls/journalctl=UTC（差 8h） |
 | 文档同步 | 改 Windows→commit→`git push`→`sync_to_spark.py`（排除机器配置/产物）→spark commit；自动合并 `sync_auto.py` |
-| 工作文件夹（双端全景） | spark `~/ai`（ComfyUI 平台）· `~/Qwen3.8-27B`（Qwen 模型/venv/启动脚本/agent 入口）· `~/videoGenerate-Model-zju`（运行时仓库，含 runs/agent）· Windows `D:\MY_CODING_PROGRAM\videoGenerate-Model-zju`（主库）——逐项明细见 `docs/session-summary.md §14`（同口径：`skills/h3-video-generation.md §0b`） |
+| 工作文件夹（双端全景） | spark `~/ai`（ComfyUI 平台）· `~/Qwen3.8-27B`（Qwen 模型/venv/启动脚本/agent 入口）· `~/videoGenerate-Model-zju`（运行时仓库，含 runs/agent）· Windows `D:\MY_CODING_PROGRAM\videoGenerate-Model-zju`（主库）——逐项明细见 `docs/history/session-summary.md §14`（同口径：`skills/h3-video-generation.md §0b`） |
 | ⚠️ Z: 盘规范 | 本机 `Z:\` = SSHFS-Win 映射 spark 主目录的网络盘，**仅本机调试读取用；脚本/文档/skill/git 一律禁用 `Z:\…` 路径**，写 spark 真实路径 `~/…` 或 Windows 主库路径 |
 
 ## 2. 目录结构全图（项目根，spark 侧同构）
@@ -64,7 +64,7 @@ outputs/ logs/ uploads/ refs/  skills/ docs/ ai_daily_reports/(已删) agent_cha
 | autosync.json | enabled=false; interval=180 | 是 | sync_auto.py |
 | pipeline.json | default_stage=t2v; templates_dir=workflows/remote_workflows; stages{t2v builtin; i2v/r2v/flf2v template_kind=ui}; remote_workflow_templates | 是 | pipeline_setup.bat |
 | transfer.json | remote_upload_dir; active_workflow_dir; use_active_workflow | 是 | workflow_setup.bat |
-| capabilities.json | engine/models; workflows(本地4+云端3); tools(2); prompt_slots; note_for_llm; llm_role_guard; download_policy | 否 | 工具只读；`runs\h3\capabilities.py --doc` 重生成 docs/capabilities-ai.md |
+| capabilities.json | engine/models; workflows(本地4+云端3); tools(2); prompt_slots; note_for_llm; llm_role_guard; download_policy | 否 | 工具只读；`runs\h3\capabilities.py --doc` 重生成 docs/guides/capabilities-ai.md |
 | prompts/manifest.json | default(legacy 两文件); slots=video_t2v/i2v/r2v/flf2v+api_t2v/r2v/flf2v(槽位文件映射) | 否 | prompts.bat |
 | parameters/video.txt | resolution=360p; seconds=5（可加 seed/fps/steps/timeout） | 否 | edit.bat |
 | minimax_h3_models.json | 4 模型清单(名称/大小/sha256/modelscope 源) | 否 | menu[5] 自检 |

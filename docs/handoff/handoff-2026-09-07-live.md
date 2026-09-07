@@ -106,7 +106,7 @@ ASR 逐句还原通过）。**当前仓库 aria = cross-lingual 方案（b125901
 
 **1) "让 qwen agent 掌握 TTS 管道"已落地**：新增 agent 参考文档
 `docs/agent-reading/04-tts-pipeline.md`（模型表/音色/三种用法/验收判据/音效链/边界；指向
-`docs/tts-pipeline-explain.md` 详解版）——agent 的 read_doc 工具描述自动随目录更新，重启 agent 即生效
+`docs/guides/tts-pipeline-explain.md` 详解版）——agent 的 read_doc 工具描述自动随目录更新，重启 agent 即生效
 （旁路：SYSTEM_MESSAGE 2608t 预算不变，扩展走文档通道）；agent 已重启（svc_main restart-agent）。
 
 **2) 意外命令 `rm -f RealESRGAN_x4plus.safetensors` 排查（用户报告）**：该命令删的是 **home 目录副本**

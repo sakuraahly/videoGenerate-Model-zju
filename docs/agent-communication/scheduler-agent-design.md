@@ -5,7 +5,7 @@
 > ComfyUI 工作流/调用生成引擎的操作。对应草案为外部 agent 提供的 `agent.py` 方案；
 > 本文把它翻译到本仓库的**真实资产**（spark-local 部署、h3_submit/h3_text2img_flux/
 > workflow 镜像、deploy-modes、职责护栏）。
-> 前提纪律：Qwen 服务启停归优化者（见 `docs/session-summary.md`）；本文档不授权任何 Agent
+> 前提纪律：Qwen 服务启停归优化者（见 `docs/history/session-summary.md`）；本文档不授权任何 Agent
 > 在未经确认下擅自启动 Qwen。
 
 ---
@@ -173,9 +173,9 @@ loop:
 - **职责护栏并存**：`idea2prompts` 仍是“无工具填词器”（system 已注入职责边界）；
   调度器是新角色，其“能做的事”被 3 个受限工具严格圈定，未放开 shell/任意文件/服务管理。
 - **能力注册表**：新增工具/阶段应同步 `config/capabilities.json` 并重生成
-  `docs/capabilities-ai.md`，保持单一来源。
+  `docs/guides/capabilities-ai.md`，保持单一来源。
 - **运行形态**：本文全部地址按 spark-local 假设；win-remote 下相同工具经隧道同 URL 工作，
-  但下载/路径语义不同（见 `docs/deploy-modes.md`）。
+  但下载/路径语义不同（见 `docs/guides/deploy-modes.md`）。
 - **服务纪律**：Qwen 由优化者负责启停；调度器文档/代码不做“启动/重启 vLLM”类工具。
 
 ## 9. 待办与开放问题（需要执行侧/优化者确认）

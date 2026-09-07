@@ -4,7 +4,7 @@
 > `workflows/h3_*/job.json` (stage, params, prompt_id, remote path, status, timestamps),
 > and breakpoints live in `last_job.json`. This file's run-logging section remains useful
 > for extra analytics; the cleanup guidance below is still current.
-> See also `docs/user-guide.md` and `docs/robustness-and-modularity.md`.
+> See also `docs/guides/user-guide.md` and `docs/guides/robustness-and-modularity.md`.
 
 This document covers practices and infrastructure for keeping the H3 video generation pipeline healthy and efficient over time.
 

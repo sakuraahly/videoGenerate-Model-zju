@@ -18,7 +18,7 @@
 ## 1. 关键发现（本计划书成立的前提，必须先读）
 
 在制定计划前，对双端仓库做了核对，得到几个**直接影响计划**的事实（证据见各分册与
-`docs/session-summary.md`）：
+`docs/history/session-summary.md`）：
 
 ### 1.1 双端 / 多副本"状态漂移"是头号根因（首次确认）
 - 仓库三处：Windows 主库 `D:/MY_CODING_PROGRAM/videoGenerate-Model-zju`（**推 GitHub**）、
@@ -35,7 +35,7 @@
   这是本计划把"基座治理/可信部署"列为前置的原因。
 
 ### 1.2 "文档声称完成"与"实际未生效"之间存在失信缺口
-- `docs/handoff-2026-09-04.md`、`docs/session-summary.md §19` 均把 **"加载所选"→"加载所选历史"**、
+- `docs/handoff/handoff-2026-09-04.md`、`docs/history/session-summary.md §19` 均把 **"加载所选"→"加载所选历史"**、
   **LLM 流式输出修复**、**按钮文案优化**、**批量提交工具**、**任务级素材隔离** 等标为"已完成 ✅"。
 - 但用户明确反馈：**界面依旧处于没有修改的状态**，按钮仍是"加载所选"，输出仍非流式、仍英文。
 - 三选一：① 改的是 Windows 代码但没同步到 spark；② 代码改了但 spark 实例未重启（Gradio 进程还是旧的）；
@@ -52,7 +52,7 @@
 - 例如：`skills/h3-video-generation.md §1.3c` 写 `UI_TRIM_TOKENS=1800`，而 `runs/agent/ctx_budget.py`
   实为 `UI_TRIM_TOKENS=2200`；`START-HERE.md` 说 spark 仓库为 `~/videoGenerate-Model-zju`，
   而实际 spark 路径是 `/home/Developer/videoGenerate-Model-zju`；`config/deploy.json` site=win-remote，
-  但交付文档强调 spark-local；`docs/reference-2026-09-04.md §6` 说"5 工具"，但代码已有 6 工具（含 batch_submit）。
+  但交付文档强调 spark-local；`docs/history/reference-2026-09-04.md §6` 说"5 工具"，但代码已有 6 工具（含 batch_submit）。
 - 问题：**改了 A 处忘改 B 处**，会让"按文档操作"与"实际代码"对不上。计划单列"口径一致性"治理项。
 
 ---
@@ -164,8 +164,8 @@
 
 ## 7. 与既有文档的关系
 
-- 本计划书为**上游计划**，不是状态记录；状态记录仍以 `docs/session-summary.md`（事实源）、
-  `docs/handoff-2026-09-04.md`（最新交接）为准。
+- 本计划书为**上游计划**，不是状态记录；状态记录仍以 `docs/history/session-summary.md`（事实源）、
+  `docs/handoff/handoff-2026-09-04.md`（最新交接）为准。
 - 按 `START-HERE.md §5` 同步规则：新增 `docs/planbook/` 后需更新 `START-HERE.md §2` 索引表与版本记录。
 - 凡本计划书与既有文档/代码冲突处（如 UI_TRIM_TOKENS 取值、spark 路径、工具数、deploy mode），
   **以运行中代码为准并在 book-01 中登记**，再由后续册统一纠正文档。

@@ -3,7 +3,7 @@
 > 回答两个问题：① 每次工作**用哪个工作流（生成方案）**怎么指定；② 每次工作的
 > **提示词（内容）**怎么指定。两种"输入来源"分别说明：
 > **没有本地通用模型 = 一切由人手工填**；**有本地通用模型 = 可说一句创意让 AI 填词**。
-> 新手流程另见 `docs/quickstart.md`；逐模板细步骤 `docs/manual-use-6-workflows.md`。
+> 新手流程另见 `docs/guides/quickstart.md`；逐模板细步骤 `docs/guides/manual-use-6-workflows.md`。
 
 ---
 
@@ -57,7 +57,7 @@
    bats\generate\menu.bat → [6] 工作流上传/使用指定工作流 → 激活某次任务 → 之后 run.bat 原样提交它
    ```
 
-> i2v/r2v/flf2v 用参考图时，请先按 `docs/quickstart.md` 第 5 节把图传到
+> i2v/r2v/flf2v 用参考图时，请先按 `docs/guides/quickstart.md` 第 5 节把图传到
 > spark `~/ai/ComfyUI/input/` 并在模板 LoadImage 里选好/改好文件名（只改本地镜像那份 json）。
 
 ### A2 怎么指定"提示词"（人写）
@@ -130,7 +130,7 @@ python runs\h3_submit.py --stage r2v --force-new --seed 2026
 | 首帧动起来 | 同 i2v | 同 i2v |
 | 首尾帧控制 | 同 flf2v | 同 flf2v |
 | 换一批内容 | 记事本改提示词 txt | 重新 `--idea "新创意" --force` |
-| 不确定怎么选模板 | 看 `docs/quickstart.md` §4 需求表 | 让 AI 为全部槽生成，再从 GUI/CLI 挑 |
+| 不确定怎么选模板 | 看 `docs/guides/quickstart.md` §4 需求表 | 让 AI 为全部槽生成，再从 GUI/CLI 挑 |
 
 ---
 
@@ -140,7 +140,7 @@ python runs\h3_submit.py --stage r2v --force-new --seed 2026
 - 单一来源：`config/capabilities.json`（视频工作流 7 个、`generate_reference_image`=FLUX、
   `generate_video`=h3_submit 参数、提示词槽位规则），模型可读的英文描述与参数 schema。
 - 生成人类/Agent 文档：`python runs\h3\capabilities.py --doc` → 重写
-  `docs/capabilities-ai.md`（标注"由 json 生成，勿手改"）。
+  `docs/guides/capabilities-ai.md`（标注"由 json 生成，勿手改"）。
 - 喂给本地 LLM 的精简摘要（~0.7k 字符）：`python runs\h3\capabilities.py --digest`。
   当前"槽位填词"每次请求默认**不注入**该摘要（避免挤占已调优的 7 条规则）；当模型要承担
   "创意 → 选工作流/出图/定参数"（plan 模式）时再把 digest 注入 system，或在 LLM 支持
@@ -158,10 +158,10 @@ python runs\h3_submit.py --stage r2v --force-new --seed 2026
 ---
 
 ## 6. 相关文档
-- `docs/quickstart.md` 新手三步走（含参考图操作）
-- `docs/user-guide.md` 完整命令与机制
-- `docs/manual-use-6-workflows.md` 每模板 GUI+脚本细步骤
-- `docs/capabilities-ai.md` 项目生成能力注册表（由 config/capabilities.json 生成）
-- `docs/deploy-modes.md` 运行形态切换（win-remote / spark-local 交付）
+- `docs/guides/quickstart.md` 新手三步走（含参考图操作）
+- `docs/guides/user-guide.md` 完整命令与机制
+- `docs/guides/manual-use-6-workflows.md` 每模板 GUI+脚本细步骤
+- `docs/guides/capabilities-ai.md` 项目生成能力注册表（由 config/capabilities.json 生成）
+- `docs/guides/deploy-modes.md` 运行形态切换（win-remote / spark-local 交付）
 - `skills/h3-prompt-engineering.md` 提示词写法规则
 - `config/llm.spark-qwen3.example.json` AI 桥配置示例（情形 B 前提）

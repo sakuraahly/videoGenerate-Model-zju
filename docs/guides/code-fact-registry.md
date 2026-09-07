@@ -67,7 +67,7 @@
 
 - **白名单工具（6 个）**：`run_script` / `modify_workflow` / `call_comfyui` / `read_doc` / `list_references` / `batch_submit`（**旧文档多处写"5 工具"，以本表为准**；需在 spark（qwen_agent）环境才可导入）。
 - 阶段（stage）：`t2v / i2v / r2v / flf2v`（本地 `video_*`；`api_*` 云模板不使用/不提及）。工作流注册表统一化见 `docs/planbook/book-12`。
-- 生成提示词规则：英文；属性词库见 `docs/prompt-taxonomy.md`（10 正 + 9 负）；模板内嵌只留图像属性词（book-06 待实施）。
+- 生成提示词规则：英文；属性词库见 `docs/guides/prompt-taxonomy.md`（10 正 + 9 负）；模板内嵌只留图像属性词（book-06 待实施）。
 
 ---
 
@@ -111,7 +111,7 @@
 
 ## 10. 加速 LoRA（book-14 L3，2026-09-05 实测登记）
 
-- 单一事实源：`config/capabilities.json` 顶层 `"lora"` 段（本表与之同源；`markdown_doc` 不渲染 lora，故 `docs/capabilities-ai.md` 不含本节）。目录：`/home/Developer/ai/ComfyUI/models/loras/MiniMax_H3/`（3 个，Lightx2v/ModelTC 社区制作，ComfyUI bf16）。
+- 单一事实源：`config/capabilities.json` 顶层 `"lora"` 段（本表与之同源；`markdown_doc` 不渲染 lora，故 `docs/guides/capabilities-ai.md` 不含本节）。目录：`/home/Developer/ai/ComfyUI/models/loras/MiniMax_H3/`（3 个，Lightx2v/ModelTC 社区制作，ComfyUI bf16）。
 
 | 文件 | 模式 | 步数 | 分辨率/训练 | 适用 |
 |---|---|---|---|---|

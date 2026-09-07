@@ -185,4 +185,4 @@ No text, no music.
 - **S7 媒体**：`<Video N>`（运动/镜头参考）与 `<Audio N>`（氛围/音色参考）同样一一对应；只能参考**同镜头**素材（错误示例：2026-09-07 把另一镜头分镜当运动参考会带偏）。
 - **剧本块（多时间点连续单镜）写法**：`Shot N -- scene ...:` 后逐行 `0.0-1.2s: 动作描述`——每行写**物理可见动作**（人从哪跑到哪、看什么、表情变化），不写抽象情绪；结尾补镜头语言（"Keep the action natural and the camera steady but slightly following him."）。
 - **负面清单有效写法**（直接给出排除集）：`no warped or distorted human bodies, no mumbling or slurred speech, no missing characters, no distorted faces, no improper limb proportions, no unnatural motion, no blurred facial expressions, no unclear speech, no noise covering dialogue, no text, no watermark, no extra people`。
-- **实战样例**：`docs/handoff-2026-09-07-live.md` §7（镜头17：3 参考图 + 时间轴剧本 + 上述负面集，抽帧全过）。
+- **实战样例**：`docs/handoff/handoff-2026-09-07-live.md` §7（镜头17：3 参考图 + 时间轴剧本 + 上述负面集，抽帧全过）。

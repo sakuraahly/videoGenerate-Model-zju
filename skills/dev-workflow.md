@@ -1,15 +1,15 @@
 # Dev Workflow Skill — 变更与交付工作流（速查卡）
 
-> 用途：**本仓库一切改动**（代码/文档/skill/配置）必须按此流程执行。完整版：`docs/dev-workflow.md`。
+> 用途：**本仓库一切改动**（代码/文档/skill/配置）必须按此流程执行。完整版：`docs/guides/dev-workflow.md`。
 > 一句话：`执行任务→修改→测试→自测通过→写入文档→双端核对更新→git 提交`，**每步不通过回到上一步**。
 > 自动化：本流程已固化为 `runs/dev.py`（check/sync/commit/docs/test），能用脚本处优先脚本一次调用。
-> 文件写入 EIO（Win32 1175，编辑已有文件偶发）：重试 → PowerShell WriteAllText → 先 read 再整体 write；详见 docs/dev-workflow.md §10。
+> 文件写入 EIO（Win32 1175，编辑已有文件偶发）：重试 → PowerShell WriteAllText → 先 read 再整体 write；详见 docs/guides/dev-workflow.md §10。
 
 ---
 
 ## 1. 执行任务（先读后做，先取证后动手）
 - 先读 `START-HERE.md §2`、**`docs/CURRENT-STATE.md`（当前事实唯一权威，2026-09-07 起）**、当日 `docs/handoff-<日期>-live.md`、相关 skill/文档。
-- `docs/session-summary.md`=历史快照+审计志（只读；冲突处以 CURRENT-STATE 为准）。
+- `docs/history/session-summary.md`=历史快照+审计志（只读；冲突处以 CURRENT-STATE 为准）。
 - 先判断「问题根因」四选一：①代码没写 ②写了没同步 ③同步了进程没重启 ④文档先行、代码滞后。
 - 涉及运行实例：先确认 spark 跑的版本（`git rev-parse HEAD` / 版本指纹），别一上来就改代码。
 
@@ -30,8 +30,8 @@
 
 ## 5. 写入文档 / skills
 - **状态类（当前）**：`docs/CURRENT-STATE.md`（事实权威，每轮核对）+ 当日 `docs/handoff-<日期>-live.md`。
-- **Agent 能力类**：`docs/agent-reading/`（改后 agent 重启生效）；讲解类：`docs/tts-pipeline-explain.md` 等。
-- **参考类**：`docs/code-fact-registry.md`、`docs/agent-workflow.md`、`docs/robustness-and-modularity.md`。
+- **Agent 能力类**：`docs/agent-reading/`（改后 agent 重启生效）；讲解类：`docs/guides/tts-pipeline-explain.md` 等。
+- **参考类**：`docs/guides/code-fact-registry.md`、`docs/guides/agent-workflow.md`、`docs/guides/robustness-and-modularity.md`。
 - **计划类**：`docs/planbook/`（各阶段计划与验收结果）。
 - **索引同步**：新增/改/删任何 `docs/`、`skills/` → **先登记 `docs/README.md` 文档地图**，再更新 `START-HERE.md §2` 与 `README.md` 文档表、`START-HERE.md §6` 版本记录。
 - 口径一致：同事实以 CURRENT-STATE/运行代码为准并登记；历史文档只读不重写。
@@ -41,7 +41,7 @@
 - 定点同步：只 `scp` 本次改动文件到 spark（避免覆盖运行时代码）。
 - 核对：`git -C <repo> rev-parse HEAD` 对照 `ssh spark "git -C ... rev-parse HEAD"`；看 spark `git status --short`。
 - 差异化配置（deploy/llm/pipeline/transfer/autosync/.sync-state/last_job）两端本就不同，**不整仓覆盖**。
-- 需要重启 agent（先获授权）：7860 在 **tmux 会话 `agent`**（会话名不是 `qwen-agent`）；重启：`tmux kill-session -t agent; tmux new-session -d -s agent 'cd /home/Developer/videoGenerate-Model-zju && python runs/agent/scheduler.py 2>&1 | tee ~/agent.log'`。验证：端口持有者 PID 启动时间 ≥ 重启时刻 + `/config` 含新文案 + 日志 `AGENT_VERSION`；**curl HTML/ps PID 不等于新代码**（详见 `docs/dev-workflow.md §6.1`）。
+- 需要重启 agent（先获授权）：7860 在 **tmux 会话 `agent`**（会话名不是 `qwen-agent`）；重启：`tmux kill-session -t agent; tmux new-session -d -s agent 'cd /home/Developer/videoGenerate-Model-zju && python runs/agent/scheduler.py 2>&1 | tee ~/agent.log'`。验证：端口持有者 PID 启动时间 ≥ 重启时刻 + `/config` 含新文案 + 日志 `AGENT_VERSION`；**curl HTML/ps PID 不等于新代码**（详见 `docs/guides/dev-workflow.md §6.1`）。
 
 ## 7. git 提交
 - Windows（唯一推 GitHub）：`add` → `commit` → `push origin master`（PowerShell 下 git 进度写 stderr 会 exit 1，看到 `X..Y master -> master` 即成功）。

@@ -44,7 +44,7 @@
 - `dev.py services selfcheck`：验证自愈（kill sglang → 60s 内 supervisor 拉起）——演练专用，明示会中断当前对话。
 
 ### 3.4 文档
-- docs/llm-memory-optimization.md 已有恢复手册（§2 更新为「编排器行为说明」）；START-HERE/运维文档登记三服务自启矩阵（§1 表格）+ 手册命令。
+- docs/guides/llm-memory-optimization.md 已有恢复手册（§2 更新为「编排器行为说明」）；START-HERE/运维文档登记三服务自启矩阵（§1 表格）+ 手册命令。
 
 ## 4. 验收（可复现）
 - 故障演练：① `kill` sglang 调度进程 → 60s 内 supervisor 自动拉起且 /v1/models 200；② ComfyUI 满载模拟（提交一次生成后立即 nap/wake 循环）→ planner 自动 /free后 wake 成功，流程 120s 内闭环；③ `dev.py services status` 一次输出三服务+模型态+最近规划事件；④ 无"手动重启死循环"（失败 3 次自动停止并报警）。

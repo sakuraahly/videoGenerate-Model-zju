@@ -62,7 +62,7 @@ python runs/h3_submit.py --stage video_r2v --force-new
 
 ## 4. 注意事项
 - 切换只改两份本地配置（deploy.json / llm.json），不动 spark 远端任何文件。
-- 服务启停权限以 `docs/session-summary.md` 最新记录为准（例如 Qwen 优化期间勿擅自启动）。
+- 服务启停权限以 `docs/history/session-summary.md` 最新记录为准（例如 Qwen 优化期间勿擅自启动）。
 - 模型职责护栏（只做提示词生成、拒绝服务器控制指令）对两种形态同样生效。
 
 ## 5. 同步项目到 spark（传输约定：**不携带 .git**）

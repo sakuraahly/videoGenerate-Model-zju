@@ -30,7 +30,7 @@
 
 ### 🟥 P0（下一批优先：解锁用户价值/回归风险）
 1. ~~端到端黄金路径闭环~~ **✅ 已完成（2026-09-04）**：`tests/golden_path.py` 引擎级闭环——提交(87dccd14) → `/queue` 断言 LoadImage=已绑定参考图（非旧资产）→ 取片 `outputs/video_11.mp4`(521KB) → GOLDEN_OK；**剩余人工项：画面一致性确认**（详见 book-09 §6b）。
-2. **~~book-08 风格册~~ ✅ 已完成（随 book-08）**：`docs/style-guide.md` 已建、必要问题清单已收紧（分辨率/时长/seed/镜头/是否OK 一律不问）——见 book-08 记录（用户提供的关键片段）做回归：是否多问/是否完成/是否中文。
+2. **~~book-08 风格册~~ ✅ 已完成（随 book-08）**：`docs/guides/style-guide.md` 已建、必要问题清单已收紧（分辨率/时长/seed/镜头/是否OK 一律不问）——见 book-08 记录（用户提供的关键片段）做回归：是否多问/是否完成/是否中文。
 3. ~~消息级分批渲染~~ **✅ 已完成（2026-09-05，C1）**：run_turn 消息级 chunk 即时送显（assistant 文本+工具名状态条）；send 只追加不替换（同条合并、done 去重）；spark 实测事件流 phase → chunk×70 → done；SMOKE_OK。：qwen_agent 为**消息级** yield（已调研）→ 重构 `run_turn`/`send`：把 agent 中间文本/工具结果**逐批 yield** 到对话（而非最终一次性）；用户提交后即可看到"正在…/已提交/进度"，无需等整轮。
 5. **~~模板默认数值≠请求参数~~ ✅ 完成（2026-09-05 回归通过）**：请求 720p/15s → dry-run 工作流断言 **1280×736 / 15.0s→362 帧@24fps**（模板 0.4MP/5s 默认已被覆写）；回归证据：`h3_submit --stage t2v --resolution 720p --seconds 15 --dry-run`。根因修复见原条目：`stage.apply_generation_params`（按 token_map 覆写 MiniMaxH3* width/height/length、BasicScheduler steps、CreateVideo fps）+ 单测 3 例（117 全绿）。**剩余回归**：真实提交→ffprobe 断言产出参数；并加「产出参数回执」到取片流程（见 P0.6）。
 6. **~~产出参数校验/诊断工具~~ ✅ 完成（2026-09-05）**：① 取片/完成回执新增 **`PROBE:`** 行（width/height/fps/frames/duration 实测，无条件输出）；② 模板默认 vs 请求校验（`_probe_diff`+`verify_mismatch/verify_ok` 事件，gp 可用时）；③ 供 agent 查询的 `verify_video` 类工具（book-09 延伸；book-12 步骤4 联动）。

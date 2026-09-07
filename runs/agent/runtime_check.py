@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """runs/agent/runtime_check.py — 运行时一致性核对（book-01 步骤 4）。
 
-核对「登记事实」（与 docs/code-fact-registry.md 同源；冲突以实测/代码为准）：
+核对「登记事实」（与 docs/guides/code-fact-registry.md 同源；冲突以实测/代码为准）：
   - ctx_budget 关键常量（SGLang ctx=8192 口径）
   - 白名单工具注册集（6 个）
   - 调度器 LLM_CFG.max_tokens=2048
@@ -22,7 +22,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-# 登记事实（来自 docs/code-fact-registry.md；改这里须同步改登记表）
+# 登记事实（来自 docs/guides/code-fact-registry.md；改这里须同步改登记表）
 FACTS = {
     "ctx": {"MODEL_MAX_CTX_TOKENS": 8192, "REPLY_MAX_TOKENS": 800,  # book-16 复读根治：2048→800
             "UI_TRIM_TOKENS": 2200, "CONV_MSG_BUDGET_TOKENS": 2500,

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SGLang 共存模式启动 — 降低 GPU 内存占用，与 ComfyUI 共享 GB10 统一内存
 #
-# 默认模式 (coexist):  mem=0.50, ctx=8192（实测预载≈49GB，0.40 不足）；见 docs/llm-memory-optimization.md
+# 默认模式 (coexist):  mem=0.50, ctx=8192（实测预载≈49GB，0.40 不足）；见 docs/guides/llm-memory-optimization.md
 # 独占模式 (standalone): mem=0.95, SGLang 独享大部分 GPU 内存
 #
 # Usage:

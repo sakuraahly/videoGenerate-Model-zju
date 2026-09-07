@@ -71,7 +71,7 @@
 | `runs/sync_auto.py` | 同 `_log` 收敛 | 同步留痕 |
 | `shell/lib/*.ps1` | `Initialize-RunLog` 与 logutil 约定一致化（命名/格式/TZ）；win-remote 下载后回写 spark 提交日志段 | 跨端串联 |
 | `runs/dev.py` | 新增 `logs` 子命令：查看/关联(按 prompt_id/cid)/清理(保留N天)/校验(垃圾行统计、事件覆盖检查) | 可观测+自检 |
-| 文档 | `docs/reference-2026-09-04.md`/`docs/robustness-and-modularity.md`/`START-HERE.md`：日志体系章节统一（文件位置、格式、TZ、轮转） | 口径一致 |
+| 文档 | `docs/history/reference-2026-09-04.md`/`docs/guides/robustness-and-modularity.md`/`START-HERE.md`：日志体系章节统一（文件位置、格式、TZ、轮转） | 口径一致 |
 
 ---
 

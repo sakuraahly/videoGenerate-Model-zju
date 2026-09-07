@@ -6,7 +6,7 @@
 
 MiniMax H3（Hailuo-03）视频生成自动化工具集：本地 Windows 编排层 + 远程 Linux GPU 主机上的 ComfyUI 本地推理。输入一段场景描述，产出带原生立体声音轨的视频（`outputs/video_N.mp4`）。
 
-> **运行形态**（同一份仓库，`config/deploy.json` 切换，见 `docs/deploy-modes.md`）：
+> **运行形态**（同一份仓库，`config/deploy.json` 切换，见 `docs/guides/deploy-modes.md`）：
 > `win-remote`（Windows 本机 + ssh 隧道连 spark，默认/现状）与 `spark-local`（仓库整体部署在
 > spark，ComfyUI 与本地模型同机直连、无需隧道——交付形态，供 spark 上的本地模型直接调用本项目出片）。
 
@@ -65,20 +65,20 @@ outputs/      生成产物（不入库）
 | 文档 | 内容 |
 | `docs/README.md` | ⭐ **文档地图与治理**：每个文档的角色/权威/状态 + 更新规则（新增文档先登记此表） |
 | `docs/CURRENT-STATE.md` | ⭐⭐ **当前事实唯一权威**（2026-09-07 起）：服务/模型/参数/音色/通道/纪律/待办 |
-| `docs/handoff-2026-09-07-live.md` | ⭐**当日现场交接**：音色链真相/实战演（镜头17）/CosyVoice2 试点/运维记录（跨日新建当日 handoff） |
+| `docs/handoff/handoff-2026-09-07-live.md` | ⭐**当日现场交接**：音色链真相/实战演（镜头17）/CosyVoice2 试点/运维记录（跨日新建当日 handoff） |
 | `START-HERE.md` | ⭐⭐ **新参与模型/Agent 总入口**：架构速览 + 必读索引 + 路径/红线 + 同步规则 |
 | `skills/h3-video-generation.md` | ⭐ 生成任务技能卡（工作流/S7 参考媒体/队列纪律/通道事实） |
 | `skills/h3-postproduction.md` | ⭐ **成品链技能卡**（TTS 音色/字幕/音效/ASR 验收/超分/交付） |
 | `skills/h3-prompt-engineering.md` | ⭐ 提示词工程规则（含参考图 tag 契约/剧本块） |
 | `skills/dev-workflow.md` | ⭐ **变更与交付工作流**速查（改→测→证据→文档→双端→提交） |
-| `docs/tts-pipeline-explain.md` | TTS 管道详解（模型/原理/复现命令） |
-| `docs/code-fact-registry.md` | ⭐ **代码事实登记表**（节点 schema/模型 ID/行号级事实） |
+| `docs/guides/tts-pipeline-explain.md` | TTS 管道详解（模型/原理/复现命令） |
+| `docs/guides/code-fact-registry.md` | ⭐ **代码事实登记表**（节点 schema/模型 ID/行号级事实） |
 | `docs/planbook/book-19-execution-ready.md` | **执行就绪计划书**（S1-S13 状态表；章节编号含历史轮次，进度看 §1 表） |
-| `docs/session-summary.md` | 🗄 历史状态快照 + 20.x 轮次审计志（只读；事实以 CURRENT-STATE 为准） |
+| `docs/history/session-summary.md` | 🗄 历史状态快照 + 20.x 轮次审计志（只读；事实以 CURRENT-STATE 为准） |
 | `docs/handoff-2026-09-03/04/05-*/06-continue.md` | 🗄 各日交接历史（只读） |
-| `docs/pending-tasks-changelog.md` / `pending-tasks-implementation.md` | 🗄 S 系列审计/实现长卷（历史，只读） |
-| `docs/reference-2026-09-04.md` / `-status-2026-09-04.md` / `optimization-plan-2026-09-04.md` | 🗄 早前参考/状态/计划快照（只读） |
-| `docs/quickstart.md` / `user-guide.md` / `manual-use-6-workflows.md` / `h3-manual-operations.md` / `h3-troubleshooting.md` / `h3-workflow-architecture.md` / `workflow-and-prompt.md` / `prompt-taxonomy.md` / `comfyui-startup-and-access.md` / `deploy-modes.md` / `style-guide.md` / `agent-workflow.md` / `send-integration-guide.md` / `capabilities-ai.md` / `long-term-maintenance.md` / `robustness-and-modularity.md` / `llm-memory-optimization.md` / `qwen38-deployment.md` / `local-model/*` | 操作/指南/专题（按需查阅；与现状冲突处以 CURRENT-STATE 为准） |
+| `docs/history/pending-tasks-changelog.md` / `pending-tasks-implementation.md` | 🗄 S 系列审计/实现长卷（历史，只读） |
+| `docs/history/reference-2026-09-04.md` / `-status-2026-09-04.md` / `optimization-plan-2026-09-04.md` | 🗄 早前参考/状态/计划快照（只读） |
+| `docs/guides/quickstart.md` / `user-guide.md` / `manual-use-6-workflows.md` / `h3-manual-operations.md` / `h3-troubleshooting.md` / `h3-workflow-architecture.md` / `workflow-and-prompt.md` / `prompt-taxonomy.md` / `comfyui-startup-and-access.md` / `deploy-modes.md` / `style-guide.md` / `agent-workflow.md` / `send-integration-guide.md` / `capabilities-ai.md` / `long-term-maintenance.md` / `robustness-and-modularity.md` / `llm-memory-optimization.md` / `qwen38-deployment.md` / `local-model/*` | 操作/指南/专题（按需查阅；与现状冲突处以 CURRENT-STATE 为准） |
 
 ## 说明
 

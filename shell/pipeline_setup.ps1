@@ -113,7 +113,7 @@ while ($true) {
         '3' { Invoke-StageCheck }
         '4' {
             Write-Host ''
-            Write-Info "用文本编辑器打开 $PipelineFile 即可调整阶段/模板/默认图；模板文件放在 config/templates 目录。占位符见 docs/robustness-and-modularity.md。"
+            Write-Info "用文本编辑器打开 $PipelineFile 即可调整阶段/模板/默认图；模板文件放在 config/templates 目录。占位符见 docs/guides/robustness-and-modularity.md。"
         }
         '0' { Write-Host ''; Write-Info '再见！'; return }
         default { Write-Warn "无效选择：'$choice'" }

@@ -17,8 +17,8 @@
 
 **必读文档（按顺序）**：
 1. START-HERE.md（§2 索引、§3 约定）
-2. docs/dev-workflow.md —— **全程遵守**；§10 有本环境文件写入 EIO(1175) 与 JS/PowerShell 转义教训；§11 日志体系
-3. docs/code-fact-registry.md（单一事实源，改动须同步）
+2. docs/guides/dev-workflow.md —— **全程遵守**；§10 有本环境文件写入 EIO(1175) 与 JS/PowerShell 转义教训；§11 日志体系
+3. docs/guides/code-fact-registry.md（单一事实源，改动须同步）
 4. docs/planbook/book-14-lora-accel-delivery.md（L 类定义与红线）
 5. docs/planbook/book-13-backlog.md（归档衔接说明）
 
@@ -59,10 +59,10 @@
   - CLI：python runs/agent/session_cleanup.py status|clean [--yes] [--days N]；clean 默认 dry-run 输出将删清单；--yes 真正删除；
   - 返回 (统计字典, exit code)。
 - **单测**：新增 runs/h3/tests/test_session_cleanup.py（unittest）：临时目录造 old/new 聊天档 → clean(dry_run) 不删；--yes 删旧留新；status 输出含数量。
-- **文档**：docs/code-fact-registry.md 增补「会话保留策略」小节（默认 90 天、路径、命令）。
+- **文档**：docs/guides/code-fact-registry.md 增补「会话保留策略」小节（默认 90 天、路径、命令）。
 
 ### L2 — UI“刷新”按钮语义化
-- **文件**：D:\MY_CODING_PROGRAM\videoGenerate-Model-zju\runs\agent\ui_app.py（约 765 行）与 docs/agent-workflow.md（约 166 行）
+- **文件**：D:\MY_CODING_PROGRAM\videoGenerate-Model-zju\runs\agent\ui_app.py（约 765 行）与 docs/guides/agent-workflow.md（约 166 行）
 - **现状**（已勘定）：ref_btn = gr.Button('刷新')，其 click 仅刷新**历史会话下拉** hist_dd 的 choices（gr.update(choices=_choices())）。
 - **改动**：按钮文案改为**指明用途**，如「刷新历史列表」（或「刷新历史会话」）；并在按钮附近加简短提示
   （标题/tooltip 或相邻 Markdown 说明"刷新仅更新左侧历史会话下拉"）。文档同步。
@@ -71,7 +71,7 @@
   e2e_smoke 通过（§6 命令）。
 
 ### L3 — 加速 LoRA 事实登记（纯文档/配置）
-- **文件**：docs/code-fact-registry.md（追加章节）；config/capabilities.json（新增顶层 "lora" 段：路径/模式/步数/分辨率/用途）
+- **文件**：docs/guides/code-fact-registry.md（追加章节）；config/capabilities.json（新增顶层 "lora" 段：路径/模式/步数/分辨率/用途）
 - **内容**（来自用户实测调研，原样登记）：
   目录 /home/Developer/ai/ComfyUI/models/loras/MiniMax_H3/ 下 3 个 ComfyUI bf16 加速 LoRA：
   1) minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16 — FL2VA（T2V/I2V/FLF2V），4 步，768p(1344×768)，v1.0；

@@ -1,5 +1,5 @@
 {
-  "_comment": "项目生成能力统一注册表（单一来源，勿在别处重复维护）。用途：1) 人/Agent 生成可读说明；2) 未来喂给本地 LLM(方案一) 让其了解可用能力与参数；3) 校验脚本参数。修改本文件后用 `python runs/h3/capabilities.py --doc` 重新生成 docs/capabilities-ai.md。",
+  "_comment": "项目生成能力统一注册表（单一来源，勿在别处重复维护）。用途：1) 人/Agent 生成可读说明；2) 未来喂给本地 LLM(方案一) 让其了解可用能力与参数；3) 校验脚本参数。修改本文件后用 `python runs/h3/capabilities.py --doc` 重新生成 docs/guides/capabilities-ai.md。",
   "engine": {
     "name": "videoGenerate-Model-zju",
     "host": "spark (DGX Spark, ComfyUI 127.0.0.1:8188, ssh 免密)",

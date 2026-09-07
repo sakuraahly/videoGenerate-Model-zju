@@ -2,7 +2,7 @@
 
 > 审阅时间：2026-09-03
 > 审阅人：videoGenerate-Model-zju 主会话 Agent
-> 对象：`docs/qwen38-deployment.md`、`shell/start_qwen_agent.py`（当时未跟踪的并行新增）
+> 对象：`docs/guides/qwen38-deployment.md`、`shell/start_qwen_agent.py`（当时未跟踪的并行新增）
 > 依据：项目会话中人类给出的 Qwen 角色权威定义（见 §1），与 `scheduler-agent-design.md` §0/§3。
 
 ---
@@ -27,7 +27,7 @@
 
 ---
 
-## 2. 对 `docs/qwen38-deployment.md`（引擎部署/优化文档）的意见
+## 2. 对 `docs/guides/qwen38-deployment.md`（引擎部署/优化文档）的意见
 
 定位：该文件是"Qwen 部署与优化"（NVFP4 量化 → SGLang 0.5.18 → FlashInfer → Web UI/
 服务管理）的计划/手册；与 spark 上 `install_flashinfer.sh`、`smart_start_vllm.sh` 对应。
@@ -82,4 +82,4 @@
       `config/capabilities.json` 与本文档/`scheduler-agent-design.md`。
 
 ---
-*本文件为指导意见；不替代协议（protocol.md §9 文件总线：事实源 = docs/session-summary.md）。*
+*本文件为指导意见；不替代协议（protocol.md §9 文件总线：事实源 = docs/history/session-summary.md）。*

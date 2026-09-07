@@ -22,7 +22,7 @@
 
 **做什么**：先读相关文档/skills、核实事实，再动手。
 
-- 读 `START-HERE.md §2` 找到对应文档/skill；新参与一律先读总入口与 `docs/session-summary.md`（事实源）。
+- 读 `START-HERE.md §2` 找到对应文档/skill；新参与一律先读总入口与 `docs/history/session-summary.md`（事实源）。
 - 核对双端/多副本现状：
   - Windows 主库：`git -C D:/MY_CODING_PROGRAM/videoGenerate-Model-zju log --oneline -5`
   - spark 运行时：`ssh spark "git -C /home/Developer/videoGenerate-Model-zju log --oneline -5"`；再看 `git status --short` 是否有未提交改动。
@@ -84,8 +84,8 @@
 
 **做什么**：把改动与结论写回文档与 skills，并使索引一致。
 
-- 状态类：`docs/session-summary.md`（事实源，追加批次/状态）、`docs/handoff-2026-09-04.md`（最新交接/测试清单回写）。
-- 参考类：`docs/reference-2026-09-04.md`（契约/故障字典/工具速查）、`docs/robustness-and-modularity.md`、`docs/agent-workflow.md`。
+- 状态类：`docs/history/session-summary.md`（事实源，追加批次/状态）、`docs/handoff/handoff-2026-09-04.md`（最新交接/测试清单回写）。
+- 参考类：`docs/history/reference-2026-09-04.md`（契约/故障字典/工具速查）、`docs/guides/robustness-and-modularity.md`、`docs/guides/agent-workflow.md`。
 - 计划类：`docs/planbook/`（本阶段计划、验收结果）。
 - **索引同步（`START-HERE.md §5` 强制）**：新增/修改/删除任何 `docs/`、`skills/` 文件 → 更新 `START-HERE.md §2` 索引表（条目+角色标签）与 §6 版本记录；`README.md` 的「文档」表同步增删。
 - 口径一致性：本文件 ↔ README ↔ handoff/reference/session-summary ↔ skills 描述同一事实不得打架；改任一处的机制/数值必须四处核对。

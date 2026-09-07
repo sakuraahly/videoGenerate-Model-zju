@@ -4,7 +4,7 @@ h3.capabilities — 项目生成能力的结构化注册表（config/capabilitie
 
 作用（方案一：System Prompt + 结构化工具/能力定义的基础）：
   1) 单一来源：能力/工作流/参数只在 capabilities.json 维护，避免散落文档漂移；
-  2) 生成人类可读说明：`python runs/h3/capabilities.py --doc` 产出 docs/capabilities-ai.md；
+  2) 生成人类可读说明：`python runs/h3/capabilities.py --doc` 产出 docs/guides/capabilities-ai.md；
   3) 生成“喂给本地 LLM”的精简摘要：digest（默认不注入每次填词请求，避免挤占指令；
      供未来“创意→选工作流/出计划”的 plan 模式使用，或人工审查模型能看到什么）。
   4) 校验：运行方可用 load_workflow() 判断某槽位/引擎存在性。
@@ -176,7 +176,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     cap = load_capabilities(project_dir)
     import argparse
     ap = argparse.ArgumentParser(description="capabilities 注册表工具")
-    ap.add_argument("--doc", action="store_true", help="打印并写回 docs/capabilities-ai.md")
+    ap.add_argument("--doc", action="store_true", help="打印并写回 docs/guides/capabilities-ai.md")
     ap.add_argument("--digest", action="store_true", help="打印喂给 LLM 的精简摘要")
     ap.add_argument("--workflow", type=str, default="", help="查询某个 workflow id")
     ap.add_argument("--registry-doc", action="store_true",
@@ -185,7 +185,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = ap.parse_args(argv)
     if args.doc:
         md = markdown_doc(cap)
-        dst = project_dir / "docs" / "capabilities-ai.md"
+        dst = project_dir / "docs" / "guides" / "capabilities-ai.md"
         dst.write_text(md, encoding="utf-8")
         print(md[:400])
         print(f"\n[written] {dst}")

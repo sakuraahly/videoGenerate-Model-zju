@@ -66,6 +66,6 @@ python3 runs/agent/llm_mem.py flush   # 运行时清 KV 缓存（可选）
 
 ## 5. 参考
 - 仓库：`docs/local-model/quick-start.md`、`docs/local-model/full-manual.md`、
-  `docs/qwen38-deployment.md`、`docs/session-summary.md §10/§11`
+  `docs/guides/qwen38-deployment.md`、`docs/history/session-summary.md §10/§11`
 - spark：`~/Qwen3.8-27B/DEPLOYMENT.md`、`~/Qwen3.8-27B/PROJECT-STATUS.md`
 - 内核问题：FlashInfer fp8-KV SM12.1（https://github.com/flashinfer-ai/flashinfer/issues）

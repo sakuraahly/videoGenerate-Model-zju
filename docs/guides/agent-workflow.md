@@ -1,7 +1,7 @@
 # 本地 Agent（Qwen）工作链详细手册
 
 > 面向：在 spark 上使用本地 Qwen Agent 出片的所有人 / 需要理解“一句话 → 成片”内部
-> 流程的后续维护者。事实源：`docs/session-summary.md`；工具参数速查：
+> 流程的后续维护者。事实源：`docs/history/session-summary.md`；工具参数速查：
 > `docs/agent-reading/01-tools-reference.md`；任务执行协议速查（给模型自己看）：
 > `docs/agent-reading/04-agent-workflow.md`。
 

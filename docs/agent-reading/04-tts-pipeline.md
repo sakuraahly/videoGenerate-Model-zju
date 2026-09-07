@@ -1,7 +1,7 @@
 # TTS 语音/字幕管道（本地大模型；2026-09-07）
 
 一句话：**台词/旁白 = F5-TTS 本地大模型克隆合成（音色=参考样本）+ SenseVoice ASR 回环验收 + 字幕/混音/超分后处理**。
-详细原理与复现序列见 `docs/tts-pipeline-explain.md`（讲解版）；本页只给 agent 可执行要点。
+详细原理与复现序列见 `docs/guides/tts-pipeline-explain.md`（讲解版）；本页只给 agent 可执行要点。
 
 ## 模型与环境（全本机，无云端）
 

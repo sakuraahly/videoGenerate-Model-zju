@@ -295,7 +295,7 @@ Comfy 账号登录，GUI Queue 报 Unauthorized 即此因）；`video_minimax_h3
 实跑出片）；`video_minimax_h3_flf2v.json` = **本地新增双帧变体**（由 video i2v 扩展：两个
 LoadImage 接 MiniMaxH3ImageToVideo 的 first/last_frame，覆盖本地 flf2v 语义；仅存本地镜像，
 不上传 spark）。
-> 📖 逐文件手动步骤：`docs/manual-use-6-workflows.md`
+> 📖 逐文件手动步骤：`docs/guides/manual-use-6-workflows.md`
 
 ### 9.6 远程模板路径记录（spark）
 

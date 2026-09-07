@@ -208,7 +208,7 @@ H3 推理峰值约 36 GB，`--reserve-vram 12` 是给非推理期预留的。若
 ## 6. 与 H3 视频生成的关系
 
 ComfyUI 是 H3 工作流的调度与 Web UI 入口：
-- 模型文件见 `docs/h3-workflow-architecture.md`
-- 提交任务、监控、下载视频见 `docs/h3-manual-operations.md`
+- 模型文件见 `docs/guides/h3-workflow-architecture.md`
+- 提交任务、监控、下载视频见 `docs/guides/h3-manual-operations.md`
 
 只要 ComfyUI 在跑且隧道通畅，即可通过浏览器加载工作流并提交 H3 生成任务。

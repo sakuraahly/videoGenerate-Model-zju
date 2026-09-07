@@ -31,7 +31,7 @@
 | 文档 | `python runs/dev.py docs`（START-HERE §2 索引校验） | 新增/修改 docs 不更新索引 |
 | 队列 | `python runs/dev.py queue`（只读+归属） | 直接 curl 删除/取消他人任务（红线） |
 
-- dev.py 不具备所需能力时：先在 `docs/dev-workflow.md` 登记缺口 → 扩展 `dev.py`（新增子命令）→ 走完整流程后使用；**不得**因图快开手工旁路。
+- dev.py 不具备所需能力时：先在 `docs/guides/dev-workflow.md` 登记缺口 → 扩展 `dev.py`（新增子命令）→ 走完整流程后使用；**不得**因图快开手工旁路。
 - 本册（计划书写作）即按该表执行：`dev.py check` → `dev.py sync --dry-run` → `dev.py sync` → `dev.py commit --files` → 回填证据。
 
 ### 1.2 模型必须使用 spark 主机项目文件（执行与验证的唯一口径）

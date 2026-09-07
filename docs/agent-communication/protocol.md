@@ -3,7 +3,7 @@
 > 定义多个 AI Agent 之间的通信方式、消息格式和协作流程
 >
 > ⚠️ **示例与真实区分**：本文所有 JSON/YAML 里的任务内容（如 FlashInfer、NVFP4、
-> SGLang、具体脚本路径）**多为示例**。执行前必须以 `docs/session-summary.md` 的
+> SGLang、具体脚本路径）**多为示例**。执行前必须以 `docs/history/session-summary.md` 的
 > “当前状态/待办”和实际文件为准（当前真实对象：Qwen3.8-27B vLLM 服务、FlashInfer
 > 加速安装中；引擎用 vLLM，不是 SGLang）。
 
@@ -522,7 +522,7 @@ logs/agent-comm/
 - **收件箱目录**：`docs/agent-communication/inbox/`（写方在此落消息，命名沿用
   `msg-<任务id>-<type>.json`；该目录已 gitignore，属暂态）。
 - **事实源**：各 Agent 开工/收工扫描 inbox，并把进展/结论写入
-  `docs/session-summary.md`（跨 Agent 唯一事实源，含当前状态、待办、服务开关）。
+  `docs/history/session-summary.md`（跨 Agent 唯一事实源，含当前状态、待办、服务开关）。
 - **审查/决策产物**：需要追溯的评审报告、决策记录直接入库（如本目录的
   `review-and-recommendations.md`），不入 inbox。
 - **服务状态纪律**：spark 侧服务（vLLM/ComfyUI/FlashInfer）是否可启动、由谁启动，
@@ -562,7 +562,7 @@ logs/agent-comm/
 ## 11. 两端代码协作：Git + 文件同步协议（Windows ↔ spark）
 
 > 背景：spark 无 GitHub 推送能力，但保留**本地 git 记录**（commit/回滚可用）；跨端合并不走
-> git push，而是文件级"逐文件取新 + 显式冲突"。详见 `docs/deploy-modes.md` §5–§6。
+> git push，而是文件级"逐文件取新 + 显式冲突"。详见 `docs/guides/deploy-modes.md` §5–§6。
 
 - 工具：`python runs\sync_merge.py`（两端均部署）：`--status`（一致/远端新/本地新/冲突/删除提示）、
   `--pull-auto`、`--push-auto`、`--resolve <文件> --from local|remote`、`--make-base`；

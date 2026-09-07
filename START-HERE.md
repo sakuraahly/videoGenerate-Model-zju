@@ -9,8 +9,8 @@
 > 第三批：对话历史丢失修复、禁用自动 nap、系统提示词自主性重写、上传体验优化；
 > 第四批：tools.py TimeoutExpired bytes/str 拼接 bug 修复、压力测试验证；
 > 计划书：新增 `docs/planbook/`（系统性修复计划，含基座/前端/输出/自动完成/资源隔离/工作流/引擎/风格/验证，见 §2 第 10 条））
-> 事实权威：`docs/session-summary.md`（历史批次与现状）；最新交接：`docs/handoff-2026-09-04.md`；
-> 详细参考：`docs/reference-2026-09-04.md`。仓库双端：Windows 主库 ↔ GitHub ↔ spark 运行时。
+> 事实权威：`docs/history/session-summary.md`（历史批次与现状）；最新交接：`docs/handoff/handoff-2026-09-04.md`；
+> 详细参考：`docs/history/reference-2026-09-04.md`。仓库双端：Windows 主库 ↔ GitHub ↔ spark 运行时。
 
 ---
 
@@ -29,25 +29,25 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 | 1 | **`START-HERE.md`（本文件）** | 总入口：架构速览、阅读索引、路径/红线、参与规范 | 所有新参与模型/Agent |
 | 2 | `README.md` | 功能清单、快速开始、目录结构 | 所有 |
 | 3 | **`docs/CURRENT-STATE.md`** | ⭐⭐ **当前事实唯一权威**（服务/模型/参数/音色/通道/纪律/待办） | 所有（事实以它为准） |
-| 3b | `docs/session-summary.md` | 🗄 历史状态快照 + 20.x 轮次审计志（只读；冲突以 CURRENT-STATE 为准） | 追溯 |
+| 3b | `docs/history/session-summary.md` | 🗄 历史状态快照 + 20.x 轮次审计志（只读；冲突以 CURRENT-STATE 为准） | 追溯 |
 | 3c | `docs/README.md` | **文档地图**：各文档角色/权威/更新规则（新增文档先登记） | 所有 |
-| 4 | `docs/handoff-2026-09-07-live.md` | **当日现场交接**：音色链真相（F5-TTS 本地=大模型）/aria 双轨/镜头17 实战演/CosyVoice2 试点/运维记录（跨日则新建当日 handoff；旧版 09-03~09-06 为历史） | 所有（接手当日工作前） |
-| 5 | `docs/reference-2026-09-04.md` | 详细工程参考：配置注册表、引擎/工具/Agent 契约、模板明细、故障字典 | 所有（查参数/契约/排障） |
+| 4 | `docs/handoff/handoff-2026-09-07-live.md` | **当日现场交接**：音色链真相（F5-TTS 本地=大模型）/aria 双轨/镜头17 实战演/CosyVoice2 试点/运维记录（跨日则新建当日 handoff；旧版 09-03~09-06 为历史） | 所有（接手当日工作前） |
+| 5 | `docs/history/reference-2026-09-04.md` | 详细工程参考：配置注册表、引擎/工具/Agent 契约、模板明细、故障字典 | 所有（查参数/契约/排障） |
 | 6 | `skills/h3-video-generation.md` | 生成任务全流程技能卡（§0b 路径速查与 Z 盘红线、§1.3c 上下文预算机制） | Agent/操作者做生成任务 |
 | 6b | `skills/h3-postproduction.md` | 成品链技能卡（TTS 音色/字幕/音效/ASR 验收/超分/交付） | 生成后装配/验收前 |
 | 7 | `skills/h3-prompt-engineering.md` | 提示词工程规则（结构/中文渲染/音频句等；含参考图 tag 契约/剧本块） | 写任何生成提示词前 |
-| 8 | `docs/agent-workflow.md`、`docs/agent-reading/00–04` | 7860 Agent 工作链手册与执行协议（提交/续传/取件、素材链、输出纪律） | 调度/使用 Agent 完成任务 |
-| 9 | `docs/quickstart.md` / `docs/user-guide.md` / `docs/deploy-modes.md` / `docs/llm-memory-optimization.md` / `docs/qwen38-deployment.md` / `docs/h3-workflow-architecture.md` / `docs/h3-troubleshooting.md` / `docs/long-term-maintenance.md` 等 | 新手入门 / 用户手册 / 部署形态 / 内存账本 / Qwen 部署 / 工作流架构 / 故障排查 / 长期维护 | 按需定向阅读 |
+| 8 | `docs/guides/agent-workflow.md`、`docs/agent-reading/00–04` | 7860 Agent 工作链手册与执行协议（提交/续传/取件、素材链、输出纪律） | 调度/使用 Agent 完成任务 |
+| 9 | `docs/guides/quickstart.md` / `docs/guides/user-guide.md` / `docs/guides/deploy-modes.md` / `docs/guides/llm-memory-optimization.md` / `docs/guides/qwen38-deployment.md` / `docs/guides/h3-workflow-architecture.md` / `docs/guides/h3-troubleshooting.md` / `docs/guides/long-term-maintenance.md` 等 | 新手入门 / 用户手册 / 部署形态 / 内存账本 / Qwen 部署 / 工作流架构 / 故障排查 / 长期维护 | 按需定向阅读 |
 | 10 | **`docs/planbook/book-00-overview.md`**（+ book-01…book-17） | **系统性修复计划书**：痛点→阶段映射、基座/可信部署、前端/输出/自动完成/资源隔离/工作流/引擎/风格、验收门禁与黄金路径 | 修复负责人（多轮校验先读 book-00） |
 | 10b | `docs/planbook/book-17-model-fabrication-defense.md` | **计划·待批准**：模型伪造工具调用纵深防御（白名单/Schema 前置校验/修复重试/钩子/幂等/审计/人在回路）+ 流程自动化合规（必用 dev.py + spark 项目文件口径）+ LoRA/低参验证策略 + T2b 语音链联动 | 批准后实施负责人 |
 | 10c | `docs/planbook/book-18-quality-prompts-and-clarity.md` | **已实施完成**：质量提示词固化（Q+/Q- 每轮注入+防漂移断言）+ 语音/文字清晰度加强（取舍表已定；听测通过） | 已归档 |
-| 10d | `docs/pending-tasks-implementation.md` | **待做任务·实现规格（当前定稿）**：S1-S13 各任务现状/实现/验证/风险/回滚 + 约束事实表（供外部 AI 审核与实施；审核应答演变见 `docs/pending-tasks-changelog.md`） | 待实施 |
+| 10d | `docs/history/pending-tasks-implementation.md` | **待做任务·实现规格（当前定稿）**：S1-S13 各任务现状/实现/验证/风险/回滚 + 约束事实表（供外部 AI 审核与实施；审核应答演变见 `docs/history/pending-tasks-changelog.md`） | 待实施 |
 | 10d′ | `docs/planbook/book-19-execution-ready.md` | **执行就绪计划书（19 审后）**：执行总纲/打开门禁/执行顺序与规格索引/统一验收判据/资源纪律/回滚/执行记录模板 | 实施执行者（按序动工前必读） |
-| 10e | `docs/pending-tasks-changelog.md` | **审核应答与修订历史（§14-§19 及后续轮次）**：仅供追溯，不指导实施 | 存档 |
-| 10f | `docs/handoff-2026-09-05-L-tasks.md` | **book-14 L1–L5 交接（已完成批次）**：独立执行 Agent 规格与坑速查 | 已归档 |
-| 11 | `docs/dev-workflow.md` / `skills/dev-workflow.md` | **变更与交付工作流**：执行→修改→测试→自测通过→写入文档→双端核对→git 提交（含如何操作） | 所有改动者（改任何文件前必读） |
-| 12 | `docs/prompt-taxonomy.md` | **H3 提示词属性词库**：10 正向 + 9 负向分类（book-06 保留/注入的图像属性词） | 工作流/提示词维护者 |
-| 13 | `docs/code-fact-registry.md` | **代码事实登记表**：路径/端口/常量/工具数/部署形态/模型模板唯一口径（冲突以运行代码为准） | 所有改动者（改前查表） |
+| 10e | `docs/history/pending-tasks-changelog.md` | **审核应答与修订历史（§14-§19 及后续轮次）**：仅供追溯，不指导实施 | 存档 |
+| 10f | `docs/handoff/handoff-2026-09-05-L-tasks.md` | **book-14 L1–L5 交接（已完成批次）**：独立执行 Agent 规格与坑速查 | 已归档 |
+| 11 | `docs/guides/dev-workflow.md` / `skills/dev-workflow.md` | **变更与交付工作流**：执行→修改→测试→自测通过→写入文档→双端核对→git 提交（含如何操作） | 所有改动者（改任何文件前必读） |
+| 12 | `docs/guides/prompt-taxonomy.md` | **H3 提示词属性词库**：10 正向 + 9 负向分类（book-06 保留/注入的图像属性词） | 工作流/提示词维护者 |
+| 13 | `docs/guides/code-fact-registry.md` | **代码事实登记表**：路径/端口/常量/工具数/部署形态/模型模板唯一口径（冲突以运行代码为准） | 所有改动者（改前查表） |
 
 > `docs/agent-reading/` 是 agent `read_doc` 工具的动态清单（新增文档自动出现在工具描述中），
 > 任务执行细节以其中 `04-agent-workflow.md` 为速查。
@@ -68,10 +68,10 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
                                                   └──────────────────────────────────────────────┘
 ```
 
-- 运行形态由 `config/deploy.json` 的 site 决定：**spark-local（现状/交付）** / win-remote（本机+隧道），切换见 `docs/deploy-modes.md`。
+- 运行形态由 `config/deploy.json` 的 site 决定：**spark-local（现状/交付）** / win-remote（本机+隧道），切换见 `docs/guides/deploy-modes.md`。
 - 两端代码同步：改 Windows → commit → push GitHub → sync/spark commit（spark 永不推 GitHub，commit 需内联身份 `-c user.name=Developer -c user.email=dev@spark`）；机器配置（deploy/llm/llm_mem/pipeline 等）不入库、不随同步。
 
-### 3.2 工作文件夹（双端全景，详见 `docs/session-summary.md §14` / `skills/h3-video-generation.md §0b`）
+### 3.2 工作文件夹（双端全景，详见 `docs/history/session-summary.md §14` / `skills/h3-video-generation.md §0b`）
 
 | 规范路径 | 内容 |
 |---|---|
@@ -90,7 +90,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 - **素材链**：上传（7860 直传 / upload_watch）→ `uploads/` 归档 + ComfyUI input 镜像 → `runs/h3/refimage.py` 三池 list/promote/use。
 - **AI 桥**：`runs/h3/idea2prompts.py` 一句创意 → Qwen 生成各槽位提示词 JSON（模型有职责护栏：只当提示词生成器）。
 - **Agent（调度器）**：7860 界面 `runs/agent/ui_app.py`（历史会话/直传/继续/中止/状态条/上下文预算）→ 调度器（`SYSTEM_MESSAGE` 内嵌核心知识）→ 5 个白名单工具（`run_script`/`modify_workflow`/`call_comfyui`/`read_doc`/`list_references`）→ 提交即返回（`TASK_SUBMITTED`），续传/取片走“无参重跑”。
-- **开发工具盒（dev.py，2026-09-04 新增）**：`runs/dev.py` —— 把变更与交付工作流固化为 `check`（双端状态/漂移/一致性/文档索引）/ `sync`（定点同步改动文件到 spark）/ `commit`（Windows commit+push GitHub+spark commit）/ `docs`（START-HERE §2 索引校验）/ `test`（consistency+单测+干跑）五个子命令；一次调用拿到精简结论，节省 agent token（详见 `docs/dev-workflow.md`）。
+- **开发工具盒（dev.py，2026-09-04 新增）**：`runs/dev.py` —— 把变更与交付工作流固化为 `check`（双端状态/漂移/一致性/文档索引）/ `sync`（定点同步改动文件到 spark）/ `commit`（Windows commit+push GitHub+spark commit）/ `docs`（START-HERE §2 索引校验）/ `test`（consistency+单测+干跑）五个子命令；一次调用拿到精简结论，节省 agent token（详见 `docs/guides/dev-workflow.md`）。
 - **上下文预算**（2026-09-04 修复，`runs/agent/ctx_budget.py`）：SGLang ctx=8192 硬顶 + 每轮固定开销 ≈3.1k token（系统+工具模板，实测）⇒ 对话精炼 ≤600 字/轮、历史 token 口径裁剪、超限自动压缩重试；改服务端 ctx 必须同步该文件常量。
 - **内存协同**：`runs/agent/llm_mem.py` nap/wake——检测到 `TASK_SUBMITTED:` 自动停 SGLang 给 ComfyUI 让位，下一轮对话自动唤醒（1-3 分钟）。
 - **审计/可靠性**：logs/run_*.log 全事件留痕 + workflows/h3_<ts>/job.json 任务联结；断点续传不重复生成；单实例锁；提交/等待分离。
@@ -117,8 +117,8 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 - [ ] 不重复提交、不删运行中断点（last_job.json）；超时≠失败（无参重跑=续传）
 
 **收工后（写回知识，见 §7）**
-- [ ] 执行了测试 → 在 `docs/handoff-2026-09-04.md §5` 测试清单回写实测
-- [ ] 有批次成果 → 在 `docs/session-summary.md` 追加批次记录（§12/§13 样式）
+- [ ] 执行了测试 → 在 `docs/handoff/handoff-2026-09-04.md §5` 测试清单回写实测
+- [ ] 有批次成果 → 在 `docs/history/session-summary.md` 追加批次记录（§12/§13 样式）
 - [ ] 改了代码/文档/skill → 同步 README/本文件索引；Windows 主库 commit → push → spark 同步 commit
 - [ ] 改了服务端配置/ctx → 同步 `ctx_budget.py`、`llm_mem.json`、`llm-memory-optimization.md` 等口径
 
@@ -128,8 +128,8 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 
 1. **文档/skills 增删改**：新增、重命名或删除任何 `docs/`、`skills/` 文件 → 更新 §2 索引表（条目+角色标签）；README 的“文档”表同步增删。
 2. **结构性变化**：拓扑/端口/服务启动方式/工作文件夹/模型/运行形态变化 → 更新 §3 各小节（并同步 handoff/reference/session-summary 对应处）。
-3. **批次成果**：完成一轮工作 → 在 `docs/session-summary.md` 记批次，把“最近更新”行与相关小节刷新，新批次日期与内容记入 §6 版本记录。
-4. **口径一致性**：本文件 ↔ README ↔ `docs/{handoff,reference}-2026-09-04.md` ↔ `docs/session-summary.md` ↔ skills 描述同一事实时不得打架；改任一处的机制/数值必须四处核对（例如 ctx/内存/端口/路径）。
+3. **批次成果**：完成一轮工作 → 在 `docs/history/session-summary.md` 记批次，把“最近更新”行与相关小节刷新，新批次日期与内容记入 §6 版本记录。
+4. **口径一致性**：本文件 ↔ README ↔ `docs/{handoff,reference}-2026-09-04.md` ↔ `docs/history/session-summary.md` ↔ skills 描述同一事实时不得打架；改任一处的机制/数值必须四处核对（例如 ctx/内存/端口/路径）。
 5. 双端同步：Windows 主库改 → push GitHub → spark 副本同步（含本文件本身）。
 
 ## 6. 版本记录
@@ -141,10 +141,10 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 | 2026-09-06 用户首验 | 3 段 r2v 产物“参考图=首尾帧”问题归因（tag 计数=0=提示词契约缺失+ref_image_size=match）→ 计划书 P1.5 参考语义修复（最高优先）；新增 handoff-2026-09-06（最新交接） |
 | 2026-09-04 待做池 | 新增 docs/planbook/book-13-backlog.md：实施状态总览 + P0-P2 待办 + 架构优化任务（绑定统一/解析收敛/单源/轮询成本）+ 新观察 |
 | 2026-09-04 日志计划 | 新增 docs/planbook/book-11-logging-system.md：日志系统治理与升级（全场景稳定/无垃圾/不错失 agent 行为与参数，含 dev.py logs 子命令规划） |
-| 2026-09-04 EIO经验 | docs/dev-workflow.md §10 记录 Windows ReplaceFileW EIO(1175) 根因与处置（重试/WriteAllText/读写顺序/转义教训）；skills 同步一行 |
+| 2026-09-04 EIO经验 | docs/guides/dev-workflow.md §10 记录 Windows ReplaceFileW EIO(1175) 根因与处置（重试/WriteAllText/读写顺序/转义教训）；skills 同步一行 |
 | 2026-09-04 基座实施 | book-01 第一轮：version.py / runtime_check.py / tests/e2e_smoke.py / consistency_check 扩展 / code-fact-registry.md；修复 project_root 误入残留副本 |
 | 2026-09-04 工具盒 | 新增 runs/dev.py（check/sync/commit/docs/test 五子命令），把变更与交付工作流固化为脚本，节省 agent token |
-| 2026-09-04 流程固化 | 新增 **变更与交付工作流**（`docs/dev-workflow.md` + `skills/dev-workflow.md`）并纳入 `START-HERE.md §2`；新增 `docs/prompt-taxonomy.md`（10 正 + 9 负）；planbook 更新确认输入 |
+| 2026-09-04 流程固化 | 新增 **变更与交付工作流**（`docs/guides/dev-workflow.md` + `skills/dev-workflow.md`）并纳入 `START-HERE.md §2`；新增 `docs/guides/prompt-taxonomy.md`（10 正 + 9 负）；planbook 更新确认输入 |
 | 2026-09-04 计划书 | 新增 `docs/planbook/` 系统性修复计划：痛点→阶段矩阵、基座/可信部署、前端/输出/自动完成/资源隔离/工作流/引擎/风格/验证（book-00…book-10） |
 | 2026-09-04 第五批 | 体验/性能/隔离 6 阶段优化：上传三态+状态栏HTML、无效图片拦截(mediacheck)、熔断器(turn_state)、批量提交(h3_batch)、素材隔离(batch_id)、文档预热(doc_state) |
 | 2026-09-04 第四批 | tools.py TimeoutExpired bytes/str 拼接修复（两处）、同步 spark 并重启验证、CLI 多轮对话测试通过 |

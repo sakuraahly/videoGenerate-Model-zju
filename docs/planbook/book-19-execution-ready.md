@@ -1,6 +1,6 @@
 # book-19 执行就绪计划书（Execution Readiness）
 
-> 版本：v1.0 · 2026-09-06 · 前置：`docs/pending-tasks-implementation.md` 经 **19 轮审核定稿**（changelog §14-§29）；本件把"定稿规格"转成"可执行清单"——执行者在每项完成后按 §7 回写并更新状态列。
+> 版本：v1.0 · 2026-09-06 · 前置：`docs/history/pending-tasks-implementation.md` 经 **19 轮审核定稿**（changelog §14-§29）；本件把"定稿规格"转成"可执行清单"——执行者在每项完成后按 §7 回写并更新状态列。
 > 事实权威：START-HERE §2 索引 / session-summary / reference；仓库三端一致（win=github=spark，0 dirty），单测基线 **165 例**。
 > 引用约定：`S#`=pending-tasks-implementation.md 的节号；`☆`=spark 真机路径（需队列空闲窗口）。
 

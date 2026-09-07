@@ -1,10 +1,10 @@
 # MiniMax H3 视频生成 — 用户指南（User Guide）
 
 > 适用人群：直接操作这台 Windows 机器的“使用者/小白”，以及需要调用该工具的 AI 智能体。
-> 本文讲“怎么用”；想了解内部架构/如何扩展请看 `docs/robustness-and-modularity.md`。
-> ⭐ **第一次上手请先看 `docs/quickstart.md`（新手三步走 + 模板/参考图选择）**；
-> 指定"工作流 / 提示词"（有无本地 AI 两种情形）见 `docs/workflow-and-prompt.md`。
-> 运行形态切换（本地+远程 vs 整体部署在 spark）：见 `docs/deploy-modes.md`。
+> 本文讲“怎么用”；想了解内部架构/如何扩展请看 `docs/guides/robustness-and-modularity.md`。
+> ⭐ **第一次上手请先看 `docs/guides/quickstart.md`（新手三步走 + 模板/参考图选择）**；
+> 指定"工作流 / 提示词"（有无本地 AI 两种情形）见 `docs/guides/workflow-and-prompt.md`。
+> 运行形态切换（本地+远程 vs 整体部署在 spark）：见 `docs/guides/deploy-modes.md`。
 > 本文是完整参考。
 
 ---
@@ -141,7 +141,7 @@ python runs\h3_submit.py --dry-run --stage r2v --image a.png          # 只预�
 | `api_minimax_h3_flf2v.json` | 首帧+末帧（锁定起止更精确）；**示例图需自备** | 同上 | 同上 |
 
 > 📖 **逐文件手动使用步骤（GUI + 脚本两种方式）请看：
-> `docs/manual-use-6-workflows.md`**。
+> `docs/guides/manual-use-6-workflows.md`**。
 
 **运行日志**：每次执行在 `logs\run_<时间戳>.log` 生成一份日志（PowerShell 步骤 +
 Python 事件写同一文件，文件路径在运行时窗口/日志首行显示）；`logs/` 已 gitignore，
@@ -170,18 +170,18 @@ Python CLI 退出码契约：`0` 成功并已打印 `REMOTE_VIDEO_PATH: <远程�
 
 | 文档 | 内容 |
 |---|---|
-| `docs/quickstart.md` | ⭐ 新手快速上手（三步出第一条视频 + 模板/参考图选择） |
-| `docs/workflow-and-prompt.md` | ⭐ 指定"工作流"与"提示词"：有/无本地通用模型两种情形 |
-| `docs/deploy-modes.md` | 运行形态切换：win-remote / spark-local（部署到 spark 的交付用法） |
-| `docs/capabilities-ai.md` | 项目生成能力注册表可读版（由 config/capabilities.json 生成） |
-| `docs/session-summary.md` | ★ 会话交接总结（给新对话看，含待办） |
-| `docs/manual-use-6-workflows.md` | ★ 6 个工作流逐文件手动使用步骤（GUI + 脚本） |
-| `docs/robustness-and-modularity.md` | 架构、模块职责、断点/隧道机制、测试、如何扩展 |
-| `docs/user-guide.md`（本文） | 面向使用者的操作指南 |
-| `docs/h3-manual-operations.md` | 底层手工 ssh 操作（自动化出现前的流程，保留作参考） |
-| `docs/h3-troubleshooting.md` | 常见报错排查 |
-| `docs/comfyui-startup-and-access.md` | 远程 ComfyUI 启动/访问/隧道 |
-| `docs/long-term-maintenance.md` | 日志、清理、长期维护 |
+| `docs/guides/quickstart.md` | ⭐ 新手快速上手（三步出第一条视频 + 模板/参考图选择） |
+| `docs/guides/workflow-and-prompt.md` | ⭐ 指定"工作流"与"提示词"：有/无本地通用模型两种情形 |
+| `docs/guides/deploy-modes.md` | 运行形态切换：win-remote / spark-local（部署到 spark 的交付用法） |
+| `docs/guides/capabilities-ai.md` | 项目生成能力注册表可读版（由 config/capabilities.json 生成） |
+| `docs/history/session-summary.md` | ★ 会话交接总结（给新对话看，含待办） |
+| `docs/guides/manual-use-6-workflows.md` | ★ 6 个工作流逐文件手动使用步骤（GUI + 脚本） |
+| `docs/guides/robustness-and-modularity.md` | 架构、模块职责、断点/隧道机制、测试、如何扩展 |
+| `docs/guides/user-guide.md`（本文） | 面向使用者的操作指南 |
+| `docs/guides/h3-manual-operations.md` | 底层手工 ssh 操作（自动化出现前的流程，保留作参考） |
+| `docs/guides/h3-troubleshooting.md` | 常见报错排查 |
+| `docs/guides/comfyui-startup-and-access.md` | 远程 ComfyUI 启动/访问/隧道 |
+| `docs/guides/long-term-maintenance.md` | 日志、清理、长期维护 |
 | `skills/h3-video-generation.md` | 智能体技能卡（怎么做一次生成） |
 | `skills/h3-prompt-engineering.md` | 提示词工程规则 |
 

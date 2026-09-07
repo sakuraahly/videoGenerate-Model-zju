@@ -2,7 +2,7 @@
 
 > **Note (migration)**: this guide documents the low-level manual SSH path from before the
 > automation existed. For day-to-day one-click generation use **`bats\generate\menu.bat` / `bats\generate\run.bat`**
-> (see `docs/user-guide.md`; architecture in `docs/robustness-and-modularity.md`).
+> (see `docs/guides/user-guide.md`; architecture in `docs/guides/robustness-and-modularity.md`).
 > Keep this file for debugging or when you must operate the remote by hand.
 
 This guide walks through generating a video with MiniMax H3 on DGX Spark step by step. Copy-paste every command.
@@ -12,7 +12,7 @@ This guide walks through generating a video with MiniMax H3 on DGX Spark step by
 ## Prerequisites
 
 - SSH access to the DGX Spark (configured in `~/.ssh/config` as host `spark`)
-- ComfyUI running on Spark as a manual background process (see `docs/comfyui-startup-and-access.md`)
+- ComfyUI running on Spark as a manual background process (see `docs/guides/comfyui-startup-and-access.md`)
 - All 4 model files downloaded (see architecture doc)
 
 ---
@@ -32,7 +32,7 @@ If this fails, check your SSH key and config.
 ## Step 2: Check ComfyUI Is Running
 
 > ComfyUI on Spark runs as a manual background process (not a systemd service).
-> Full startup / tunnel procedure: see `docs/comfyui-startup-and-access.md`.
+> Full startup / tunnel procedure: see `docs/guides/comfyui-startup-and-access.md`.
 
 ```bash
 ssh spark "pgrep -af main.py && ss -tlnp | grep 8188"
@@ -114,7 +114,7 @@ cd <仓库根目录>
 python runs\h3_submit.py --prompt-file "D:\路径\my_prompt.txt"   # 或 ./bats\generate\run.bat / bats\generate\menu.bat [1]
 ```
 （它会自动检查远程、建隧道、提交、轮询并打印 `REMOTE_VIDEO_PATH:`；退出码/断点
-语义见 `docs/user-guide.md`。）
+语义见 `docs/guides/user-guide.md`。）
 
 ### Option B: Use curl directly（纯远程、手动）
 

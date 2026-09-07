@@ -17,7 +17,7 @@
   task tool=.. idea_len=.. / task tool=.. resolution=.. seconds=..（任务配置摘要）
   submitted prompt_id=..  → 提交到 ComfyUI
   completed / dry_run / ok / err … → 结束/预览/分项/失败（失败必须落 err，杜绝
-  “只有 run start 两行”的粗略日志——教训见 docs/session-summary.md §12.4）
+  “只有 run start 两行”的粗略日志——教训见 docs/history/session-summary.md §12.4）
 """
 from __future__ import annotations
 

@@ -2,7 +2,7 @@
 """
 sync_merge — 两端(Windows 本地 ↔ spark)文件“逐文件取新 + 显式冲突”合并工具。
 
-协议背景（docs/deploy-modes.md §6）：
+协议背景（docs/guides/deploy-modes.md §6）：
 - 两端各自的 git 只记录本地历史（spark 不推 GitHub）；文件合并走本工具。
 - 机器相关与运行产物不参与同步（EXCLUDE）；基线 .sync-state.json 两端各存一份。
 - 判定（相对基线）：一端=基线另一端≠ → 单向改动/新增 → 自动；两端都≠基线 → 冲突，人工 --resolve。

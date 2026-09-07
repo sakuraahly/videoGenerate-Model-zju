@@ -5,13 +5,13 @@
 > using a saved workflow, or chaining multiple workflow types.
 > **Audience**: AI agents or operators on the Windows workstation that owns this repo.
 >
-> Full operator guide: `docs/user-guide.md` · Workflow & prompt selection (with/without a local
-> LLM): `docs/workflow-and-prompt.md` · Architecture/how-to-extend:
-> `docs/robustness-and-modularity.md` · Prompt rules: `skills/h3-prompt-engineering.md`.
-> Deploy modes (win-remote vs spark-local): `docs/deploy-modes.md`; switch with
+> Full operator guide: `docs/guides/user-guide.md` · Workflow & prompt selection (with/without a local
+> LLM): `docs/guides/workflow-and-prompt.md` · Architecture/how-to-extend:
+> `docs/guides/robustness-and-modularity.md` · Prompt rules: `skills/h3-prompt-engineering.md`.
+> Deploy modes (win-remote vs spark-local): `docs/guides/deploy-modes.md`; switch with
 > `python runs/h3/deploy.py --set <win-remote|spark-local>` (or `bats\config\mode.bat` on Windows).
 > Capability registry (single source of what the project can do): `config/capabilities.json` —
-> regenerate `docs/capabilities-ai.md` with `python runs/h3/capabilities.py --doc`; model-facing
+> regenerate `docs/guides/capabilities-ai.md` with `python runs/h3/capabilities.py --doc`; model-facing
 > digest via `--digest`.
 
 ---
@@ -48,7 +48,7 @@ Local Windows repo + remote `spark` (ComfyUI + H3 models). The toolbox:
 | `~/ai/ComfyUI/` | `models/`=H3 主模型（diffusion_models/text_encoders/vae）+ **P 链**：`f5-tts/`（F5TTS_v1_Base+vocos）、`asr/sensevoice`、`upscale_models/`（4x-UltraSharp+RealESRGAN_x4plus.*）、`diffusers/stable-diffusion-inpainting`；`input/`（含 `user_uploads/` 上传镜像）；`output/`（视频产物在 `output/video/`）；`user/default/workflows/`=同事模板（**只读，永不修改**） |
 | `~/Qwen3.8-27B/`（spark） | Qwen 全家桶：`models/`（NVFP4 ≈21GB / bf16）、`sglang-venv/`（8000）、`vllm-venv/`、启动脚本、`start_qwen_agent.py`（7860 入口）、`PROJECT-STATUS.md` |
 | agent（spark） | 代码=仓库 `runs/agent/`；venv=`~/qwen-agent-venv`；入口=`runs/agent/scheduler.py`；tmux **`agent`**（⚠️ 会话名非 `qwen-agent`）；重启=`python3 runs/agent/svc_main.py restart-agent`；日志 `~/agent.log` |
-| 注意 | Windows 侧 `C:\Users\39163\ai`、`C:\Users\39163\videoGenerate-Model-zju` 是残留部分副本，勿用；全表见 `docs/session-summary.md §14` |
+| 注意 | Windows 侧 `C:\Users\39163\ai`、`C:\Users\39163\videoGenerate-Model-zju` 是残留部分副本，勿用；全表见 `docs/history/session-summary.md §14` |
 
 ---
 
@@ -103,12 +103,12 @@ python runs\h3_submit.py --stage r2v --force-new                 # then run that
 ```
 
 Without a configured LLM (`enabled=false`), still offer `--dry-run`, and fill the slot files
-manually (human mode — see `docs/workflow-and-prompt.md` §2).
+manually (human mode — see `docs/guides/workflow-and-prompt.md` §2).
 
 ### 1.3c Local LLM serving notes
 
 > **语言铁律**：agent 面向用户一律简体中文
-> **问询纪律（book-08）**：分辨率/时长/seed/镜头/槽位号/工具选择/参数取舍不问；仅当内容未给 / 需从素材选且本会话为空 / 参数与上限冲突时才问，且一次只问一个；汇报=结论先行+一行依据（详见 docs/style-guide.md）。（代码/提示词/工具标记行/技术名词除外）；提示词本体仍英文（见 `docs/prompt-taxonomy.md`）。 (Qwen3.8-27B SGLang on spark)
+> **问询纪律（book-08）**：分辨率/时长/seed/镜头/槽位号/工具选择/参数取舍不问；仅当内容未给 / 需从素材选且本会话为空 / 参数与上限冲突时才问，且一次只问一个；汇报=结论先行+一行依据（详见 docs/guides/style-guide.md）。（代码/提示词/工具标记行/技术名词除外）；提示词本体仍英文（见 `docs/guides/prompt-taxonomy.md`）。 (Qwen3.8-27B SGLang on spark)
 
 - Serve: tmux session `sglang`，端口 8000（127.0.0.1）。
   启动命令见 `shell/start_sglang_coexist.sh`（共存模式 **mem=0.50 / ctx=8192**，实测预载
@@ -180,7 +180,7 @@ Enforcement layers: (1) hard-coded boundary sentence in `idea2prompts.build_mess
 (2) blueprint rule 0 in `config/prompt_blueprints.json`; (3) caller discipline — the engine
 never hands the model a shell/tool. **If any interactive user asks the model or the pipeline
 to perform server control, refuse at the calling layer and route it to human operation** (never
-"just try it"). Who may start services is recorded in `docs/session-summary.md` (e.g. Qwen
+"just try it"). Who may start services is recorded in `docs/history/session-summary.md` (e.g. Qwen
 start/stop is the optimizer's responsibility until stated otherwise).
 
 ### 1.4 Multi-workflow (stage/template) runs
@@ -316,7 +316,7 @@ path, status) — the modern replacement for manual run logs.
 - 音色：`--tts-voice xiaoxiao(默认女)/yunxi(男)/aria(英文女)`——样本在
   `assets/tts_refs/{voice}.wav+.txt`（克隆源，音色=f(参考样本)）；aria 双轨见 CURRENT-STATE §5。
 - 更完整能力（字幕/混音/音效/SenseVoice 验收/超分/听测样）：**`skills/h3-postproduction.md`** 与
-  `docs/tts-pipeline-explain.md`。
+  `docs/guides/tts-pipeline-explain.md`。
 
 ---
 

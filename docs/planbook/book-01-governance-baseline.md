@@ -25,7 +25,7 @@
 - **spark 运行时** `/home/Developer/videoGenerate-Model-zju`：git 最新 `2ee5a0b`（sync from Windows a5cfbcc），显著落后；工作区另有大量**未提交**改动（新增 `session_state.py`/`task_watch.py`/`turn_state.py`/`mediacheck.py` 等，修改 `ui_app.py`/`scheduler.py`/`tools.py`/`refimage.py` 等）。
 - **GitHub** `sakuraahly/videoGenerate-Model-zju`：仅由 Windows 主库 push，与 spark 无直接关系。
 - 结论（写作时）：spark 上"能跑"的 = 旧 git 提交 + 手改/未提交副本 的混合物，**无法复现**。
-- **2026-09-04 晚更新**：该漂移已由 `runs/dev.py` 的 sync/commit 追平——spark HEAD `d0da789` = Windows `1d42902`（仅提交身份不同）；spark 磁盘 `ui_app.py` 已是含新文案的版本（`08:18` 落盘）。**但真正没解决的是运行进程**：7860 端口持有者 `python runs/agent/scheduler.py`（PID 746835，`06:18` 启动，早于代码 2 小时）——即「**代码对、进程旧**」。本册的版本指纹/重启验证因而是当务之急（重启实测方法见 `docs/dev-workflow.md §6.1`，已按实测修正：tmux 会话名=`agent`、必须验证端口持有者启动时间与新文案/指纹）。
+- **2026-09-04 晚更新**：该漂移已由 `runs/dev.py` 的 sync/commit 追平——spark HEAD `d0da789` = Windows `1d42902`（仅提交身份不同）；spark 磁盘 `ui_app.py` 已是含新文案的版本（`08:18` 落盘）。**但真正没解决的是运行进程**：7860 端口持有者 `python runs/agent/scheduler.py`（PID 746835，`06:18` 启动，早于代码 2 小时）——即「**代码对、进程旧**」。本册的版本指纹/重启验证因而是当务之急（重启实测方法见 `docs/guides/dev-workflow.md §6.1`，已按实测修正：tmux 会话名=`agent`、必须验证端口持有者启动时间与新文案/指纹）。
 
 ### 2.2 同步机制本身可能造成"半同步"
 - `runs/sync_to_spark.py` 是 **tar 整包外传**（排除 .git、机器配置 deploy/llm/pipeline、产物 logs/outputs、审计 workflows/h3_*），解包到 spark `~/<项目名>`。
@@ -64,7 +64,7 @@
 | 新增 `runs/agent/version.py` | 计算并暴露当前版本/commit 指纹（git describe 或文件哈希兜底） | 唯一指纹来源 |
 | 新增 `runs/agent/runtime_check.py` | 核对关键常量/路径/工具数（`ctx_budget` 常量 vs 文档、spark 路径、工具注册数） | 运行时一致性 |
 | `runs/consistency_check.py` | 扩展：增加"工具数/常量/路径"与文档登记表的一致性检查 | 静态口径一致性 |
-| 新增 `docs/code-fact-registry.md` | 单一事实登记：路径、端口、常量、工具数、deploy 形态、关键模型/模板 | 口径唯一源 |
+| 新增 `docs/guides/code-fact-registry.md` | 单一事实登记：路径、端口、常量、工具数、deploy 形态、关键模型/模板 | 口径唯一源 |
 | 新增 `shell/sync_and_verify.ps1`（或扩展 `runs/sync_to_spark.py`） | 一键：同步 → 重启用例 → 等待就绪 → 跑版本自报/自测 → 结果 | 可重复部署门禁 |
 | 新增 `tests/e2e_smoke.py`（spark 运行） | 最小自测：读版本指纹 + 关键常量核对 + 白名单工具可导入 + `h3_submit --dry-run` | 防绕过证据 |
 
@@ -75,12 +75,12 @@
 ## 5. 实施步骤（每步可独立验证）
 
 ### 步骤 1：登记三处副本现状快照
-- 在 `docs/code-fact-registry.md` 记录：Windows 当前 commit、GitHub 最新 commit、spark 当前 git 与磁盘差异（`git status` + 关键文件 diff）。
+- 在 `docs/guides/code-fact-registry.md` 记录：Windows 当前 commit、GitHub 最新 commit、spark 当前 git 与磁盘差异（`git status` + 关键文件 diff）。
 - 证据：三条命令的输出（`git -C <repo> log -1` / `git rev-parse HEAD` / `ssh spark "git -C /home/Developer/videoGenerate-Model-zju status --short"`）。
 
 ### 步骤 2：确立并写死"唯一事实源 + 部署路径"
 - 写清：源码=Windows 主库（唯一 push GitHub）；spark 运行镜像=经 `sync_to_spark.py`（或 `sync_auto.py`）同步；spark git 只做记录、永不 push GitHub；机器配置不入库。
-- 在 `docs/code-fact-registry.md` 用"谁是真源/谁被谁覆盖/哪些文件两端本就不同"表格钉死。
+- 在 `docs/guides/code-fact-registry.md` 用"谁是真源/谁被谁覆盖/哪些文件两端本就不同"表格钉死。
 
 ### 步骤 3：给运行实例加版本指纹 + 启动自报
 - 实现 `runs/agent/version.py`：优先 `git rev-parse --short HEAD`（spark 仓），失败则用关键文件 mtime/hash 兜底，产出 `AGENT_VERSION=<commit>`。
@@ -117,7 +117,7 @@
 
 ## 6b. 实施记录（2026-09-04 第一轮）
 
-- ✅ 已落地：`runs/agent/version.py`（版本指纹；以 `__file__` 推导根目录，不信 env——因 `scheduler.py` 会把 `VIDEOGEN_PROJECT_ROOT` 设为 `expanduser(~/...)`，Windows 上会落到残留副本）；`runs/agent/runtime_check.py`（常量/工具/形态/路径/指纹 6 项核对）；`tests/e2e_smoke.py`（指纹+工具+`h3_submit t2v --dry-run`+runtime_check → `SMOKE_OK`）；`scheduler.py` 集成 version（启动打印 `[agent] AGENT_VERSION=...`）；`ui_app.py` 头部显示 `版本指纹：<commit>`；`consistency_check.py` 增加 `check_runtime_facts`；`docs/code-fact-registry.md`（单一事实登记）。
+- ✅ 已落地：`runs/agent/version.py`（版本指纹；以 `__file__` 推导根目录，不信 env——因 `scheduler.py` 会把 `VIDEOGEN_PROJECT_ROOT` 设为 `expanduser(~/...)`，Windows 上会落到残留副本）；`runs/agent/runtime_check.py`（常量/工具/形态/路径/指纹 6 项核对）；`tests/e2e_smoke.py`（指纹+工具+`h3_submit t2v --dry-run`+runtime_check → `SMOKE_OK`）；`scheduler.py` 集成 version（启动打印 `[agent] AGENT_VERSION=...`）；`ui_app.py` 头部显示 `版本指纹：<commit>`；`consistency_check.py` 增加 `check_runtime_facts`；`docs/guides/code-fact-registry.md`（单一事实登记）。
 - ✅ 本机自测：`runtime_check` 全 [OK]（工具/LLM 项 [SKIP]，需 spark）；`e2e_smoke` 本机 `SMOKE_OK`（工具项 [SKIP]）；`consistency_check` 问题 0。
 - ⏳ 待 spark 验证（同步+重启后）：e2e_smoke 全量（工具项真实检查）；重启后日志与界面头部可见 `AGENT_VERSION`。
 - ✅ spark 验证（2026-09-04）：`/home/Developer/qwen-agent-venv/bin/python tests/e2e_smoke.py` → **SMOKE_OK**（版本指纹 9396309、工具 6 类齐全、`h3_submit t2v --dry-run --force-new` rc=0、runtime_check [OK]）；重启 agent（tmux `agent`）后日志与 /config 头部均显示 `AGENT_VERSION=9396309`（PID 831077，11:12 启动）。
