@@ -525,3 +525,11 @@ uns/h3/asr_check.py（ffmpeg 16k wav→SenseVoiceSmall(quantize)→ASR_TEXT/VERD
 **冒烟**：video_45(608×352,含本地TTS字幕+旁白)→ s13_upscale_00001_.mp4(**2432×1408 / 24fps / h264 / 11.6MB**)抽帧目检:画面细腻、字幕文字清晰(=§11① 修复手段)✅；win outputs/video_50.mp4 样例。
 **登记**：超分耗时≈5min/5s 视频(逐帧 GPU,CPU 或长片=评估后期)。
 
+
+## 54. ComfyUI 重启激活 + 成品链工作流端到端 PASS（2026-09-07 用户授权重启）
+
+**授权**：用户明确「ComfyUI 空闲可以随便搞(重启也行)」——首次重启许可。
+**重启（systemd 管理路径保留）**：comfyui.service 由 systemd 托管(sudo 不可用)→ kill -TERM 主进程优雅退出后 unit 未自动拉起(on-failure 未触发)→ 改**tmux comfy 会话**运行(原 ExecStart 参数:main.py --listen 127.0.0.1 --port 8188 --disable-auto-launch --reserve-vram 12 --enable-manager)——**登记**:systemd 管理方式已停用(std 单位 inactive);如需恢复=root 侧 systemctl 操作(用户侧)。
+**激活验证**：H3LocalTTS/H3Finalize/H3AsrCheck 注册(object_info 确认,含同事 H3Gate/H3ReadFile/H3ConcatVideos);模型列表刷新:upscale=4x-UltraSharp 等 3 项、checkpoints=sd-v1-5-inpainting.ckpt(清 15B 残留)、frame_interpolation=空(RIFE 权重删除)。
+**成品链工作流端到端 PASS**：workflows/remote_workflows/h3_finalize_chain.json(H3Finalize+H3AsrCheck 2 节点,部署 spark user/workflows)+节点加 OUTPUT_NODE=True(旧式节点提交被 prompt_no_outputs 拒→修复)→ ComfyUI API 提交 30a551ad(video_45)→ 队列执行 → **video_45_final_mix.mp4(608×352/5.167s aac 5.111s 本地TTS+字幕+老人声-12dB混音)**+ ASR 回环 **ASR_SCORE=1.000 ASR_MATCH=ok**——**用户「工作流直接在 ComfyUI 获得最终成品」达成**（模板填路径/台词即用;UI 打开该模板运行即可）。
+

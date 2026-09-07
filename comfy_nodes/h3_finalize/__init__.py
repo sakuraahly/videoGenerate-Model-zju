@@ -56,6 +56,7 @@ class H3LocalTTS:
     RETURN_NAMES = ("audio",)
     FUNCTION = "run"
     CATEGORY = "h3"
+    OUTPUT_NODE = True
 
     def run(self, text, voice="xiaoxiao"):
         script = str(Path(REPO) / "runs" / "h3" / "tts_local_check.py")
@@ -86,6 +87,7 @@ class H3Finalize:
     RETURN_NAMES = ("filepath",)
     FUNCTION = "run"
     CATEGORY = "h3"
+    OUTPUT_NODE = True
 
     def run(self, video, text, voice="xiaoxiao", bed_audio="", font_size=0):
         sys.path.insert(0, str(Path(REPO) / "runs"))
@@ -124,6 +126,7 @@ class H3AsrCheck:
     RETURN_NAMES = ("text", "score")
     FUNCTION = "run"
     CATEGORY = "h3"
+    OUTPUT_NODE = True
 
     def run(self, media, text_compare=""):
         script = str(Path(REPO) / "runs" / "h3" / "asr_check.py")

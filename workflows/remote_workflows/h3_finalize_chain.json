@@ -1,0 +1,96 @@
+{
+ "last_node_id": 2,
+ "last_link_id": 1,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "H3Finalize",
+   "pos": [
+    140,
+    80
+   ],
+   "size": [
+    300,
+    90
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "filepath",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "H3Finalize"
+   },
+   "widgets_values": [
+    "/home/Developer/videoGenerate-Model-zju/outputs/video_45.mp4",
+    "大家好，这是本地语音合成的正式接入测试。",
+    "xiaoxiao",
+    "/home/Developer/ai/ComfyUI/input/老人缓慢讲述_爱给网_aigei_com.mp3",
+    0
+   ]
+  },
+  {
+   "id": 2,
+   "type": "H3AsrCheck",
+   "pos": [
+    520,
+    80
+   ],
+   "size": [
+    300,
+    90
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "media",
+     "type": "STRING",
+     "link": 1
+    }
+   ],
+   "outputs": [
+    {
+     "name": "text",
+     "type": "STRING",
+     "links": [],
+     "slot_index": 0
+    },
+    {
+     "name": "score",
+     "type": "FLOAT",
+     "links": [],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "H3AsrCheck"
+   },
+   "widgets_values": [
+    "大家好，这是本地语音合成的正式接入测试。"
+   ]
+  }
+ ],
+ "links": [
+  [
+   1,
+   1,
+   0,
+   2,
+   0,
+   "STRING"
+  ]
+ ],
+ "groups": [],
+ "config": {},
+ "extra": {},
+ "version": 0.4
+}
