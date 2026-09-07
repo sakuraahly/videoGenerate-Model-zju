@@ -38,8 +38,8 @@ H3 主模型（fl2va/ref2va int8 + qwen3vl text encoder + 双 VAE）在 `diffusi
 
 ## 5. 成品链（语音/字幕/混音/验收/超分——标准工作流）
 
-- 一键：`--tts-text "<台词>" --tts-backend local --finalize --asr-check`（F5-TTS 本地大模型默认；edge 需显式 `--tts-backend edge` 降级）。
-- 音色（assets/tts_refs/{voice}.wav+.txt）：`xiaoxiao`=官方女声(默认)；`yunxi`=真人男声；`aria`=**英文女声（双轨：仓库当前=官方 cross-lingual 样本[中文语料跨语种克隆]；备选=LJSpeech 真人英文样本——听测判优后换文件即生效，无需改码）**。
+- 一键：`--tts-text "<台词>" --tts-backend cosy --finalize --asr-check`（**默认=CosyVoice2 自然音色**（2026-09-07 定案接入；GPU 优先、OOM 自动转 CPU）；F5-TTS=`local` 备选；edge 需显式降级）。
+- 音色（assets/tts_refs/{voice}.wav+.txt）：`xiaoxiao`=官方女声(默认)；`yunxi`=真人男声；`aria`=**英文女声——定案=官方 cross-lingual 样本（本地模型克隆合成、自然接近真人；2026-09-07 用户选定）；LJSpeech 真人英文样本=备选归档（换文件即切换）**。
 - 补充：`--tts-mix-bed <音频>`（-12dB 底轨）；`--postprocess fast`（2x+降噪+锐化）；`--upscale 4x`（RealESRGAN 4x-UltraSharp，608→2432，耗时长）。
 - 音效链：`runs/h3/sfx_mix.py --video <v> --music <底轨> --music-db -12 --events "开始秒:文件:dB,..." --out <成品>`（原音轨+底轨+分段事件三路混音；loudnorm -14）。
 - 验收：`runs/h3/asr_check.py <媒体> --compare "<原文>"` → `ASR_SCORE ≥ 0.6 = ok`（SenseVoice 回环）。
@@ -49,7 +49,7 @@ H3 主模型（fl2va/ref2va int8 + qwen3vl text encoder + 双 VAE）在 `diffusi
 ## 6. 音色与 TTS 后端现状（2026-09-07）
 
 - F5-TTS v1+vocos：CPU ≈50-80s/句，24kHz；用户判定"电音/AI 感"为 vocoder 级限制（根因，非样本）。
-- **CosyVoice2-0.5B 试点通过**（~`ai/cosy-venv`；zero-shot 克隆；CPU 47s/句；**GPU 需队列空闲窗口**（否则 CUDA OOM）；音色更自然）——听测样 `outputs/voice_demo_cosy_zh.mp3`(A/B)/`voice_demo_cosy_zh2.mp3`(旁白)；**接入 `--tts-backend cosy` 待用户听测 + GPU 窗口**。
+- **CosyVoice2-0.5B 已接入生产（2026-09-07 定案）**：`--tts-backend cosy`=默认（自动 GPU→CPU 回落）；真机冒烟=tts 分发链路实测通过（ASR 还原；听测样 `outputs/voice_demo_cosy_zh_final.mp3`）。
 
 ## 7. 通道事实（2026-09-07 实测，勿再踩）
 
@@ -72,9 +72,9 @@ H3 主模型（fl2va/ref2va int8 + qwen3vl text encoder + 双 VAE）在 `diffusi
 5. 改动闭环：`skil‌ls/dev-workflow.md`（改→测→证据→文档→双端→提交）。
 6. 产物命名：生成=任务目录 `workflows/h3_<ts>_<ms>/`；交付=Windows `outputs/video_<N>[_描述].mp4`；听测样=`outputs/voice_demo_*.mp3`（产出后 scp 回 Windows）。
 
-## 9. 当前待办（快照；详见当日 handoff §6/§7/§8 + planbook 状态表）
+## 9. 当前待办（快照；详见当日 handoff + planbook 状态表）
 
-1. 用户听测：`video_54_shot17_final.mp4`（镜头17 实战片）、aria 双轨听测对照、`voice_demo_cosy_zh*.mp3`。
-2. 听测通过后：aria 双轨判优（换样本即切换）；CosyVoice2 接入 `--tts-backend cosy`（GPU 窗口）。
+1. 用户最终听测确认：`voice_demo_cosy_zh_final.mp3`（新默认中文女声）与 aria 定案样（官方 cross-lingual 英文音色）。
+2. 原生 1080p 探测与 Wav2Lip 口型冒烟=**空闲大窗口**（已授权，排队）。
 3. ComfyUI 一体模板（生成+Finalize 合并）打磨（可选）。
 4. S13 远期：音色库（CosyVoice2 全链）/口型（Wav2Lip·GitHub 官方权重）/原生 1080p 探测（1920×1088+无 LoRA）。

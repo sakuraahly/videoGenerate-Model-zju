@@ -284,8 +284,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
                 help="七审（S6）：TTS 音色——短名 xiaoxiao(女)/yunxi(男)/aria(英文女声) 或全名；均归一为全名后传给 edge-tts")
     p.add_argument("--tts-text", type=str, default="",
                 help="中文台词/旁白文本：完成后将该文本合成中文语音并替换视频音轨（T2b）")
-    p.add_argument("--tts-backend", type=str, default="local", choices=["local", "edge"],
-                   help="S13 P链①: local=语音生成大模型 F5-TTS 本地(默认,音色=F5-TTS 克隆官方/真人参考样本)/edge=edge-tts 在线(降级保留,显式指定)")
+    p.add_argument("--tts-backend", type=str, default="cosy", choices=["cosy", "local", "edge"],
+                   help="S13 P链①: cosy=CosyVoice2-0.5B 自然音色(默认,GPU优先/OOM自动CPU)/local=F5-TTS 本地/edge=edge-tts 在线(降级保留,显式指定)")
     p.add_argument("--asr-check", action="store_true",
                    help="S13 P链④: 完成后用本地 SenseVoice(FunASR) 对语音产物做 ASR 回环验收(需 spark asr-venv；失败不阻断)")
     p.add_argument("--tts-mix-bed", type=str, default="",
@@ -402,9 +402,11 @@ def _read_text_source(text: Optional[str], path: Optional[Path],
 
 
 def apply_finalize(args: argparse.Namespace) -> None:
-    """S13 成品链开关：--finalize = 本地 TTS + ASR 验收组合（等效两个参数）。"""
+    """S13 成品链开关：--finalize = 本地大模型 TTS + ASR 验收组合（等效两个参数）。
+    默认后端=cosy（CosyVoice2 自然音色）；显式 --tts-backend 覆盖。"""
     if getattr(args, "finalize", False):
-        args.tts_backend = "local"
+        if getattr(args, "tts_backend", None) is None:
+            args.tts_backend = "cosy"
         args.asr_check = True
 
 
@@ -971,7 +973,7 @@ def main(argv: Optional[list] = None) -> int:
             if _jfs and getattr(args, "font_size", None) is None:
                 args.font_size = int(_jfs)
             # S13：resume 恢复 TTS 后端/混音底轨与 ASR 验收开关
-            if getattr(args, "tts_backend", "edge") not in ("edge", "local"):
+            if getattr(args, "tts_backend", "edge") not in ("cosy", "edge", "local"):
                 args.tts_backend = (_job or {}).get("tts_backend", "edge") or "edge"
             _jmb = str((_job or {}).get("tts_mix_bed") or "").strip()
             if _jmb and not str(getattr(args, "tts_mix_bed", "") or "").strip():

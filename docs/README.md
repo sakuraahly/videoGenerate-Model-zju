@@ -28,6 +28,7 @@ docs/
 ├── planbook/                计划书（book-00..19；进度看 book-19 §1 状态表）
 ├── agent-reading/           qwen agent 参考文档（read_doc 自动列出；改后 agent 重启生效）
 ├── agent-communication/     评审/协议/协作记录
+├── reports/                 项目报告（如中期进展报告）
 ├── local-model/             本地模型专题
 └── test-results/            测试结果
 ```

@@ -23,7 +23,23 @@ class TestVoiceKey(unittest.TestCase):
 
 class TestBackends(unittest.TestCase):
     def test_tts_backends_const(self):
-        self.assertEqual(set(_tts.TTS_BACKENDS), {'edge', 'local'})
+        self.assertEqual(set(_tts.TTS_BACKENDS), {'edge', 'local', 'cosy'})
+
+    def test_synthesize_cosy_delegates(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / 'x.wav'
+            with mock.patch.object(_tts, 'synth_cosy', return_value=3.3) as m:
+                d = _tts.synthesize('你好', out, voice='xiaoxiao', backend='cosy')
+            self.assertEqual(d, 3.3)
+            m.assert_called_once()
+
+    def test_synth_cosy_env_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            with mock.patch.object(_tts, 'COSY_TTS_PY', str(d / 'nope')):
+                with mock.patch.object(_tts, '_REF_DIR', d):
+                    with self.assertRaises(ValueError):
+                        _tts.synth_cosy('你好', d / 'o.wav')
 
     def test_synthesize_local_delegates(self):
         with tempfile.TemporaryDirectory() as td:

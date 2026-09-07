@@ -22,7 +22,7 @@
 | 人声合成 | F5-TTS v1（`~/ai/ComfyUI/models/f5-tts/`）+ vocos 24kHz | `~/ai/tts-venv` |
 | ASR 回环 | SenseVoiceSmall ONNX（`models/asr/sensevoice`） | `~/ai/asr-venv` |
 | 超分 | 4x-UltraSharp（默认）/ RealESRGAN_x4plus（备选），均在 `models/upscale_models/` | ComfyUI |
-| 备选人声 | CosyVoice2-0.5B（`~/ai/CosyVoice2-0.5B`+code `~/ai/cosyvoice-src`；**试点已通，未接入 `--tts-backend`**；CPU 47s/句、GPU 需队列空闲否则 CUDA OOM） | `~/ai/cosy-venv` |
+| **默认人声（2026-09-07 定案）** | CosyVoice2-0.5B（`~/ai/CosyVoice2-0.5B`+code `~/ai/cosyvoice-src`；**已接入 `--tts-backend cosy`=默认**；GPU 优先、忙时自动转 CPU≈47s/句） | `~/ai/cosy-venv` |
 
 ## 2. 标准流程（生产用法）
 
@@ -31,7 +31,7 @@
 ```bash
 cd ~/videoGenerate-Model-zju
 python3 runs/h3_submit.py --stage <t2v|i2v|r2v|flf2v> --prompt "...(经 prompt-engineering)" \
-  --tts-text "<台词>" --tts-voice xiaoxiao --tts-backend local \
+  --tts-text "<台词>" --tts-voice xiaoxiao --tts-backend cosy \
   --finalize --asr-check \
   [--tts-mix-bed <配乐/参考音频>] [--postprocess fast] [--upscale 4x]
 ```

@@ -102,6 +102,23 @@ ASR 逐句还原通过）。**当前仓库 aria = cross-lingual 方案（b125901
 与（并行会话产物）`outputs/voice_english_narration.wav`（cross-lingual）。判优后一个提示词即可切换
 （参照 §2 音色表行），无需代码改动（tts.py/_voice_key 均按短名取 assets/tts_refs/{voice}）。
 
+## 11. 本轮授权执行记录（2026-09-07 下午）
+
+**用户定案**：① aria=本地模型生成的自然接近真人音色（官方 cross-lingual 方案，当前仓库即此；LJSpeech 归档备选）；
+② CosyVoice2 支持中文女声=必须；③ 原生 1080p 探测（大队列窗口）留空闲；④ 其余执行。
+
+**已完成**：
+- **CosyVoice2 接入生产**：runs/h3/tts_cosy_check.py（GPU 优先/OOM 自动 CPU）+ tts.py synth_cosy 分发（默认 cosy）+
+  h3_submit --tts-backend cosy（默认；finalize 不再强制 local；resume 归一含 cosy）+ 调度器 SYSTEM 文案 + 单测（18 绿）；
+  真机冒烟：通过 tts.py 分发合成 A/B 句，ASR 还原，听测样 outputs/voice_demo_cosy_zh_final.mp3（GPU 忙→CPU 回落路径实际验证）。
+- **一体模板 MVP**：workflows/remote_workflows/video_minimax_h3_r2v_finalize.json（31 节点=生成+结尾 H3Finalize→H3AsrCheck 同图）；
+  登记限制：SaveVideo 输出为 VIDEO 类型、H3Finalize 入参为路径字符串——自动桥接需组合节点（组件增强候选，排期）；
+  当前 MVP=同一张图里生成→填路径→配音→验收。
+- **中期报告**：docs/reports/2026-09-07-midterm.md（人读版）。
+
+**登记待办**：1080p 探测 + Wav2Lip 口型冒烟=空闲窗口（已授权）；S12 真机验证需真实对话轮（待用户侧演练）；
+RIFE 插帧=渠道阻塞（魔搭精简版不兼容/官方权重待 Git 通道）。
+
 ## 10. 运维记录（2026-09-07 下午，qwen agent 能力/误删排查）
 
 **1) "让 qwen agent 掌握 TTS 管道"已落地**：新增 agent 参考文档

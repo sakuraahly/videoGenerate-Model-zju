@@ -13,16 +13,16 @@ def _args(argv):
 
 
 class TestFinalizeSwitch(unittest.TestCase):
-    def test_finalize_sets_local_and_asr(self):
+    def test_finalize_sets_cosy_and_asr(self):
         a = _args(['--stage', 't2v', '--tts-text', '你好', '--finalize'])
         apply_finalize(a)
-        self.assertEqual(a.tts_backend, 'local')
+        self.assertEqual(a.tts_backend, 'cosy')  # 2026-09-07: 默认 CosyVoice2 自然音色
         self.assertTrue(a.asr_check)
 
-    def test_no_finalize_default_local(self):
+    def test_no_finalize_default_cosy(self):
         a = _args(['--stage', 't2v', '--tts-text', '你好'])
         apply_finalize(a)
-        self.assertEqual(a.tts_backend, 'local')  # 2026-09-07: 语音大模型为默认,edge 显式降级
+        self.assertEqual(a.tts_backend, 'cosy')  # 2026-09-07: CosyVoice2 自然音色为默认
         self.assertFalse(a.asr_check)
 
     def test_explicit_edge_kept(self):
@@ -34,7 +34,7 @@ class TestFinalizeSwitch(unittest.TestCase):
         a = _args(['--stage', 'r2v', '--finalize',
                    '--tts-mix-bed', '/tmp/bed.mp3', '--videos', 'a.mp4'])
         apply_finalize(a)
-        self.assertEqual(a.tts_backend, 'local')
+        self.assertEqual(a.tts_backend, 'cosy')
         self.assertEqual(a.tts_mix_bed, '/tmp/bed.mp3')
 
 

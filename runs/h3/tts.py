@@ -75,9 +75,11 @@ def _voice_key(voice: str) -> str:
 # ---- S13 P 链①：本地 TTS（F5-TTS 魔搭权重 + vocos；替代 edge-tts 云链） ----
 LOCAL_TTS_PY = os.environ.get(
     "LOCAL_TTS_PY", "/home/Developer/ai/tts-venv/bin/python3")
+COSY_TTS_PY = os.environ.get(
+    "COSY_TTS_PY", "/home/Developer/ai/cosy-venv/bin/python3")
 _REF_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "tts_refs"
 REF_SAMPLE_TEXT = "我们一起去公园散步吧，阳光很好。"
-TTS_BACKENDS = ("edge", "local")
+TTS_BACKENDS = ("edge", "local", "cosy")
 
 
 def synth_local(text: str, out: Path, voice: str = DEFAULT_VOICE) -> float:
@@ -112,16 +114,51 @@ def synth_local(text: str, out: Path, voice: str = DEFAULT_VOICE) -> float:
     return d
 
 
-def synthesize(text: str, out: Path, voice: str = DEFAULT_VOICE, rate: str = "-8%",
-               backend: str = "edge") -> float:
-    """合成中文语音到 out（edge=在线云 / local=F5-TTS 魔搭本地）；返回时长秒。"""
+def synth_cosy(text: str, out: Path, voice: str = DEFAULT_VOICE) -> float:
+    """CosyVoice2-0.5B 本地合成（自然音色；GPU 优先、OOM 自动转 CPU）。
+
+    依赖 spark ~/ai/cosy-venv + 模型 ~/ai/CosyVoice2-0.5B（魔搭）；参考样本与 F5-TTS 同源
+    （assets/tts_refs/<voice_key>）；环境/样本缺失抛 ValueError（回落 local/edge）。
+    """
     text = str(text or "").strip()
     if not text:
         raise ValueError("TTS 文本为空")
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    if str(backend or "edge").lower() == "local":
+    if not Path(COSY_TTS_PY).is_file():
+        raise ValueError(f"CosyVoice2 环境缺失: {COSY_TTS_PY}（spark: python3 -m venv ~/ai/cosy-venv "
+                         f"+ cosyvoice-src(源码) + 魔搭 iic/CosyVoice2-0.5B + 依赖链）")
+    key = _voice_key(voice)
+    ref_wav = _REF_DIR / f"{key}.wav"
+    ref_txt = _REF_DIR / f"{key}.txt"
+    if not ref_wav.is_file() or not ref_txt.is_file():
+        raise ValueError(f"CosyVoice2 参考样本缺失: {ref_wav}")
+    script = str(Path(__file__).resolve().parent / "tts_cosy_check.py")
+    cmd = [COSY_TTS_PY, script, "--text", text, "--ref-file", str(ref_wav),
+           "--ref-text", ref_txt.read_text(encoding="utf-8").strip(),
+           "--output", str(out)]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    if r.returncode != 0 or not out.is_file() or out.stat().st_size < 200:
+        raise ValueError("CosyVoice2 合成失败: " + (r.stderr or "")[-400:])
+    d = probe_duration(out)
+    if d and d < 0.3:
+        raise ValueError(f"TTS 音频过短({d:.2f}s)：{out.name}")
+    return d
+
+
+def synthesize(text: str, out: Path, voice: str = DEFAULT_VOICE, rate: str = "-8%",
+               backend: str = "cosy") -> float:
+    """合成语音到 out（cosy=CosyVoice2 自然音色默认 / local=F5-TTS / edge=在线云）；返回时长秒。"""
+    text = str(text or "").strip()
+    if not text:
+        raise ValueError("TTS 文本为空")
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    _b = str(backend or "cosy").lower()
+    if _b == "local":
         return synth_local(text, out, voice=voice)
+    if _b == "cosy":
+        return synth_cosy(text, out, voice=voice)
     # book-18：--rate=-8% 用等号语法（argparse 会把以 - 开头的值当成旗标）
     cmd = _edge_tts_cmd() + ["--voice", voice, "--rate=" + rate, "--text", text, "--write-media", str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
