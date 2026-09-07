@@ -61,6 +61,20 @@ def run_asr(wav: Path) -> str:
     return str(item or "")
 
 
+def text_similarity(a: str, b: str) -> float:
+    """ASR 文本与目标文本的字符级相似度（剥 SenseVoice 标签/标点；中文按字英文按字母）。"""
+    import difflib
+    import re as _re
+    def _norm(s):
+        s = _re.sub(r"<\|[^|>]*\|>", "", str(s or ""))
+        s = _re.sub(r"[^\u4e00-\u9fffA-Za-z0-9]", "", s).lower()
+        return s
+    na, nb = _norm(a), _norm(b)
+    if not na or not nb:
+        return 0.0
+    return difflib.SequenceMatcher(None, na, nb).ratio()
+
+
 def verdict(text: str) -> str:
     """粗判：非空+含足够中文/英文单词=可能可辨析；乱语（低词数/异常）如实标注。"""
     t = text.strip()
@@ -79,12 +93,17 @@ def main(argv=None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="ASR 可辨析验收（SenseVoiceSmall ONNX）")
     ap.add_argument("media", help="视频/音频路径")
+    ap.add_argument("--compare", default="", help="可选：目标文本（ASR 相似度验收，如 tts_text 台词）")
     args = ap.parse_args(argv)
     with tempfile.TemporaryDirectory() as td:
         wav = extract_wav(args.media, Path(td))
         text = run_asr(wav)
     print(f"ASR_TEXT: {text}")
     print(f"VERDICT: {verdict(text)}")
+    if args.compare:
+        score = text_similarity(text, args.compare)
+        print(f"ASR_SCORE: {score:.3f}")
+        print(f"ASR_MATCH: {'ok' if score >= 0.6 else 'poor'}")
     return 0
 
 

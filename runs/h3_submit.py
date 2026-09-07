@@ -283,7 +283,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
                          "zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural", "en-US-AriaNeural"],
                 help="七审（S6）：TTS 音色——短名 xiaoxiao(女)/yunxi(男)/aria(英文女声) 或全名；均归一为全名后传给 edge-tts")
     p.add_argument("--tts-text", type=str, default="",
-                help="中文台词/旁白文本：完成后将该文本合成中文语音并替换视频音轨（T2b edge-tts）")
+                help="中文台词/旁白文本：完成后将该文本合成中文语音并替换视频音轨（T2b）")
+    p.add_argument("--tts-backend", type=str, default="edge", choices=["edge", "local"],
+                   help="S13 P链①: edge=在线 edge-tts(默认,过渡)/local=魔搭 F5-TTS 本地(spark ~/ai/tts-venv, CPU≈53s/句)")
+    p.add_argument("--asr-check", action="store_true",
+                   help="S13 P链④: 完成后用本地 SenseVoice(FunASR) 对语音产物做 ASR 回环验收(需 spark asr-venv；失败不阻断)")
+    p.add_argument("--tts-mix-bed", type=str, default="",
+                   help="S13 音效链: 参考音频/配乐文件路径——TTS 旁白为主轨、该音频降 -12dB 做底轨混音(S7 语义边界 §11②③; 非 r2v 参考媒体)")
 
     p.add_argument("--lora", type=str, default="none",
                    choices=["none", "fl2v_4step", "ref2v_4step", "ref2v_8step"],
@@ -709,6 +715,10 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
         from h3 import tts as _tts
         # 八审：两条路径共用的 voice——任务记录 > args（入口已归一全名）> 默认女声
         _voice = str(_tj.get("tts_voice") or "") or getattr(args, "tts_voice", "") or _tts.DEFAULT_VOICE
+        # S13 P链①：TTS 后端（edge=在线过渡/local=魔搭 F5-TTS），任务记录 > args > 默认 edge
+        _backend = str(_tj.get("tts_backend") or "") or str(getattr(args, "tts_backend", "") or "") or "edge"
+        if _backend not in _tts.TTS_BACKENDS:
+            _backend = "edge"
         _tts_src = local_out[0] if local_out else None
         if _tts_src is None or not _tts_src.is_file():
             _log_event("tts_skip (no local output)")
@@ -723,7 +733,7 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
         _need_pp = getattr(args, 'postprocess', '') == 'fast'
         if _need_pp:
             from h3 import postprocess as _pp
-            _prep = _tts.prepare_speech(_tts_txt, voice=_voice,
+            _prep = _tts.prepare_speech(_tts_txt, voice=_voice, backend=_backend,
                                         out_dir=(Path(project_dir) / "workflows"
                                                  / (task_folder.name if task_folder else "tts_prep")))
             _dst = _tts_src.with_name(_tts_src.stem + "_pp.mp4")
@@ -733,16 +743,19 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
             print(f"TTS_OUT: outputs/{_dst.name} speech_s={_prep['speech_dur']:.2f} srt=yes", flush=True)
             print(f"POSTPROCESS_OUT: outputs/{_dst.name}", flush=True)
             _log_event(f"tts_done file={_dst.name} voice={_voice} "
-                       f"speech={_prep['speech_dur']:.2f}s srt=yes merged_encode=1")
+                       f"speech={_prep['speech_dur']:.2f}s srt=yes merged_encode=1 backend={_backend}")
+            _post_tts_checks(project_dir, args, _dst, _prep["speech"], _tts_txt)
         else:
             # 非合并路径：attach_speech_and_subtitle(voice=...)（P1a 前 agent 唯一路径）
             _res = _tts.attach_speech_and_subtitle(
                 _tts_src, _tts_txt, voice=_voice,
-                fontsize=int(getattr(args, "font_size", 0) or 0))
+                fontsize=int(getattr(args, "font_size", 0) or 0),
+                backend=_backend)
             print(f"TTS_OUT: outputs/{_res['path'].name} speech_s={_res['speech_dur']:.2f} "
                   f"srt={'yes' if _res.get('srt') else 'no'}", flush=True)
             _log_event(f"tts_done file={_res['path'].name} voice={_voice} "
-                       f"speech={_res['speech_dur']:.2f}s srt={bool(_res.get('srt'))}")
+                       f"speech={_res['speech_dur']:.2f}s srt={bool(_res.get('srt'))} backend={_backend}")
+            _post_tts_checks(project_dir, args, _res["path"], _res.get("speech"), _tts_txt)
     except Exception as _te:  # noqa: BLE001 - 环境异常不阻断主产物；代码缺陷必须显式暴露
         _is_bug = isinstance(_te, (NameError, AttributeError))
         _log_event(f"{'tts_code_error' if _is_bug else 'tts_error'} err={type(_te).__name__}: {_te}")
@@ -753,6 +766,46 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
         else:
             print(f"[提示] TTS 语音替换失败（不影响主产物）: {_te}", file=sys.stderr, flush=True)
     return _tts_txt
+
+
+def _post_tts_checks(project_dir: Path, args: argparse.Namespace,
+                     prod, speech, tts_txt: str) -> None:
+    """S13：配音产物善后——① 音效链：参考音频（--audios 第一个）降 12dB 做底轨混音；
+    ② ASR 回环验收（--asr-check：SenseVoice 对产物语音与台词比对）。失败不阻断主产物。"""
+    import subprocess as _sp
+    prod = Path(prod) if prod else None
+    if prod is None or not prod.is_file():
+        return
+    _mix_src = str(getattr(args, "tts_mix_bed", "") or "").strip()
+    if _mix_src and Path(_mix_src).is_file():
+        try:
+            from h3 import postprocess as _pp3
+            _speak = speech if speech and Path(speech).is_file() else str(prod)
+            _mixed = prod.with_name(prod.stem + "_mix.mp4")
+            _pp3.mix_tracks(prod, _mixed, main=str(_speak), bed=_mix_src,
+                            main_db=0.0, bed_db=-12.0)
+            print(f"MIX_OUT: outputs/{_mixed.name} (ref-audio bed -12dB + TTS main)", flush=True)
+            _log_event(f"mix_ref_done file={_mixed.name} bed={Path(_mix_src).name}")
+        except Exception as _me:  # noqa: BLE001
+            _log_event(f"mix_ref_skip err={type(_me).__name__}")
+    if getattr(args, "asr_check", False) and tts_txt:
+        _asr_py = "/home/Developer/ai/asr-venv/bin/python3"
+        if not Path(_asr_py).is_file():
+            print("ASR_CHECK: skipped (asr-venv missing)", flush=True)
+            return
+        try:
+            _r = _sp.run([_asr_py, str(Path(project_dir) / "runs" / "h3" / "asr_check.py"),
+                          str(prod), "--compare", tts_txt],
+                         capture_output=True, text=True, timeout=900)
+            _lines = [l for l in _r.stdout.splitlines()
+                      if l.startswith(("ASR_TEXT:", "ASR_SCORE:", "ASR_MATCH:", "VERDICT:"))]
+            if _lines:
+                print("ASR_CHECK:\n" + "\n".join(_lines), flush=True)
+                _log_event("asr_check " + " ".join(_lines).replace(chr(10), " "))
+            else:
+                print(f"ASR_CHECK: unavailable ({(_r.stderr or '')[:150]})", flush=True)
+        except Exception as _ae:  # noqa: BLE001
+            _log_event(f"asr_check_skip err={type(_ae).__name__}")
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -824,6 +877,14 @@ def main(argv: Optional[list] = None) -> int:
             _jfs = (_job or {}).get("font_size")
             if _jfs and getattr(args, "font_size", None) is None:
                 args.font_size = int(_jfs)
+            # S13：resume 恢复 TTS 后端/混音底轨与 ASR 验收开关
+            if getattr(args, "tts_backend", "edge") not in ("edge", "local"):
+                args.tts_backend = (_job or {}).get("tts_backend", "edge") or "edge"
+            _jmb = str((_job or {}).get("tts_mix_bed") or "").strip()
+            if _jmb and not str(getattr(args, "tts_mix_bed", "") or "").strip():
+                args.tts_mix_bed = _jmb
+            if not getattr(args, "asr_check", False) and (_job or {}).get("asr_check"):
+                args.asr_check = True
             # S7：resume 恢复参考媒体清单（CLI 显式优先）
             _jv = (_job or {}).get("videos") or []
             if _jv and not getattr(args, "videos", None):
@@ -918,6 +979,9 @@ def main(argv: Optional[list] = None) -> int:
                 "stage": stage_id,
                 "tts_text": getattr(args, "tts_text", "") or "",
                 "tts_voice": getattr(args, "tts_voice", "") or "",
+                "tts_backend": getattr(args, "tts_backend", "edge") or "edge",
+                "tts_mix_bed": getattr(args, "tts_mix_bed", "") or "",
+                "asr_check": bool(getattr(args, "asr_check", False)),
                 # S2-P1a：postprocess 持久化——resume(无参)时恢复，防增强参数丢失
                 "postprocess": getattr(args, "postprocess", "") or "",
                 # S6：字幕字号持久化（resume 恢复；None/0=等比）

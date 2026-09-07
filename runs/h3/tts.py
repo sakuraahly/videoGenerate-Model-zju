@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import tempfile
@@ -60,13 +61,67 @@ def _sanitize_script(text: str) -> str:
     return t
 
 
-def synthesize(text: str, out: Path, voice: str = DEFAULT_VOICE, rate: str = "-8%") -> float:
-    """edge-tts 合成中文语音到 out（mp3/wav）；返回时长秒；失败抛 ValueError。"""
+def _voice_key(voice: str) -> str:
+    """音色短名键（本地参考样本文件名）：全名→短名；未知→xiaoxiao。"""
+    v = str(voice or "")
+    for k, full in VOICE_ALIASES.items():
+        if v == full:
+            return k
+    if v in VOICE_ALIASES:
+        return v
+    return "xiaoxiao"
+
+
+# ---- S13 P 链①：本地 TTS（F5-TTS 魔搭权重 + vocos；替代 edge-tts 云链） ----
+LOCAL_TTS_PY = os.environ.get(
+    "LOCAL_TTS_PY", "/home/Developer/ai/tts-venv/bin/python3")
+_REF_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "tts_refs"
+REF_SAMPLE_TEXT = "我们一起去公园散步吧，阳光很好。"
+TTS_BACKENDS = ("edge", "local")
+
+
+def synth_local(text: str, out: Path, voice: str = DEFAULT_VOICE) -> float:
+    """F5-TTS 本地合成（魔搭权重，克隆参考样本音色；CPU≈53s/句）。
+
+    依赖 spark ~/ai/tts-venv + 模型缓存（F5TTS_v1_Base + vocos）与
+    assets/tts_refs/<voice_key>.wav 参考样本；缺失抛 ValueError（edge-tts 过渡保留）。
+    """
     text = str(text or "").strip()
     if not text:
         raise ValueError("TTS 文本为空")
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    if not Path(LOCAL_TTS_PY).is_file():
+        raise ValueError(f"本地 TTS 环境缺失: {LOCAL_TTS_PY}（spark: python3 -m venv ~/ai/tts-venv "
+                         f"&& pip install f5-tts modelscope && 下载魔搭 AI-ModelScope/F5-TTS）")
+    key = _voice_key(voice)
+    ref_wav = _REF_DIR / f"{key}.wav"
+    ref_txt = _REF_DIR / f"{key}.txt"
+    if not ref_wav.is_file() or not ref_txt.is_file():
+        raise ValueError(f"本地 TTS 参考样本缺失: {ref_wav}（edge-tts 生成后入库）")
+    script = str(Path(__file__).resolve().parent / "tts_local_check.py")
+    cmd = [LOCAL_TTS_PY, script, "--text", text, "--ref-file", str(ref_wav),
+           "--ref-text", ref_txt.read_text(encoding="utf-8").strip(),
+           "--output", str(out)]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    if r.returncode != 0 or not out.is_file() or out.stat().st_size < 200:
+        raise ValueError("F5-TTS 合成失败: " + (r.stderr or "")[-400:])
+    d = probe_duration(out)
+    if d and d < 0.3:
+        raise ValueError(f"TTS 音频过短({d:.2f}s)：{out.name}")
+    return d
+
+
+def synthesize(text: str, out: Path, voice: str = DEFAULT_VOICE, rate: str = "-8%",
+               backend: str = "edge") -> float:
+    """合成中文语音到 out（edge=在线云 / local=F5-TTS 魔搭本地）；返回时长秒。"""
+    text = str(text or "").strip()
+    if not text:
+        raise ValueError("TTS 文本为空")
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if str(backend or "edge").lower() == "local":
+        return synth_local(text, out, voice=voice)
     # book-18：--rate=-8% 用等号语法（argparse 会把以 - 开头的值当成旗标）
     cmd = _edge_tts_cmd() + ["--voice", voice, "--rate=" + rate, "--text", text, "--write-media", str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
@@ -165,11 +220,12 @@ def _srt_time(sec: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-def prepare_speech(text: str, voice: str = DEFAULT_VOICE, out_dir: Path = None) -> dict:
+def prepare_speech(text: str, voice: str = DEFAULT_VOICE, out_dir: Path = None,
+                    backend: str = "edge") -> dict:
     """二轮审阅：解耦出 (speech, srt, dur)——供合并单次编码链（增强+字幕同 -vf）先行准备。"""
     out_dir = Path(out_dir) if out_dir else Path(tempfile.mkdtemp(prefix="tts_prep_"))
     speech = out_dir / "speech.mp3"
-    spd = synthesize(text, speech, voice=voice)
+    spd = synthesize(text, speech, voice=voice, backend=backend)
     srt = out_dir / "speech.srt"
     srt.write_text(f"1\n00:00:00,000 --> {_srt_time(spd)}\n{text}\n", encoding="utf-8")
     return {"speech": speech, "srt": srt, "speech_dur": spd}
@@ -200,18 +256,20 @@ def replace_audio_only(input_video: Path, audio: Path, out: Path, dur: float = 0
 
 def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
                                voice: str = DEFAULT_VOICE, srt_path: Path = None,
-                               fontsize: int = 0) -> dict:
+                               fontsize: int = 0, backend: str = "edge") -> dict:
     """book-14 T2b v2#3：合成中文语音 → 整句 SRT(0→语音时长) → 烧录字幕 → 替换音轨(apad 保时长)。
-    返回 {'path', 'speech_dur', 'srt'}；全部失败即抛（不产半成品）。"""
+    返回 {'path', 'speech_dur', 'srt', 'speech'}（speech=语音产物路径，供混音/ASR 复用）；
+    全部失败即抛（不产半成品）。"""
     from h3.postprocess import render_subtitle
     input_video = Path(input_video)
     dest = Path(out) if out else input_video
     speech = Path(tempfile.mkstemp(suffix=".mp3")[1])
     with_sub = dest.with_name(dest.stem + "_sub" + dest.suffix)
     tmp_out = dest.with_name(dest.stem + "_v2" + dest.suffix)
+    res = None
     try:
         dur = probe_duration(input_video)
-        spd = synthesize(text, speech, voice=voice)
+        spd = synthesize(text, speech, voice=voice, backend=backend)
         srt = Path(srt_path) if srt_path else dest.with_name(dest.stem + ".srt")
         srt.write_text(f"1\n00:00:00,000 --> {_srt_time(spd)}\n{text}\n", encoding="utf-8")
         render_subtitle(input_video, with_sub, srt, fontsize=fontsize)
@@ -226,9 +284,11 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
             raise ValueError("TTS 音轨替换失败: " + (r.stderr or "")[-300:])
         tmp_out.replace(dest)
         with_sub.unlink(missing_ok=True)
-        return {"path": dest, "speech_dur": spd, "srt": srt}
+        res = {"path": dest, "speech_dur": spd, "srt": srt, "speech": speech}
+        return res
     finally:
-        speech.unlink(missing_ok=True)
+        if res is None:  # 失败清理语音产物；成功交由调用方（混音/ASR 复用）
+            speech.unlink(missing_ok=True)
         tmp_out.unlink(missing_ok=True)
         with_sub.unlink(missing_ok=True)
 

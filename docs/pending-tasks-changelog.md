@@ -489,3 +489,11 @@ uns/h3/queue_watch.py——once（单次快照 QUEUE_STATE=idle/busy/unreachable
 uns/h3/asr_check.py（ffmpeg 16k wav→SenseVoiceSmall(quantize)→ASR_TEXT/VERDICT；返回形态兼容 list[str]）。
 **首测（S7 二级产物 video_46 音轨）**：ASR_TEXT=you are and a seminal brings the blood on that is to serated it（英文乱语）；VERDICT=has-speech (human review)。**结论**：① 参考媒体音频被模型采纳（音轨有语音）但不复刻语义/节奏——与用户「很快的讲述声」反馈同源；② **用户反馈④得到 ASR 客观证据**（乱语）；③ 可辨析语音=项目 tts_text 链（已有，替代音轨）；P 链④判据=人工可复核文本（后续语义模型自动判）。
 
+
+## 48. P 链① 接入生产真机记录（2026-09-07 PASS）
+
+**背景**：F5-TTS 冒烟（§47）后接入 h3_submit 生产钩子（用户指示：人声用魔搭/本地小模型）。
+**实现**：tts.py synth_local（F5-TTS v1+vocos 本地；ref 样本 assets/tts_refs/{xiaoxiao,yunxi,aria}（edge-tts 预生成，aria=英文句）；synthesize/prepare_speech/attach_speech_and_subtitle 贯穿 ackend 参数（edge 默认过渡/local）；h3_submit --tts-backend+--asr-check+--tts-mix-bed（音效链：TTS 主轨+参考音频 -12dB 底轨）+ persist/resume 恢复（**含 Resume 恢复 tts_mix_bed 补丁**——首轮真机曾因 resume 不带参数而漏跑混音，已修）；_post_tts_checks 善后（mix→ASR 回环，失败不阻断）。
+**真机（a7432834 / t2v 360p 5s）**：TTS_OUT speech_s=3.58 srt=yes（local 后端）→ ASR_CHECK：ASR_TEXT=大家好这是本地语音合成的正式接入测试、**ASR_SCORE=1.000 / ASR_MATCH=ok**（SenseVoice 回环 100% 还原）；混音=手动直验 mix_tracks（video_45_mix.mp4 608×352/5.167s，TTS 主轨+老人声 -12dB 底轨）→ **win outputs/video_47.mp4**（听测请用户）。
+**登记**：CPU 53s/句=已知成本（edge-tts≈2s）；GPU 分担/常驻=后续优化；aria 参考样本=英文句（英文音色中文化失败记录）。
+
