@@ -89,3 +89,12 @@ sfx_mix 三路混音：音乐 -12dB/音效 -6dB/新闻 -3dB，loudnorm -14）；
   `outputs/voice_demo_cosy_zh2.mp3`（平和旁白句）；
 - **登记**：① 接入 tts.py 后端（h3_submit --tts-backend cosy）待用户听测通过 + GPU 空闲窗口
   （当前队列繁忙时 CUDA OOM）；② CPU 47s/句=过渡可接受（GPU≈秒级）；③ 音色库/口型/1080p 仍远期。
+
+**⚠️ 并发登记（16:14-16:20 有并行会话操作同一仓库）**：提交 b125901/1f4f4fd（同一作者身份）将
+`assets/tts_refs/aria.wav` 换成 **CosyVoice 官方 cross_lingual_prompt.wav（中文语料原样 wav，配套中文 ASR 转写文本）**——
+与本节 LJSpeech 方案是不同的 aria 双轨方案：LJSpeech=真人**英文**女声样本（英文天然无口音）；
+cross-lingual=同一官方女声中文语料做跨语种克隆（英文带中式口音风险，但其 13.6s 英文旁白
+ASR 逐句还原通过）。**当前仓库 aria = cross-lingual 方案（b125901）；本节 video_54 音轨
+= LJSpeech 方案（生成时点仓库样本=它）**。听测对照：`outputs/voice_demo_aria_en.mp3`（LJSpeech）
+与（并行会话产物）`outputs/voice_english_narration.wav`（cross-lingual）。判优后一个提示词即可切换
+（参照 §2 音色表行），无需代码改动（tts.py/_voice_key 均按短名取 assets/tts_refs/{voice}）。
