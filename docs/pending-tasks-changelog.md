@@ -507,3 +507,8 @@ uns/h3/asr_check.py（ffmpeg 16k wav→SenseVoiceSmall(quantize)→ASR_TEXT/VERD
 
 - **PASS 细节（2026-09-07 02:1x）**：真实提交 ac36a758-27a8-4840-b873-d46ba6c4ce76（房间参考图 2848×1600 + 中央椭圆掩码）→ ComfyUI 产物 s13_inpaint_00001_.png（2848×1600）抽帧目检：掩码区域自然修复、整体无破绽；调试记录：LoadImage 自环（模板 inputs 误留）→LoadImageMask 需 2 widget（channel=red）→ 提交 400 逐项修复后通过。
 
+## 51. S13 标题装配冒烟 PASS + RIFE 阻塞归档（2026-09-07）
+
+**标题/图表装配（PASS）**：runs/h3/title_overlay.py——SRT 单条+subtitles(libass)+FontName=Noto Serif CJK SC(顶部 Align=8,白字黑描边)；对 video_45 叠加「第一章：重逢」→ outputs/video_48_title.mp4(608x352)抽帧目检:中文完整清晰。弃用记录:drawtext(fontfile=TTC)渲染缺字形(JP 子集无 SC)——统一 libass 与字幕链同源。
+**RIFE 插帧（阻塞如实归档）**：魔搭 AI-ModelScope/RIFE flownet.pkl(12MB)=精简插值主干(module.block0..4+block_tea,无 encode.cnn3)——ComfyUI core FrameInterpolationModelLoader 检测需全量 IFNet→Unrecognized;hf-mirror 标准 RIFE-4x 未镜像/超时;备选=GitHub 官方 Practical-RIFE 权重+项目侧推理(登记)。ComfyUI core FrameInterpolate 节点本身可用(备选权重到位即冒烟)。
+
