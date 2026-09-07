@@ -290,6 +290,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="S13 P链④: 完成后用本地 SenseVoice(FunASR) 对语音产物做 ASR 回环验收(需 spark asr-venv；失败不阻断)")
     p.add_argument("--tts-mix-bed", type=str, default="",
                    help="S13 音效链: 参考音频/配乐文件路径——TTS 旁白为主轨、该音频降 -12dB 做底轨混音(S7 语义边界 §11②③; 非 r2v 参考媒体)")
+    p.add_argument("--finalize", action="store_true",
+                   help="S13 成品链开关: 一键=本地 TTS(--tts-backend local)+ASR 验收(--asr-check);"
+                        "参考音频混音仍用 --tts-mix-bed（速度: 本地合成 CPU≈53s/句）")
 
     p.add_argument("--lora", type=str, default="none",
                    choices=["none", "fl2v_4step", "ref2v_4step", "ref2v_8step"],
@@ -393,6 +396,13 @@ def _read_text_source(text: Optional[str], path: Optional[Path],
         raise h3params.ParamError(f"{what}文件不存在: {src}")
     val = h3params.read_prompt_file(src)
     return val
+
+
+def apply_finalize(args: argparse.Namespace) -> None:
+    """S13 成品链开关：--finalize = 本地 TTS + ASR 验收组合（等效两个参数）。"""
+    if getattr(args, "finalize", False):
+        args.tts_backend = "local"
+        args.asr_check = True
 
 
 def _resolve_gp_text(args: argparse.Namespace, project_dir: Path,
@@ -810,6 +820,7 @@ def _post_tts_checks(project_dir: Path, args: argparse.Namespace,
 
 def main(argv: Optional[list] = None) -> int:
     args = build_arg_parser().parse_args(argv)
+    apply_finalize(args)  # S13 成品链开关：--finalize → local TTS + ASR 验收
     # 七审+八审：短名/全名归一（LLM/CLI 与 tools 透传短名 xiaoxiao|yunxi；
     # 映射层 VOICE_ALIASES 已提升至 tts.py 公开常量——原 main() 局部 _V_ALIASES 工具侧无法复用）
     from h3 import tts as _vmod
@@ -982,6 +993,7 @@ def main(argv: Optional[list] = None) -> int:
                 "tts_backend": getattr(args, "tts_backend", "edge") or "edge",
                 "tts_mix_bed": getattr(args, "tts_mix_bed", "") or "",
                 "asr_check": bool(getattr(args, "asr_check", False)),
+                "finalize": bool(getattr(args, "finalize", False)),
                 # S2-P1a：postprocess 持久化——resume(无参)时恢复，防增强参数丢失
                 "postprocess": getattr(args, "postprocess", "") or "",
                 # S6：字幕字号持久化（resume 恢复；None/0=等比）

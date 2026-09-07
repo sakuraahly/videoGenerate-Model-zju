@@ -289,6 +289,14 @@ class CallComfyUI(BaseTool):
                 'type': 'integer',
                 'description': '字幕字号（像素，可选；缺省=随分辨率等比 0.07×高；一般不传）',
             },
+            'finalize': {
+                'type': 'boolean',
+                'description': '成品链（S13）：true=本地 TTS 配音+字幕+ASR 回环验收（全本地模型，音色自然；合成 CPU≈53s/句较慢）；false=在线 edge-tts（默认，快）或按 tts_text 无此参数走默认。混音底轨用 tts_mix_bed。',
+            },
+            'tts_mix_bed': {
+                'type': 'string',
+                'description': '参考音频/配乐文件路径（S13 音效链）：TTS 旁白为主轨、该音频降 -12dB 做底轨混音。',
+            },
             'dry_run': {
                 'type': 'boolean',
                 'description': '仅验证参数不实际生成',
@@ -425,6 +433,10 @@ class CallComfyUI(BaseTool):
             cmd.extend(['--tts-voice', str(params['tts_voice'])])
         if params.get('tts_font_size'):
             cmd.extend(['--font-size', str(int(params['tts_font_size']))])
+        if params.get('finalize'):
+            cmd.append('--finalize')
+        if params.get('tts_mix_bed'):
+            cmd.extend(['--tts-mix-bed', str(params['tts_mix_bed'])])
 
         tool_timeout = 600 if params.get('wait_until_done') else 180
 
