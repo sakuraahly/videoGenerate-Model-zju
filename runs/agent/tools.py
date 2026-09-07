@@ -297,6 +297,10 @@ class CallComfyUI(BaseTool):
                 'type': 'string',
                 'description': '参考音频/配乐文件路径（S13 音效链）：TTS 旁白为主轨、该音频降 -12dB 做底轨混音。',
             },
+            'upscale': {
+                'type': 'boolean',
+                'description': '超分（S13）：true=成品链产物（含配音/字幕/混音）经 RealESRGAN 4x 超分——608x352→2432x1408（耗时≈5-8min/5s 片；最终清晰度优先时用），默认 false。',
+            },
             'dry_run': {
                 'type': 'boolean',
                 'description': '仅验证参数不实际生成',
@@ -437,6 +441,8 @@ class CallComfyUI(BaseTool):
             cmd.append('--finalize')
         if params.get('tts_mix_bed'):
             cmd.extend(['--tts-mix-bed', str(params['tts_mix_bed'])])
+        if params.get('upscale'):
+            cmd.append('--upscale', '4x') if False else cmd.extend(['--upscale', '4x'])
 
         tool_timeout = 600 if params.get('wait_until_done') else 180
 

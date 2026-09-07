@@ -293,6 +293,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--finalize", action="store_true",
                    help="S13 成品链开关: 一键=本地 TTS(--tts-backend local)+ASR 验收(--asr-check);"
                         "参考音频混音仍用 --tts-mix-bed（速度: 本地合成 CPU≈53s/句）")
+    p.add_argument("--upscale", type=str, default="none", choices=["none", "4x"],
+                   help="S13 超分链: 完成链产物(含 TTS/字幕/混音/postprocess)经 ComfyUI RealESRGAN 4x-UltraSharp 超分"
+                        "(608x352->2432x1408; 耗时≈5-8min/5s 片; none=默认) 输出 *_upscale.mp4 + UPSCALE_OUT 行")
 
     p.add_argument("--lora", type=str, default="none",
                    choices=["none", "fl2v_4step", "ref2v_4step", "ref2v_8step"],
@@ -705,6 +708,7 @@ def _collect_outputs(entry: dict) -> List[dict]:
 
 def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse.Namespace,
                   local_out: List[Path], gp: Optional[h3params.GenParams]) -> str:
+    global _FINAL_PRODUCT
     """book-14 T2b 完成钩子：中文语音（+字幕）/合并增强。失败不阻断主产物。
 
     八审修复（原为 main() 内联块，两个 UnboundLocalError 被宽泛 except 吞掉）：
@@ -752,6 +756,7 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
             _tts.replace_audio_only(_dst, _prep["speech"], _dst, dur=_src_dur)
             print(f"TTS_OUT: outputs/{_dst.name} speech_s={_prep['speech_dur']:.2f} srt=yes", flush=True)
             print(f"POSTPROCESS_OUT: outputs/{_dst.name}", flush=True)
+            _FINAL_PRODUCT = Path(_dst)
             _log_event(f"tts_done file={_dst.name} voice={_voice} "
                        f"speech={_prep['speech_dur']:.2f}s srt=yes merged_encode=1 backend={_backend}")
             _post_tts_checks(project_dir, args, _dst, _prep["speech"], _tts_txt)
@@ -763,6 +768,7 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
                 backend=_backend)
             print(f"TTS_OUT: outputs/{_res['path'].name} speech_s={_res['speech_dur']:.2f} "
                   f"srt={'yes' if _res.get('srt') else 'no'}", flush=True)
+            _FINAL_PRODUCT = Path(_res["path"])
             _log_event(f"tts_done file={_res['path'].name} voice={_voice} "
                        f"speech={_res['speech_dur']:.2f}s srt={bool(_res.get('srt'))} backend={_backend}")
             _post_tts_checks(project_dir, args, _res["path"], _res.get("speech"), _tts_txt)
@@ -778,8 +784,83 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
     return _tts_txt
 
 
+_FINAL_PRODUCT: Optional[Path] = None  # S13：成品链最终产物（TTS/混音/postprocess 后，供 --upscale）
+
+
+def _run_upscale(project_dir: Path, client, src: Path, args: argparse.Namespace) -> Optional[Path]:
+    """S13 超分链：对最终产物做 RealESRGAN 4x 超分（ComfyUI API；耗时≈5-8min/5s 片）。
+    失败不阻断主产物（超分产物另行提示）。返回超分产物路径。"""
+    if getattr(args, "upscale", "none") == "none" or src is None or not Path(src).is_file():
+        return None
+    try:
+        import subprocess as _sp
+        from h3 import postprocess as _pp4
+        # 组 API 链（4x-UltraSharp；fps 保持源；音轨保留）
+        wf = {
+            "1": {"class_type": "UpscaleModelLoader", "inputs": {"model_name": "4x-UltraSharp.pth"}},
+            "2": {"class_type": "LoadVideo", "inputs": {"file": Path(src).name}},
+            "3": {"class_type": "GetVideoComponents", "inputs": {"video": ["2", 0]}},
+            "4": {"class_type": "ImageUpscaleWithModel", "inputs": {"upscale_model": ["1", 0], "image": ["3", 0]}},
+            "5": {"class_type": "CreateVideo", "inputs": {"images": ["4", 0], "audio": ["3", 1], "fps": 24.0}},
+            "6": {"class_type": "SaveVideo", "inputs": {"video": ["5", 0], "filename_prefix": "s13_upscale", "format": "mp4", "codec": {"codec": "h264"}}},
+        }
+        # LoadVideo 需 file 在 ComfyUI input 根；src 若不在 input，先上传
+        import shutil as _sh
+        _input_dir = Path.home() / "ai" / "ComfyUI" / "input"
+        _dst = _input_dir / Path(src).name
+        if Path(src).resolve() != _dst.resolve():
+            _sh.copy2(src, _dst)
+        pid = client.submit(wf)
+        kind, entry = client.wait_for(pid, timeout=3000)
+        if kind != "completed":
+            _log_event(f"upscale_{'error' if kind == 'error' else 'timeout'} pid={pid}")
+            print(f"[提示] 超分未完成（{kind}）；主产物不受影响。", file=sys.stderr, flush=True)
+            return None
+        from h3 import comfy as _comfy2
+        files = _comfy2.extract_output_files(entry.get("outputs", {}))
+        # extract_output_files 对 SaveVideo 可能取不到，回退查 output 目录
+        _remote = None
+        if files:
+            _remote = Path(str(files[0]).replace("~", str(Path.home())))
+        if _remote is None or not _remote.exists():
+            from h3 import comfy as _comfy3
+            q = client.request("GET", "/history/" + pid)
+            _all = q.get(pid, {}) if isinstance(q, dict) else {}
+            for nid, v in (_all.get("outputs") or {}).items():
+                if isinstance(v, dict) and (v.get("video") or v.get("gifs")):
+                    _p = v.get("video") or (v.get("gifs") or [{}])[0]
+                    _fp = _p.get("filename") if isinstance(_p, dict) else _p
+                    if _fp:
+                        _remote = Path(project_dir).parent / "ai" / "ComfyUI" / "output" / _fp
+                        break
+        if _remote is None or not _remote.exists():
+            # 新 ComfyUI 的 SaveVideo 不写 history outputs → 按输出目录最新 s13_upscale_* 回退
+            import time as _t3
+            _od = Path.home() / "ai" / "ComfyUI" / "output"
+            _cands = sorted(_od.glob("s13_upscale_*.mp4"),
+                            key=lambda p: p.stat().st_mtime, reverse=True)
+            if _cands and (_t3.time() - _cands[0].stat().st_mtime) < 900:
+                _remote = _cands[0]
+        if _remote is None or not _remote.exists():
+            _log_event("upscale_fetch_fail (outputs 无法定位)")
+            print("[提示] 无法定位超分产物，主产物不受影响。", file=sys.stderr, flush=True)
+            return None
+        _out = Path(src).with_name(Path(src).stem + "_upscale" + Path(src).suffix)
+        _sh.copy2(_remote, _out)
+        print(f"UPSCALE_OUT: {_out.name} (", flush=True)
+        _pp4_probe = _pp4.probe(str(_out))
+        print(f"  - {_pp4_probe.get('width')}x{_pp4_probe.get('height')} / {_pp4_probe.get('duration')}s", flush=True)
+        _log_event(f"upscale_done file={_out.name} pid={pid}")
+        return _out
+    except Exception as _ue:  # noqa: BLE001
+        _log_event(f"upscale_skip err={type(_ue).__name__}: {_ue}")
+        print(f"[提示] 超分跳过（{type(_ue).__name__}）；主产物不受影响。", file=sys.stderr, flush=True)
+        return None
+
+
 def _post_tts_checks(project_dir: Path, args: argparse.Namespace,
                      prod, speech, tts_txt: str) -> None:
+    global _FINAL_PRODUCT
     """S13：配音产物善后——① 音效链：参考音频（--audios 第一个）降 12dB 做底轨混音；
     ② ASR 回环验收（--asr-check：SenseVoice 对产物语音与台词比对）。失败不阻断主产物。"""
     import subprocess as _sp
@@ -794,6 +875,7 @@ def _post_tts_checks(project_dir: Path, args: argparse.Namespace,
             _mixed = prod.with_name(prod.stem + "_mix.mp4")
             _pp3.mix_tracks(prod, _mixed, main=str(_speak), bed=_mix_src,
                             main_db=0.0, bed_db=-12.0)
+            _FINAL_PRODUCT = Path(_mixed)
             print(f"MIX_OUT: outputs/{_mixed.name} (ref-audio bed -12dB + TTS main)", flush=True)
             _log_event(f"mix_ref_done file={_mixed.name} bed={Path(_mix_src).name}")
         except Exception as _me:  # noqa: BLE001
@@ -1165,6 +1247,13 @@ def main(argv: Optional[list] = None) -> int:
                         print(f"POSTPROCESS_CODE_ERROR: {type(_e).__name__}: {_e}", flush=True)
                     else:
                         print(f"[提示] 后处理失败（不影响主产物）: {_e}", file=sys.stderr, flush=True)
+            # S13 超分链：对最终产物（TTS/字幕/混音/postprocess 后）做 4x 超分
+            try:
+                _up_src = _FINAL_PRODUCT if _FINAL_PRODUCT is not None else (_local_out[0] if _local_out else None)
+                if _up_src is not None and Path(_up_src).is_file():
+                    _run_upscale(project_dir, client, Path(_up_src), args)
+            except Exception as _ue2:  # noqa: BLE001
+                _log_event(f"upscale_outer_skip err={type(_ue2).__name__}")
         else:
             print(f"\nTo download:")
             print(f"  scp {host}:{remote_path} {args.output}/", flush=True)
