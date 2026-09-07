@@ -196,9 +196,10 @@ LLM_HTTP = 'http://127.0.0.1:8000/v1/chat/completions'
 LLM_MODEL = 'Qwen3.8-27B'
 
 
-def _http_chat_once(messages: list, tools_schemas: list, timeout: int = 120) -> dict:
+def _http_chat_once(messages: list, tools_schemas: list, timeout: int = 900) -> dict:
     """book-16 自管循环：直连 SGLang OpenAI 端点（tools= 格式触发 qwen3.8 的 <tool_call> 标签）。
     返回 message dict（含 content / function_call / tool_calls）；异常抛 ValueError。
+    2026-09-07 超时根治：默认读超时 120→900s（实测长剧本 300 输出 token≈55s、单轮 2-3 分钟）。
     """
     import json as _json
     import urllib.request as _ur
@@ -453,6 +454,7 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     if user_text:
         _payload_src.append({'role': 'user', 'content': user_text})
     trimmed, dropped = trim_context(_payload_src)
+    _retried = False  # 2026-09-07 超时自动重试一次标记
     payload = dedupe_messages(list(trimmed))  # 连续重复消息剔除（污染防御）
     try:
         from h3 import logutil
@@ -507,8 +509,17 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
             try:
                 msg = _http_chat_once(cur, _tool_defs(user_text))
             except Exception as e:  # noqa: BLE001
-                events.put({'kind': 'error', 'text': f'{type(e).__name__}: {e}'})
-                return final
+                # 2026-09-07 超时安全网：长提示偶发超时→自动重试一次再交还界面
+                if not _retried and any(k in str(e).lower() for k in ('timed out', 'readtimeout', 'timeout')):
+                    _retried = True
+                    try:
+                        msg = _http_chat_once(cur, _tool_defs(user_text))
+                    except Exception as e2:  # noqa: BLE001
+                        events.put({'kind': 'error', 'text': f'[超时] {type(e2).__name__}: {e2}'})
+                        return final
+                else:
+                    events.put({'kind': 'error', 'text': f'{type(e).__name__}: {e}'})
+                    return final
             msgs_out = [msg]
             text = _content_text(msg.get('content') if isinstance(msg, dict) else '')
             fc = (msg.get('function_call') if isinstance(msg, dict) else None) or {}
@@ -665,6 +676,22 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
         final = _one_run(payload)
         events.put({'kind': 'done', 'text': final})
     except Exception as e:  # noqa: BLE001
+        # 2026-09-07 超时根治：长剧本单轮 2-3 分钟，客户端超时后自动重试一次（不打扰用户）
+        _msg = f'{type(e).__name__}: {e}' if False else str(e)
+        if not _retried and isinstance(e, Exception) and any(
+                k in str(e).lower() for k in ('timed out', 'readtimeout', 'apitimeouterror', 'connect timeout')):
+            _retried = True
+            note = '\n\n[超时重试] 上一请求模型响应超时（长提示较慢），已自动重试一次；请稍候。'
+            try:
+                last = dict(payload[-1])
+                last['content'] = str(last.get('content', '')) + note
+                final = _one_run([*payload[:-1], last])
+                events.put({'kind': 'done', 'text': final})
+                return
+            except Exception:  # noqa: BLE001
+                events.put({'kind': 'error',
+                            'text': '[模型响应超时] 已自动重试仍超时：请点"继续"重试，或换更简洁的说法；连续出现请反馈'})
+                return
         # 服务端仍报“超上下文”（如本地计数偏差/超长单条）：压缩到只剩最新
         # 消息重试一次；仍失败则把可读错误交还界面。
         if is_context_overflow_error(e) and len(payload) > 1:

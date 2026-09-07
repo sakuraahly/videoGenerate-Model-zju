@@ -209,6 +209,21 @@ queue_watch docstring 更正；调度器 SYSTEM 工具铁律同步（禁止 --pr
   对话类（口型/RIFE/4x）由 agent 在用户说"开始夜间任务"时经 `run_script(night_runner.py, --list)` 认领执行；
 - Agent SYSTEM 已内建待做/夜间清单规则；单测 5 绿（状态合并/done/门控/入库模式）。
 - 现场：cron 安装后次日 22:00 起自动运行 1080p 探测（单实例锁+门控防误跑）；日志 ~/night_runner.log。
+
+## 20. 内存 shared 与模型超时（2026-09-07 用户报告→根因→修复）
+
+**① "mem 110/122 却占 13G shared"**：
+- 排查：/dev/shm 仅 720K、ipcs 无 SysV 段、当前 shared=187Mi——13G 为**生成期瞬时值**：
+  H3 生成时 ComfyUI 视频编解码/统一内存缓冲在 tmpfs-shared 峰值出现（与 buff/cache 一起被 free 计入 shared 列）；
+- **真正的隐患=swap 15G 用满 13G**（共存内存峰值遗留）：进程页被换出→LLM 推理触碰页面→延迟升高（实测长请求 55s/300tok 高于标称 23tok/s 的一部分原因）；
+- 处置：登记观察（ComfyUI /free 腾内存可回落；如需清零 swap 需 root——留夜间巡检清单）；不阻塞主链。
+
+**② 模型响应超时（长剧本 3 连 "? timed out"）未根治→现已根治**：
+- 根因 A：客户端读超时 **120s**（ui_app._http_chat_once 默认 urllib timeout=120）——长剧本单轮 2-3 分钟必超；
+- 根因 B：超时提示语无法区分（`? timed out`=urllib URLError 无 code）；无自动重试；
+- **修复**：① 默认超时 120→**900s**；② 单轮超时**自动重试一次**（http 调用层+事件层双保险）；③ 提示语更明确；
+  ④ 另有 ctx 8192→16384（上轮）与投机解码关闭（sglang restarted）作系统级缓解；单测 23 绿。
+- 登记：LLM 吞吐受 swap/共存影响（夜间窗口更快）；长剧本若仍偶发超时→单轮拆分提示规则回归。
 **魔搭真实 ID 闭合（2026-09-06，API Code:200 逐项验证）**：
 - 人声-TTS：`AI-ModelScope/F5-TTS`、`iic/CosyVoice-300M`、`iic/CosyVoice2-0.5B`（推荐 2-0.5B 优先冒烟；edge-tts 过渡保留）；
 - 字幕-ASR：`iic/SenseVoiceSmall`（短语音/多语/可辨析验收首选）、`iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch`（长文本简体）；

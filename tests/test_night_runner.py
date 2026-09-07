@@ -42,5 +42,6 @@ def test_night_window_logic():
 
 
 def test_gitignore_has_state_pattern():
-    gi = (Path(sys.path[2]) / '.gitignore').read_text(encoding='utf-8')
+    root = Path(__file__).resolve().parent.parent
+    gi = (root / '.gitignore').read_text(encoding='utf-8')
     assert 'night-tasks.state.json' in gi

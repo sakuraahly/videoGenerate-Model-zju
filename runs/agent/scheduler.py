@@ -43,6 +43,9 @@ LLM_CFG = {
         # （max_input_tokens），详见 runs/agent/ctx_budget.py。
         'max_tokens': 2048,
         'fncall_prompt_type': 'nous',
+        # 2026-09-07 长剧本超时根治：实测长提示 300 输出 token≈55s、单轮可 2-3 分钟；
+        # generate_cfg 全量展开入 openai 请求（oai.py），request_timeout→client timeout。
+        'request_timeout': 900,
     },
 }
 
