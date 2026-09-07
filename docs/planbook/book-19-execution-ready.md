@@ -236,6 +236,33 @@ queue_watch docstring 更正；调度器 SYSTEM 工具铁律同步（禁止 --pr
 全链**真机实测 PASS**：r2v 参考图×2+cosy 配音 3.58s+字幕+ASR_SCORE 0.960+2x（MiniMax_H3_00165→video_52_pp 1216×704）。
 **③ 说明**：ComfyUI 重启打断了 11:32 提交的 r2v 任务(9452a3a7, 属对话会话)——会话"继续"会自动重试；
 本次重启=队列纪律的例外，已如实登记。
+
+## 22. 通用成品链·用户批评定稿（2026-09-07）
+
+**用户要求（原话要点）与差距**：
+① **ComfyUI 展示的就应该是成片**——不允许"生成后回本地再加工"的割裂感；打开→填词→运行→预览=最终成品（语音+字幕都在）。
+   现状：H3Finalize 桥接节点已能在 ComfyUI 内串行完成全部工序（TTS/字幕/音轨在节点内 subprocess=仍在 ComfyUI 执行环境），
+   但①真机 GUI 终验未做过②感知上仍"本地加工"③成品展示路径未打磨。差距=终验+展示示例。
+② **字幕自适应且不突兀**——现状 0.07H+Outline2+MarginV0.08H（已自适应但观感偏重）。
+   新规范=自适应档：字号 0.05H（下限14，随分辨率等比）、白字黑描边 1.5-2px、轻微阴影、底部安全区 0.10H、
+   单行≤26 字（超出自动换行）、可选半透明底板参数；默认=adaptive，旧行为保留为 classic。
+③ **音色显式指定（语言×性别）**——需结构化选择：中文女/中文男/英文女/英文男…及版本。
+   现状：xiaoxiao/yunxi/aria 短名；模型本为跨语种克隆（音色≠语言锁定），但选择器未显式标注语言性别。
+④ **只支持少数音色，不通用**——需音色库（多版本+扩展机制）。
+
+**设计定稿**：
+- **音色库** `assets/tts_voices/manifest.json`：条目 {id, 显示名(中文名+语言/性别), lang, gender, sample, ref_tex‌t, note}；
+  首批 6 音色：xiaoxiao(中文女·官方)、yunxi(中文男·真人)、aria(英文女·官方 cross-lingual)、
+  **daler(英文男·新)**——LibriSpeech 1272 真人样本（hf-mirror 可立即取得+官方转写）、
+  lao(中文老年男·爱给网素材)、yue_zh(中文女Ⅱ·待定样本)；
+  选择器=manifest 动态生成（ComfyUI voice 下拉/CLI --tts-voice/agent 词表：`中文女/中文男/英文女/英文男` 显式词）；
+  原则：样本=真人/官方，克隆式合成；语言能力=模型跨语种（每项标注推荐语言）。
+- **字幕样式**：_subtitle_style 参数化 preset（adaptive 默认/classic 旧值）；H3Finalize 加 subtitle_style 下拉。
+- **ComfyUI 一体终验**：完整跑一次（生成→cosy 配音→adaptive 字幕→ASR→预览=成品），作为 §21 验收项；
+  成品预览=节点 filepath 输出 + SaveVideo 同图。
+
+**任务序（T1-T4）**：T1 音色库 manifest+英男样本落地+三处选择器/词表 → T2 字幕样式档 + H3Finalize 参数 →
+T3 一体模板 GUI 终验（含预览示例）→ T4 文档/词表同步。回滚：样式=旧档保留；音色=换样本即回退。
 **魔搭真实 ID 闭合（2026-09-06，API Code:200 逐项验证）**：
 - 人声-TTS：`AI-ModelScope/F5-TTS`、`iic/CosyVoice-300M`、`iic/CosyVoice2-0.5B`（推荐 2-0.5B 优先冒烟；edge-tts 过渡保留）；
 - 字幕-ASR：`iic/SenseVoiceSmall`（短语音/多语/可辨析验收首选）、`iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch`（长文本简体）；
