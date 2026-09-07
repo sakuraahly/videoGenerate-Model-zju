@@ -518,3 +518,10 @@ uns/h3/asr_check.py（ffmpeg 16k wav→SenseVoiceSmall(quantize)→ASR_TEXT/VERD
 **实现**：runs/h3/sfx_mix.py——(原音轨 0dB)+(音乐底轨 -12dB,3s 淡入淡出)+(分段音效事件 开始秒:文件:dB,adelay) 三路 amix normalize=0 + loudnorm；无附加轨时仅 loudnorm 重建；输入无音轨自动降级。
 **冒烟**：video_45(旁白)+男声配乐 → outputs/video_49_sfx.mp4(h264 5.167s+aac 5.157s)✅；events 分支(1.2s:-9dB 音效)✅；win outputs/video_49.mp4 样例。
 
+## 53. 超分链冒烟 PASS（2026-09-07）
+
+**动机**：§11① 字体/细节模糊（360p 文本天然低清）——Real-ESRGAN 4x-UltraSharp(本地已有)视频超分。
+**实现**：直接组 ComfyUI API（UpscaleModelLoader(4x-UltraSharp.pth)+LoadVideo+GetVideoComponents+ImageUpscaleWithModel+CreateVideo(fps=24,audio=3,1)+SaveVideo(format=mp4,codec=h264)）——原 utility-gan_upscaler 模板 UI 转换失败(旧版 SaveVideo 3-widget 与新版不匹配→UiUnsupported)故 API 直组；SaveVideo 当前需 format+codec 参数(object_info required 未显式,execute 报缺→源码确认后补)。
+**冒烟**：video_45(608×352,含本地TTS字幕+旁白)→ s13_upscale_00001_.mp4(**2432×1408 / 24fps / h264 / 11.6MB**)抽帧目检:画面细腻、字幕文字清晰(=§11① 修复手段)✅；win outputs/video_50.mp4 样例。
+**登记**：超分耗时≈5min/5s 视频(逐帧 GPU,CPU 或长片=评估后期)。
+
