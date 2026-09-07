@@ -1,4 +1,4 @@
-"""H3 成品链自定义节点（ComfyUI）：本地 TTS（F5-TTS 魔搭）+字幕烧录+音轨替换+参考音频混音。
+"""H3 成品链自定义节点（ComfyUI）：本地 TTS（CosyVoice2 默认/F5-TTS 备选）+字幕烧录+音轨替换+参考音频混音。
 
 2026-09-07 用户指示：升级后的工作流直接在 ComfyUI 获得最终成品——本项目 h3 侧链
 （h3_submit 钩子）保留为引擎管线化路径；本节点=ComfyUI 工作流节点化路径（§13③ 定案）。
@@ -26,7 +26,7 @@ from pathlib import Path
 REPO = os.environ.get("H3_REPO", "/home/Developer/videoGenerate-Model-zju")
 TTS_PY = os.environ.get("H3_TTS_PY", "/home/Developer/ai/tts-venv/bin/python3")
 ASR_PY = os.environ.get("H3_ASR_PY", "/home/Developer/ai/asr-venv/bin/python3")
-VOICES = ["xiaoxiao", "yunxi", "aria"]
+VOICES = ["xiaoxiao", "yunxi", "aria", "daler"]  # 音色库 manifest 驱动（assets/tts_voices/manifest.json）；daler=英文男真人
 
 
 def _sh(cmd, timeout=900):
@@ -39,7 +39,8 @@ def _sh(cmd, timeout=900):
 def _voice_full(short: str) -> str:
     return {"xiaoxiao": "zh-CN-XiaoxiaoNeural",
             "yunxi": "zh-CN-YunxiNeural",
-            "aria": "en-US-AriaNeural"}.get(str(short or "xiaoxiao"), "zh-CN-XiaoxiaoNeural")
+            "aria": "en-US-AriaNeural",
+            "daler": "en-US-ChristopherNeural"}.get(str(short or "xiaoxiao"), "zh-CN-XiaoxiaoNeural")
 
 
 class H3LocalTTS:
@@ -86,6 +87,10 @@ class H3Finalize:
                 "video_in": ("VIDEO",),                      # 接 SaveVideo 输出（自动桥接路径）
                 "bed_audio": ("STRING", {"default": ""}),   # 参考音频/配乐（-12dB 底轨）
                 "font_size": ("INT", {"default": 0, "min": 0, "max": 200}),
+                "subtitle_style": (["harmony", "kai", "song", "black", "minimal", "classic"], {"default": "harmony"}),
+                "subtitle_font": (["auto", "kai", "song", "sans"], {"default": "auto"}),
+                "subtitle_color": (["auto", "white", "black"], {"default": "auto"}),
+                "backend": (["cosy", "local", "edge"], {"default": "cosy"}),
             }}
 
     RETURN_TYPES = ("STRING",)
@@ -94,7 +99,11 @@ class H3Finalize:
     CATEGORY = "h3"
     OUTPUT_NODE = True
 
-    def run(self, video, text, voice="xiaoxiao", video_in=None, bed_audio="", font_size=0):
+    def run(self, video, text, voice="xiaoxiao", video_in=None, bed_audio="", font_size=0,
+            subtitle_style="harmony", subtitle_font="auto", subtitle_color="auto", backend="cosy"):
+        # 2026-09-07 实证：ComfyUI 执行上下文中，子进程 TTS 若尝试初始化 CUDA 会与主进程 GPU 上下文
+        # 争抢→任务长时间挂起（30min+）。强制子进程 CPU 执行（F5/Cosy 本就 CPU 主跑）。
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
         sys.path.insert(0, str(Path(REPO) / "runs"))
         from h3 import tts as _tts
         if video_in is not None:
@@ -115,7 +124,7 @@ class H3Finalize:
         voice_full = _voice_full(voice)
         res = _tts.attach_speech_and_subtitle(
             src, text.strip(), out=out, voice=voice_full,
-            fontsize=int(font_size or 0), backend="local")
+            fontsize=int(font_size or 0), backend=backend)
         final = Path(res["path"])
         if bed_audio and Path(bed_audio).is_file():
             from h3 import postprocess as _pp
@@ -123,6 +132,18 @@ class H3Finalize:
             _pp.mix_tracks(final, mixed, main=str(res.get("speech") or str(final)),
                            bed=bed_audio, main_db=0.0, bed_db=-12.0)
             final = mixed
+        # 2026-09-07 §22 终验要求：ComfyUI 展示/预览=成片——成品落进输出区（output/video），
+        # 预览画廊可直接看/取；独立运行（无 ComfyUI 环境）时保留原输出位置。
+        try:
+            from folder_paths import get_output_directory  # type: ignore
+            outdir = os.path.join(get_output_directory(), "video")
+            os.makedirs(outdir, exist_ok=True)
+            import shutil
+            dest = Path(outdir) / final.name
+            shutil.copy2(str(final), str(dest))
+            final = dest
+        except Exception:  # noqa: BLE001
+            pass
         return (str(final),)
 
 

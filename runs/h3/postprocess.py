@@ -81,7 +81,8 @@ def probe(path: str) -> dict:
 
 def process(input_path: Path, out: Path, scale: float = 2.0, denoise: float = 1.0,
             sharpen: float = 0.4, color: str = "", interp: bool = False,
-            srt: Path = None, fontsize: int = 0, style_name: str = "Noto Sans CJK SC") -> dict:
+            srt: Path = None, fontsize: int = 0, style_name: str = "Noto Sans CJK SC",
+            sub_style: str = "harmony", sub_font: str = "auto", sub_color: str = "auto") -> dict:
     """执行后处理并断言输出参数。返回 probe(out)。失败抛 ValueError（确定性）。
     book-13 S2（二轮审阅）：srt 参数把字幕烧录并入**同一 -vf**（单次编码=增强+字幕，
     消除 process+render_subtitle 双次 CRF18 的代际损失）。"""
@@ -101,7 +102,8 @@ def process(input_path: Path, out: Path, scale: float = 2.0, denoise: float = 1.
     if interp:
         vf.append("minterpolate=fps=48:mi_mode=mci:mc_mode=aobmc")
     if srt is not None:
-        _fs = _subtitle_style(Path(srt), Path(input_path), fontsize, style_name)
+        _fs = _subtitle_style(Path(srt), Path(input_path), fontsize, style_name,
+                             preset=sub_style, font=sub_font, color=sub_color)
         vf.append(_fs[0])
     if not vf:
         raise ValueError("没有可执行的处理项（scale/denoise/sharpen/color/interp/srt 至少一项）")
@@ -144,27 +146,77 @@ def validate_srt(srt: Path) -> int:
     return len(blocks)
 
 
+SUBTITLE_STYLES = {
+    # 2026-09-07 定稿（参考 bilibili/影视字幕惯例，目标=浑然天成）：
+    # 位置底部居中+安全区 10%H；白字+细黑描边+极淡阴影=默认；楷/宋字体可选；黑字亮底场景可换。
+    "harmony": {"font": "Noto Sans CJK SC", "ratio": 0.05, "min": 14, "cap": 48,
+                "text": "&H00FFFFFF", "outline": "&H00000000", "o": 1.6, "shadow": "&H90000000", "sh": 1,
+                "margin_v": 0.10},
+    "kai":     {"font": "AR PL UKai CN", "ratio": 0.05, "min": 14, "cap": 48,
+                "text": "&H00FFFFFF", "outline": "&H00000000", "o": 1.6, "shadow": "&H90000000", "sh": 1,
+                "margin_v": 0.10},
+    "song":    {"font": "Noto Serif CJK SC", "ratio": 0.05, "min": 14, "cap": 48,
+                "text": "&H00FFFFFF", "outline": "&H00000000", "o": 1.6, "shadow": "&H90000000", "sh": 1,
+                "margin_v": 0.10},
+    "black":   {"font": "Noto Sans CJK SC", "ratio": 0.05, "min": 14, "cap": 48,
+                "text": "&H00000000", "outline": "&H00FFFFFF", "o": 1.6, "shadow": None, "sh": 0,
+                "margin_v": 0.10},
+    "minimal": {"font": "Noto Sans CJK SC", "ratio": 0.042, "min": 12, "cap": 40,
+                "text": "&H00FFFFFF", "outline": "&H00000000", "o": 1.2, "shadow": None, "sh": 0,
+                "margin_v": 0.11},
+    "classic": {"font": "Noto Sans CJK SC", "ratio": 0.07, "min": 16, "cap": 999,
+                "text": "&H00FFFFFF", "outline": "&H80000000", "o": 2.0, "shadow": None, "sh": 0,
+                "margin_v": 0.08},
+}
+
+
 def _subtitle_style(srt: Path, src: Path, fontsize: int = 0,
-                     style_name: str = "Noto Sans CJK SC") -> tuple:
-    """字幕 vf 片段与字号计算：fontsize<=0 → 随分辨率等比（0.07×H；二轮审阅：默认绝对 20px 已废）。"""
+                    style_name: str = "Noto Sans CJK SC",
+                    preset: str = "harmony", font: str = "auto",
+                    color: str = "auto") -> tuple:
+    """字幕 vf 片段与样式（2026-09-07 定稿）：preset=harmony/kai/song/black/minimal/classic；
+    font=auto/kai/song/sans；color=auto/white/black。fontsize>0 时覆盖字号（px）。
+    字号自适应 = ratio×高（下限/上限）；位置底部居中+安全区；描边/阴影极轻→不抢戏。
+    """
     check_cjk_font()
     validate_srt(Path(srt))
-    if fontsize <= 0:
-        info0 = probe(str(src))
-        fontsize = max(16, int(round(info0.get('height', 352)) * 0.07))
-    margin_v = max(16, int(round(float(probe(str(src)).get('height', 352)) * 0.08)))
-    force_style = f"FontName={style_name},FontSize={fontsize}," \
-                  f"PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000," \
-                  f"BorderStyle=1,Outline=2,Shadow=0,MarginV={margin_v}"
+    cfg = dict(SUBTITLE_STYLES.get(preset, SUBTITLE_STYLES["harmony"]))
+    # 字体/颜色覆盖
+    if font == "kai":
+        cfg["font"] = "AR PL UKai CN"
+    elif font == "song":
+        cfg["font"] = "Noto Serif CJK SC"
+    elif font == "sans":
+        cfg["font"] = "Noto Sans CJK SC"
+    elif font in ("", "auto"):
+        cfg["font"] = cfg.get("font") or style_name
+    if color == "black":
+        cfg.update({"text": "&H00000000", "outline": "&H00FFFFFF", "shadow": None, "sh": 0})
+    elif color == "white":
+        cfg.update({"text": "&H00FFFFFF", "outline": "&H00000000", "shadow": "&H90000000", "sh": 1})
+    h = float(probe(str(src)).get('height', 352))
+    if fontsize and fontsize > 0:
+        fs = int(fontsize)
+    else:
+        fs = max(int(cfg["min"]), int(round(h * cfg["ratio"])))
+        fs = min(fs, int(cfg["cap"]))
+    margin_v = max(14, int(round(h * cfg.get("margin_v", 0.10))))
+    shadow = f",Shadow={cfg['sh']}" + (f",ShadowColour={cfg['shadow']}" if cfg.get("shadow") else "")
+    force_style = (f"FontName={cfg['font']},FontSize={fs},PrimaryColour={cfg['text']},"
+                   f"OutlineColour={cfg['outline']},BorderStyle=1,Outline={cfg['o']},"
+                   f"Alignment=2,WrapStyle=0,MarginV={margin_v}" + shadow)
     sub_path = str(Path(srt).resolve()).replace("\\", "/").replace("`", "")
-    return (f"subtitles='{sub_path}':force_style='{force_style}'", fontsize)
+    return (f"subtitles='{sub_path}':force_style='{force_style}'", fs)
 
 
 def render_subtitle(input_path: Path, out: Path, srt: Path, fontsize: int = 0,
-                    style_name: str = "Noto Sans CJK SC") -> dict:
+                    style_name: str = "Noto Sans CJK SC",
+                    preset: str = "harmony", font: str = "auto",
+                    color: str = "auto") -> dict:
     """用 libass 烧录 SRT 到视频（中文字体；失败抛 ValueError）。
-    ️二轮审阅：默认 fontsize=0 → 随分辨率等比（旧默认绝对 20px 会随 2x 增强静默变小）。"""
-    _vf, _ = _subtitle_style(srt, input_path, fontsize, style_name)
+    2026-09-07 定稿：preset=harmony(默认浑然天成)/kai楷体/song宋体/black黑字亮底/minimal/classic，
+    font/color 可再覆盖；fontsize=0 → 随分辨率等比自适应（0.05H 起，下限/上限）。"""
+    _vf, _ = _subtitle_style(srt, input_path, fontsize, style_name, preset, font, color)
     vf = _vf
     cmd = ["ffmpeg", "-y", "-i", str(input_path), "-vf", vf,
            "-c:v", "libx264", "-preset", "fast", "-crf", "18",

@@ -255,14 +255,23 @@ queue_watch docstring 更正；调度器 SYSTEM 工具铁律同步（禁止 --pr
   首批 6 音色：xiaoxiao(中文女·官方)、yunxi(中文男·真人)、aria(英文女·官方 cross-lingual)、
   **daler(英文男·新)**——LibriSpeech 1272 真人样本（hf-mirror 可立即取得+官方转写）、
   lao(中文老年男·爱给网素材)、yue_zh(中文女Ⅱ·待定样本)；
+  落地复核（任务序执行）：daler ✅（LibriSpeech 1272 真人, f0 中位 113.7Hz, ASR 回环可辨；assets/tts_refs/daler.wav/.txt）；lao 样本弃用（克隆后 ASR 回环乱语——素材语义不符预期，归档不入库）；yue_zh 待定；manifest=assets/tts_voices/manifest.json（id/显示名/语言/性别/sample/ref/note）。
   选择器=manifest 动态生成（ComfyUI voice 下拉/CLI --tts-voice/agent 词表：`中文女/中文男/英文女/英文男` 显式词）；
   原则：样本=真人/官方，克隆式合成；语言能力=模型跨语种（每项标注推荐语言）。
-- **字幕样式**：_subtitle_style 参数化 preset（adaptive 默认/classic 旧值）；H3Finalize 加 subtitle_style 下拉。
+- **字幕样式**：_subtitle_style 参数化 preset（默认 harmony=0.05H 自适白字/薄描边/轻影/10%H 底安全区；供选 kai 楷体/song 宋体/black 黑字/classic 旧档）；H3Finalize 加 subtitle_style/subtitle_font/subtitle_color 三下拉 + backend(cosy 默认)=引擎 --subtitle-style/--font/--color 同参。
 - **ComfyUI 一体终验**：完整跑一次（生成→cosy 配音→adaptive 字幕→ASR→预览=成品），作为 §21 验收项；
   成品预览=节点 filepath 输出 + SaveVideo 同图。
 
 **任务序（T1-T4）**：T1 音色库 manifest+英男样本落地+三处选择器/词表 → T2 字幕样式档 + H3Finalize 参数 →
 T3 一体模板 GUI 终验（含预览示例）→ T4 文档/词表同步。回滚：样式=旧档保留；音色=换样本即回退。
+
+**任务序执行结果（2026-09-07，全部完成 ✅）**：
+- **T1 ✅**：`assets/tts_voices/manifest.json`（条目=id/显示名/语言/性别/sample/ref/note；首批=中文女/中文男/英文女/英文男 4 款可用）；daler 样本 `assets/tts_refs/daler.wav/.txt`（LibriSpeech 1272，f0 中位 113.7Hz，ASR 回环可辨）；三处选择器同步（H3Finalize VOICES 4 项 / h3_submit --tts-voice 4 项 / agent SYSTEM 词表=显式 语言×性别）；lao 弃用（克隆后 ASR 乱语）、yue_zh 待定（见上落地复核）。
+- **T2 ✅**：`runs/h3/postprocess.py` SUBTITLE_STYLES（harmony 默认=0.05H 自适白字+薄描边+轻影+10%H 底安全区；kai 楷体(AR PL UKai CN)/song/black 黑字白边/minimal/classic 旧档）+ `_subtitle_style(preset,font,color)`；H3Finalize 三下拉；引擎 `--subtitle-style/--font/--color`；字体已验在机（UKai/Noto Serif CJK/Noto Sans CJK）；`tests/test_subtitle_style.py` 13 绿。
+- **T3 ✅（ComfyUI 真机全链终验）**：提交 `21e3e652`，validation node_errors={}，执行 success；链=生成(MiniMax_H3_00171_, 864×480 5s)→SaveVideo→H3Finalize(video_in 桥接, **backend=cosy** 配音, **kai** 字幕)→H3AsrCheck；成片=`output/video/h3_bridge_2373727_final.mp4`（5.167s h264+aac，字幕已烧录——截图确认底部居中、细描边、不抢画；.srt 同区）；ASR 回环 ASR_SCORE **0.889 ok**（text=这个房间安静得像一座孤岛…）。
+  - 排障实证（新引擎 ComfyUI 0.34.3）：① legacy 自定义节点（H3Finalize/H3AsrCheck）的**输出不进 history outputs/meta**（ui_outputs 为空）→ 验收证据=产物文件+ASR 回环+截图，不能只看历史 JSON；② 节点 run() 内 TTS 子进程必须 CUDA_VISIBLE_DEVICES=""（否则与 ComfyUI GPU 争抢挂起 30min+）；③ 成品路径=落 ComfyUI 输出区（output/video）才满足“展示=成片”（修复：folder_paths 输出区拷贝）。
+- **T4 ✅**：本段+CURRENT-STATE §5/§6/§9 同步；双端提交；agent 已重启（SYSTEM 词表生效）。
+- **后续小项（不阻塞）**：成品文件名暂为 h3_bridge_<pid>_final.mp4（美观名=取自生成编号，可在模板 SaveVideo 后接改名节点实现，登记远期）；RIFE/口型/1080p=夜间窗口不变。
 **魔搭真实 ID 闭合（2026-09-06，API Code:200 逐项验证）**：
 - 人声-TTS：`AI-ModelScope/F5-TTS`、`iic/CosyVoice-300M`、`iic/CosyVoice2-0.5B`（推荐 2-0.5B 优先冒烟；edge-tts 过渡保留）；
 - 字幕-ASR：`iic/SenseVoiceSmall`（短语音/多语/可辨析验收首选）、`iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch`（长文本简体）；

@@ -39,11 +39,12 @@ H3 主模型（fl2va/ref2va int8 + qwen3vl text encoder + 双 VAE）在 `diffusi
 ## 5. 成品链（语音/字幕/混音/验收/超分——标准工作流）
 
 - 一键：`--tts-text "<台词>" --tts-backend cosy --finalize --asr-check`（**默认=CosyVoice2 自然音色**（2026-09-07 定案接入；GPU 优先、OOM 自动转 CPU）；F5-TTS=`local` 备选；edge 需显式降级）。
-- 音色（assets/tts_refs/{voice}.wav+.txt）：`xiaoxiao`=官方女声(默认)；`yunxi`=真人男声；`aria`=**英文女声——定案=官方 cross-lingual 样本（本地模型克隆合成、自然接近真人；2026-09-07 用户选定）；LJSpeech 真人英文样本=备选归档（换文件即切换）**。
+- 音色（assets/tts_refs/{voice}.wav+.txt + **assets/tts_voices/manifest.json**=音色库：id/显示名/语言/性别/sample/ref/note——2026-09-07 §22 T1）：**xiaoxiao=中文女**（官方,默认）；**yunxi=中文男**（真人）；**aria=英文女**（官方 cross-lingual）；**daler=英文男**（LibriSpeech 1272 真人,f0 中位 113.7Hz,2026-09-07 新增+样本已录）；lao=中文老年男（**样本弃用**：克隆后 ASR 回环乱语）；yue_zh=中文女Ⅱ（待定样本）。显式选择三处同步：ComfyUI voice 下拉 / `--tts-voice` / agent 词表（语言×性别×版本）。
 - 补充：`--tts-mix-bed <音频>`（-12dB 底轨）；`--postprocess fast`（2x+降噪+锐化）；`--upscale 4x`（RealESRGAN 4x-UltraSharp，608→2432，耗时长）。
 - 音效链：`runs/h3/sfx_mix.py --video <v> --music <底轨> --music-db -12 --events "开始秒:文件:dB,..." --out <成品>`（原音轨+底轨+分段事件三路混音；loudnorm -14）。
 - 验收：`runs/h3/asr_check.py <媒体> --compare "<原文>"` → `ASR_SCORE ≥ 0.6 = ok`（SenseVoice 回环）。
-- ComfyUI 路径：`workflows/remote_workflows/h3_finalize_chain.json`（H3LocalTTS/H3Finalize/H3AsrCheck；分类 h3；模型/venv 见节点 README；ComfyUI 重启后生效——服务重启为授权项）。
+- ComfyUI 路径：`workflows/remote_workflows/h3_finalize_chain.json` + **`video_minimax_h3_r2v_finalize.json`（一体化：生成→SaveVideo→H3Finalize(VIDEO 桥接)→H3AsrCheck）**（H3LocalTTS/H3Finalize/H3AsrCheck；分类 h3；模型/venv/路径见节点头部注释；ComfyUI 重启后生效——服务重启为授权项）。
+- **H3Finalize 节点（2026-09-07 §22 终验版）**：可选 video_in(VIDEO)=接 SaveVideo 输出；subtitle_style(harmony 默认/kai/song/black/minimal/classic)+subtitle_font+subtitle_color；**backend(cosy 默认/local/edge)**；子进程 TTS 强制 CUDA_VISIBLE_DEVICES=""（防与 ComfyUI GPU 争抢挂起）；**成品自动落 ComfyUI 输出区 output/video（预览画廊即成片，含 .srt 同步复制）**。
 - 详细讲解：`docs/guides/tts-pipeline-explain.md`（原理/复现）。
 
 ## 6. 音色与 TTS 后端现状（2026-09-07）
@@ -78,7 +79,7 @@ H3 主模型（fl2va/ref2va int8 + qwen3vl text encoder + 双 VAE）在 `diffusi
 **白天可干**：①用户听测确认（cosy 中文女声/aria 英文音色）；②镜头片 f8217f22 交付取回（对话"继续"）；
 ③"一句话出片"回归（≤768p 全链）；④~~一体模板桥接节点~~✅（VIDEO→路径桥接+模板接线, ComfyUI 已重启激活）；⑤S12 真机演练（需用户配合一轮对话）；
 **夜间自动**：⑥1080p 探测（night_runner --auto + cron 已装）；對話类：⑦口型冒烟 ⑧RIFE ⑨4x 叠加（agent 对话认领）。
-**§22 定稿任务序（用户批评 2026-09-07）**：T1 音色库（语言×性别×版本 manifest + 新增英男样本 + 三处显式选择器/词表）→ T2 字幕自适应不突兀档（默认 adaptive/classic 保留）→ T3 ComfyUI 一体模板 GUI 终验（展示=成片）→ T4 文档同步。
+**§22 定稿任务序（用户批评 2026-09-07）——全部完成 ✅（2026-09-07）**：T1 音色库（manifest+英男 daler 样本+三处显式选择器/词表）✅ → T2 字幕自适应档（harmony 默认+kai/song/black/classic；_subtitle_style+三下拉+引擎参数+13 测试绿）✅ → T3 ComfyUI 一体 GUI 终验（21e3e652：生成→SaveVideo→H3Finalize(cosy+kai)→H3AsrCheck 全链 success；成片在 output/video h3_bridge_2373727_final.mp4（864×480+配音+字幕烧录）；ASR 回环 0.889 ok；字幕截图确认无突兀）✅ → T4 文档/词表同步 ✅（本表+planbook §22；双端提交；agent SYSTEM 词表更新待重启生效）。
 
 ## 10. 夜间自动化机制（2026-09-07 用户需求：不用手动喊话）
 

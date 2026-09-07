@@ -1,0 +1,14 @@
+# 音色库（manifest 语境说明见 assets/tts_voices/README.md；条目=assets/tts_refs 样本）
+{
+  "_comment": "2026-09-07 定稿：音色=克隆式真人/官方向样本(语言×性别×版本 显式)。模型本身支持跨语种克隆，每音色标注推荐语言。",
+  "voices": [
+    {"id": "xiaoxiao", "name": "晚晴·官方女声", "lang": "zh", "gender": "female", "sample": "assets/tts_refs/xiaoxiao.wav", "text": "assets/tts_refs/xiaoxiao.txt", "note": "CosyVoice 官方 zero_shot 样本"},
+    {"id": "yunxi", "name": "云溪·真人男声", "lang": "zh", "gender": "male", "sample": "assets/tts_refs/yunxi.wav", "text": "assets/tts_refs/yunxi.txt", "note": "真人男声素材+ASR 转写"},
+    {"id": "aria", "name": "艾瑞亚·官方女声", "lang": "en", "gender": "female", "sample": "assets/tts_refs/aria.wav", "text": "assets/tts_refs/aria.txt", "note": "CosyVoice 官方 cross-lingual 样本(跨语种克隆)"},
+    {"id": "daler", "name": "戴勒·真人男声", "lang": "en", "gender": "male", "sample": "assets/tts_refs/daler.wav", "text": "assets/tts_refs/daler.txt", "note": "LibriSpeech 1272 真人英文男(公开领域)+官方转写; f0 114Hz 实测"}
+  ],
+  "pending": [
+    {"id": "yue_zh", "name": "中文女Ⅱ", "lang": "zh", "gender": "female", "note": "样本待定"},
+    {"id": "lao", "name": "中文老年男", "lang": "zh", "gender": "male", "note": "爱给网素材 ASR 乱语已弃用，待换真人样本"}
+  ]
+}

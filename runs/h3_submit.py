@@ -279,9 +279,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    choices=sorted(h3workflow.RESOLUTION_PRESETS),
                    help="Use a resolution preset (overrides file value)")
     p.add_argument("--tts-voice", type=str, default="zh-CN-XiaoxiaoNeural",
-                choices=["xiaoxiao", "yunxi", "aria", "en-aria",
-                         "zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural", "en-US-AriaNeural"],
-                help="七审（S6）：TTS 音色——短名 xiaoxiao(女)/yunxi(男)/aria(英文女声) 或全名；均归一为全名后传给 edge-tts")
+                choices=["xiaoxiao", "yunxi", "aria", "daler", "en-aria",
+                         "zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural", "en-US-AriaNeural", "en-US-ChristopherNeural"],
+                help="七审（S6）：TTS 音色——显式语言×性别：xiaoxiao=中文女(默认)/yunxi=中文男/aria=英文女/daler=英文男(真人样本)；音色库见 assets/tts_voices/manifest.json")
     p.add_argument("--tts-text", type=str, default="",
                 help="中文台词/旁白文本：完成后将该文本合成中文语音并替换视频音轨（T2b）")
     p.add_argument("--tts-backend", type=str, default="cosy", choices=["cosy", "local", "edge"],
@@ -319,7 +319,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--postprocess", type=str, default=None, choices=["none", "fast"],
                    help="book-14 T2: 完成后质量增强 none(默认)/fast(2x+降噪+锐化)")
     p.add_argument("--font-size", type=int, default=None,
-                   help="S6 字幕字号(像素; 0/缺省=随分辨率等比 0.07x高; 建议不传)")
+                   help="S6 字幕字号(像素; 0/缺省=自适应比例 0.05x高; 建议不传)")
+    p.add_argument("--subtitle-style", type=str, default="harmony",
+                   choices=["harmony", "kai", "song", "black", "minimal", "classic"],
+                   help="字幕风格(2026-09-07 定稿): harmony=默认浑然天成(白字细黑描边淡阴影)/kai=楷体/song=宋体/black=黑字白边(亮底场景)/minimal=更小更轻/classic=旧版")
+    p.add_argument("--subtitle-font", type=str, default="auto",
+                   choices=["auto", "kai", "song", "sans"], help="字幕字体覆盖(auto=随风格)")
+    p.add_argument("--subtitle-color", type=str, default="auto",
+                   choices=["auto", "white", "black"], help="字幕颜色覆盖(auto=随风格)")
     p.add_argument("--width", type=int, default=None)
     p.add_argument("--height", type=int, default=None)
     p.add_argument("--seconds", type=float, default=None)
@@ -754,7 +761,10 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
                                                  / (task_folder.name if task_folder else "tts_prep")))
             _dst = _tts_src.with_name(_tts_src.stem + "_pp.mp4")
             _pp.process(_tts_src, _dst, srt=_prep["srt"],
-                      fontsize=int(getattr(args, "font_size", 0) or 0))  # 单次编码：增强+字幕
+                      fontsize=int(getattr(args, "font_size", 0) or 0),
+                      sub_style=getattr(args, "subtitle_style", "harmony"),
+                      sub_font=getattr(args, "subtitle_font", "auto"),
+                      sub_color=getattr(args, "subtitle_color", "auto"))  # 单次编码：增强+字幕
             _tts.replace_audio_only(_dst, _prep["speech"], _dst, dur=_src_dur)
             print(f"TTS_OUT: outputs/{_dst.name} speech_s={_prep['speech_dur']:.2f} srt=yes", flush=True)
             print(f"POSTPROCESS_OUT: outputs/{_dst.name}", flush=True)
@@ -767,7 +777,10 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
             _res = _tts.attach_speech_and_subtitle(
                 _tts_src, _tts_txt, voice=_voice,
                 fontsize=int(getattr(args, "font_size", 0) or 0),
-                backend=_backend)
+                backend=_backend,
+                subtitle_style=getattr(args, "subtitle_style", "harmony"),
+                subtitle_font=getattr(args, "subtitle_font", "auto"),
+                subtitle_color=getattr(args, "subtitle_color", "auto"))
             print(f"TTS_OUT: outputs/{_res['path'].name} speech_s={_res['speech_dur']:.2f} "
                   f"srt={'yes' if _res.get('srt') else 'no'}", flush=True)
             _FINAL_PRODUCT = Path(_res["path"])
