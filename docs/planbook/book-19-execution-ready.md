@@ -170,7 +170,13 @@
 - 重绘：`AI-ModelScope/stable-diffusion-inpainting`（**2026-09-07 落地**：HF 单文件 checkpoint 已下架(runwayml 移库)→ 魔搭 diffusers 格式直用——ComfyUI 内置 `DiffusersLoader`(MODEL/CLIP/VAE)加载 `models/diffusers/stable-diffusion-inpainting/`；inpaint 链节点齐(InpaintModelConditioning/VAEEncodeForInpaint 等,1321 节点)；模板 `workflows/remote_workflows/sd_inpaint_fix.json`(LoadImage(原图)+LoadImageMask+DiffusersLoader+InpaintModelConditioning+KSampler+VAEDecode+ImageCompositeMasked+SaveImage,10 节点)；**冒烟 PASS(2026-09-07)**：真实提交 ac36a758(房间图 2848×1600+中央椭圆掩码)→产物 s13_inpaint_00001_.png(2848×1600,修复区自然、无破绽)——局部重绘链可用(修参考图乱码/瑕疵)）；
 - 口型：Wav2Lip 魔搭无官方（iic/wav2lip、AI-ModelScope/Wav2Lip 均不存在）→ 用 GitHub 官方权重 + sglang-venv torch 推理（计划书 13 可行性路线标注）；SF3D 同理登记待查（不阻塞 P2/P3）。
 **P 链④ ASR 冒烟（2026-09-06 落地）**：`iic/SenseVoiceSmall-onnx`(ONNX 量化 241MB，模型+tokenizer 缓存于 spark ~/.cache/modelscope) + funasr-onnx(独立 asr-venv，**未污染 ai/venv**——numpy 已恢复 2.5.2)；新工具 `runs/h3/asr_check.py`（ffmpeg 提取 16k wav→SenseVoiceSmall→ASR_TEXT/VERDICT）。对 S7 二级产物 video_46 音轨首测：`ASR_TEXT: you are and a seminal brings the blood on that is to serated it`（英文乱语）——**印证用户反馈④「语音不清晰、疑似胡言乱语」**（模型以参考媒体音轨为氛围参考生成旁白，节奏速率不受控=「很快的讲述声」同源）；**处置**：可辨析语音=项目 tts_text 链（已有，替代音轨）；参考媒体音频语义边界=已登记（§13 音频行）；本判据=「人力可复核的客观文本」而非自动 pass/fail（人工判读/后续语义模型）。
-
+**P 链①b CosyVoice2 试点（2026-09-07 已完成）**：用户判定 F5-TTS(vocos 24k) 输出"电音/AI 感"；
+换参考样本无法根治→换后端试点：spark `~/ai/cosy-venv`（torch 2.14+cu130 复用 tts-venv 符号链接+
+补齐 numpy/onnxruntime/whisper/pyworld/lightning/Matcha-TTS/cudatoolkit 依赖链——**github.com:443 通道被墙**、
+源码经 codeload/raw 通道落地登记；模型 `~/ai/CosyVoice2-0.5B`（魔搭 15 文件齐全）；
+`inference_zero_shot` **CPU 成功**（GPU 队列忙时 CUDA OOM→CUDA_VISIBLE_DEVICES="" 兜底，加载+47s/句）：
+同句 A/B（voice_demo_cosy_zh.mp3 vs voice_demo_official.mp3）+平和旁白句（voice_demo_cosy_zh2.mp3）
+ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend cosy（音色库/口型/1080p 仍远期）**。
 
 ## 12. 断点自动清理（2026-09-06 用户反馈：新任务总被断点拦）
 

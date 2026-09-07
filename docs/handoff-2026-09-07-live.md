@@ -70,4 +70,22 @@ sfx_mix 三路混音：音乐 -12dB/音效 -6dB/新闻 -3dB，loudnorm -14）；
 任务目录 workflows/h3_20260907_063905_102（raw MiniMax_H3_00158_.mp4）。
 
 **待用户**：听测 `outputs/video_54_shot17_final.mp4`（音轨+画面）与 `voice_demo_aria_en.mp3`；
-中文女声"电音"问题 → S13 CosyVoice2 试点（spark 安装进行中，见 §6#4）。
+中文女声"电音"问题 → CosyVoice2 试点（见 §8 已闭环试点，接入生产待听测）。
+
+## 8. 中文女声"电音"修复：CosyVoice2 试点（2026-09-07 后续）
+
+**判定**：F5-TTS v1 + vocos 24kHz 的"电音/金属感"是模型/vocoder 级限制，换参考样本无法根治；
+解决方案=换 TTS 后端。**试点已完成（S13 授权项落首子项）**：
+
+- **环境**（spark）：venv `~/ai/cosy-venv`（torch 2.14.0+cu130 复用 tts-venv 符号链接；
+  numpy/onnxruntime/whisper/pyworld/lightning/Matcha-TTS 等补齐）；代码 `~/ai/cosyvoice-src`
+  （GitHub zip 方式落地：git clone 通道被墙——github.com:443 不通，raw/codeload 可达，已登记）；
+- **模型**：`~/ai/CosyVoice2-0.5B`（魔搭 iic，15 文件齐全）；
+- **推理**：`inference_zero_shot`（参考样本=官方 zero_shot_prompt.wav）——**CPU 模式成功**
+  （GPU 被生成队列占满时 CUDA OOM，CUDA_VISIBLE_DEVICES="" 转 CPU：加载+合成 47s/句，rtf≈7.6）；
+- **验收**：同句 A/B（"希望你以后能够比现在的你更强更优秀…"）SenseVoice ASR 还原正常；
+  旁白句（"他走到电视机前…"）ASR 亦通顺；
+- **听测样**：`outputs/voice_demo_cosy_zh.mp3`（同句 A/B，与 voice_demo_official.mp3 并排对比）+
+  `outputs/voice_demo_cosy_zh2.mp3`（平和旁白句）；
+- **登记**：① 接入 tts.py 后端（h3_submit --tts-backend cosy）待用户听测通过 + GPU 空闲窗口
+  （当前队列繁忙时 CUDA OOM）；② CPU 47s/句=过渡可接受（GPU≈秒级）；③ 音色库/口型/1080p 仍远期。
