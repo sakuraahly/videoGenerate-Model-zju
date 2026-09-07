@@ -504,3 +504,6 @@ uns/h3/asr_check.py（ffmpeg 16k wav→SenseVoiceSmall(quantize)→ASR_TEXT/VERD
 **模板**：workflows/remote_workflows/sd_inpaint_fix.json（UI 格式 10 节点：LoadImage(原图)+LoadImage(掩码)+DiffusersLoader+CLIPTextEncode(pos/neg)+InpaintModelConditioning+KSampler(euler/20 步/cfg7)+VAEDecode+ImageCompositeMasked+SaveImage——先 Convert 在线转 API 提交；ComfyUI 打开=手动接线可用）。
 **登记**：冒烟=待模型下载完成→queue_watch 复检→真实 inpaint 提交（原图+局部掩码）→抽帧目检修复效果；Win-remote 侧无模型（spark-only）。
 
+
+- **PASS 细节（2026-09-07 02:1x）**：真实提交 ac36a758-27a8-4840-b873-d46ba6c4ce76（房间参考图 2848×1600 + 中央椭圆掩码）→ ComfyUI 产物 s13_inpaint_00001_.png（2848×1600）抽帧目检：掩码区域自然修复、整体无破绽；调试记录：LoadImage 自环（模板 inputs 误留）→LoadImageMask 需 2 widget（channel=red）→ 提交 400 逐项修复后通过。
+
