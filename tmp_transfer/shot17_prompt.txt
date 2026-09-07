@@ -1,0 +1,9 @@
+<Picture 1> is the interior room (old apartment living room): peeling green walls, worn century-old sofas, yellow wooden table, red LED clock. <Picture 2> is the protagonist (Sharon: young man, messy black hair, torn dark hoodie, cargo pants, high-top sneakers). <Picture 3> is the new game glasses prop (black futuristic VR glasses, glossy dark shell). Use them as exact references for space, character and prop --- match their art style, color and lighting exactly. All three references define identity and style that persist through the whole shot; they are not first-frame or last-frame keyframes. One continuous uncut 12-second take, same character, same room, no other people, no text, no watermarks.
+
+Shot 17 (storyboard 13 [Shot 1]) -- scene: living room, television turning on by itself:
+0.0-1.2s: Sharon runs out of the bedroom, smiling, light on his feet.
+1.2-1.8s: he reaches the center of the living room and turns his head toward the TV screen; the TV turns on by itself.
+2.8-3.6s: a news anchor appears on the TV screen, broadcasting.
+3.6-4.4s: Sharon's smile gradually freezes, his brows knit.
+4.4-6.0s: he takes two steps forward, moving closer to the TV, eyes locked on the screen.
+Keep the action natural and the camera steady but slightly following him.

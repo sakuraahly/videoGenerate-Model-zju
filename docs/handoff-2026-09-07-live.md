@@ -43,3 +43,31 @@
 2. ~~aria 英文音色换官方/真人样本~~ ✅（2026-09-07 后续已闭环：aria=LJSpeech 真人英文女声（LJ006-0006，公开领域，官方转写文本）；真机 F5-TTS 合成英句 ASR 回环 **1.000**；听测样 `outputs/voice_demo_aria_en.mp3`）；
 3. ComfyUI 一体模板（生成+Finalize 合并）打磨（可选）；
 4. S13 远期：CosyVoice2 全链后端（音色库）/口型/1080p 探测（授权项）。
+
+## 7. 实战演练记录（镜头17 = 原镜头13 [Shot 1]，2026-09-07 后续）
+
+**用户指示**：以"沙朗客厅电视新闻"剧本（含 3 张资产图）做实战演练；同时答"视频参考是否已支持"。
+
+**视频参考：已支持（无需写入待办）**——S7（2026-09-06 实施）：r2v 阶段 `--videos/--audios`（≤3）经
+`stage.inject_media_refs` 注入 LoadVideo→GetVideoComponents→ref_videos（+ref_video_audios）/
+LoadAudio→ref_audios；提示词必须含 `<Video N>`/`<Audio N>` tag 契约；agent 工具 CallComfyUI
+videos/audios 参数同链；真机 video_46（参考视频+参考音频采纳）PASS。本片**未用**视频参考：
+分镜视频 MiniMax_H3_00128_.mp4 实为另一镜头（欠款单据），不宜作运动参考——如后续需要
+运动参考请提供对应分镜片段。
+
+**生成**：r2v，3 参考图=`破旧公寓客厅/沙朗/新游戏眼镜`（资产图目录），提示词=剧本结构化英文版
+（人物/场景/道具 exact reference+12s 连续单镜+分段时间轴+固定语义句），negative=用户负面清单
+（无变形/无面部扭曲/无比例失调/无动作不自然/无表情模糊/语音清晰/无噪音掩盖+无文字水印）；
+360p/12s/ref2v_4step/seed auto（实跑 608×352/24fps/294帧≈12.25s）；抽帧目检 0.5/2/3.5/5/8/11.5s
+全通过（房间/人物/道具与参考图一致；电视出现新闻主播；笑容→皱眉→近前锁屏）。
+
+**音轨（独立合成，替代模型原生音频）**：英文新闻台词语音=aria 真人英文女声 F5-TTS 合成
+（"Robot layoffs in factories reach a record high."，ASR 回环 1.000）+ 跑步声（8 步 0-1.2s）+
+电视启动音（1.5s）+ 音乐（0-1.85s 轻快电子乐 → 骤停 → 2.05s 起 Drone 至结尾，numpy 合成，
+sfx_mix 三路混音：音乐 -12dB/音效 -6dB/新闻 -3dB，loudnorm -14）；成品 1216×704/24fps/11.88s。
+
+**产物**：win `outputs/video_54_shot17_final.mp4`（spark 同名 outputs/video_shot17_final_pp.mp4）；
+任务目录 workflows/h3_20260907_063905_102（raw MiniMax_H3_00158_.mp4）。
+
+**待用户**：听测 `outputs/video_54_shot17_final.mp4`（音轨+画面）与 `voice_demo_aria_en.mp3`；
+中文女声"电音"问题 → S13 CosyVoice2 试点（spark 安装进行中，见 §6#4）。
