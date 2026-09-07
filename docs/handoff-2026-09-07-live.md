@@ -98,3 +98,17 @@ ASR 逐句还原通过）。**当前仓库 aria = cross-lingual 方案（b125901
 = LJSpeech 方案（生成时点仓库样本=它）**。听测对照：`outputs/voice_demo_aria_en.mp3`（LJSpeech）
 与（并行会话产物）`outputs/voice_english_narration.wav`（cross-lingual）。判优后一个提示词即可切换
 （参照 §2 音色表行），无需代码改动（tts.py/_voice_key 均按短名取 assets/tts_refs/{voice}）。
+
+## 10. 运维记录（2026-09-07 下午，qwen agent 能力/误删排查）
+
+**1) "让 qwen agent 掌握 TTS 管道"已落地**：新增 agent 参考文档
+`docs/agent-reading/04-tts-pipeline.md`（模型表/音色/三种用法/验收判据/音效链/边界；指向
+`docs/tts-pipeline-explain.md` 详解版）——agent 的 read_doc 工具描述自动随目录更新，重启 agent 即生效
+（旁路：SYSTEM_MESSAGE 2608t 预算不变，扩展走文档通道）；agent 已重启（svc_main restart-agent）。
+
+**2) 意外命令 `rm -f RealESRGAN_x4plus.safetensors` 排查（用户报告）**：该命令删的是 **home 目录副本**
+（bash_history 393-396：rm → ls | grep → rm，均在 ~）；**ComfyUI 模型目录副本完好**：
+`~/ai/ComfyUI/models/upscale_models/RealESRGAN_x4plus.safetensors`（66,857,836 B，safetensors 库实载
+702 张量，结构体 body.0.rdb1.* = Real-ESRGAN x4plus 正常）——**无需从魔搭恢复**；
+引用方确认：ComfyUI 官方模板 utility-gan_upscaler.json 用 `RealESRGAN_x4plus.safetensors`（✓在）、
+项目 r2v 模板内嵌超分节用 `RealESRGAN_x4plus.pth`（✓在）；主超分链=4x-UltraSharp.pth（✓在）。
