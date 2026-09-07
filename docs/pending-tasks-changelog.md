@@ -512,3 +512,9 @@ uns/h3/asr_check.py（ffmpeg 16k wav→SenseVoiceSmall(quantize)→ASR_TEXT/VERD
 **标题/图表装配（PASS）**：runs/h3/title_overlay.py——SRT 单条+subtitles(libass)+FontName=Noto Serif CJK SC(顶部 Align=8,白字黑描边)；对 video_45 叠加「第一章：重逢」→ outputs/video_48_title.mp4(608x352)抽帧目检:中文完整清晰。弃用记录:drawtext(fontfile=TTC)渲染缺字形(JP 子集无 SC)——统一 libass 与字幕链同源。
 **RIFE 插帧（阻塞如实归档）**：魔搭 AI-ModelScope/RIFE flownet.pkl(12MB)=精简插值主干(module.block0..4+block_tea,无 encode.cnn3)——ComfyUI core FrameInterpolationModelLoader 检测需全量 IFNet→Unrecognized;hf-mirror 标准 RIFE-4x 未镜像/超时;备选=GitHub 官方 Practical-RIFE 权重+项目侧推理(登记)。ComfyUI core FrameInterpolate 节点本身可用(备选权重到位即冒烟)。
 
+## 52. 音效链工具 sfx_mix（2026-09-07 PASS）
+
+**动机**：§11 ② 音乐不自然 / ③ 脚步声奇怪（模型原生音频语义不可控）——独立音效轨后期混音。
+**实现**：runs/h3/sfx_mix.py——(原音轨 0dB)+(音乐底轨 -12dB,3s 淡入淡出)+(分段音效事件 开始秒:文件:dB,adelay) 三路 amix normalize=0 + loudnorm；无附加轨时仅 loudnorm 重建；输入无音轨自动降级。
+**冒烟**：video_45(旁白)+男声配乐 → outputs/video_49_sfx.mp4(h264 5.167s+aac 5.157s)✅；events 分支(1.2s:-9dB 音效)✅；win outputs/video_49.mp4 样例。
+
