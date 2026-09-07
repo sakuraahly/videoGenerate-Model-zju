@@ -69,16 +69,21 @@ class H3LocalTTS:
 
 
 class H3Finalize:
-    """最终成品：本地 TTS（语音+字幕 SRT）→ 烧录字幕 → 替换音轨 → 可选参考音频 -12dB 底轨混音。"""
+    """最终成品：本地 TTS（语音+字幕 SRT）→ 烧录字幕 → 替换音轨 → 可选参考音频 -12dB 底轨混音。
+
+    2026-09-07 通用工作流：新增可选 `video_in`(VIDEO)——直接接 SaveVideo 输出，自动保存后走成品链
+    （真·一键：生成→配音→字幕→验收 同图）；video(STRING) 手动路径仍兼容。
+    """
 
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {
-            "video": ("STRING", {"default": ""}),          # H3 生成节点输出文件路径
+            "video": ("STRING", {"default": ""}),          # H3 生成节点输出文件路径（手动）
             "text": ("STRING", {"multiline": True, "default": ""}),
             "voice": (VOICES, {"default": "xiaoxiao"}),
         },
             "optional": {
+                "video_in": ("VIDEO",),                      # 接 SaveVideo 输出（自动桥接路径）
                 "bed_audio": ("STRING", {"default": ""}),   # 参考音频/配乐（-12dB 底轨）
                 "font_size": ("INT", {"default": 0, "min": 0, "max": 200}),
             }}
@@ -89,9 +94,20 @@ class H3Finalize:
     CATEGORY = "h3"
     OUTPUT_NODE = True
 
-    def run(self, video, text, voice="xiaoxiao", bed_audio="", font_size=0):
+    def run(self, video, text, voice="xiaoxiao", video_in=None, bed_audio="", font_size=0):
         sys.path.insert(0, str(Path(REPO) / "runs"))
         from h3 import tts as _tts
+        if video_in is not None:
+            # 视频对象自带 save_to（comfy_api.latest.Types.VideoContainer/VideoCodec）
+            bridge = f"/tmp/h3_bridge_{os.getpid()}.mp4"
+            try:
+                from comfy_api.latest import Types as _Types
+                video_in.save_to(bridge, format=_Types.VideoContainer("mp4"),
+                                 codec=_Types.VideoCodec("h264"))
+            except Exception:  # noqa: BLE001
+                import av  # type: ignore
+                raise RuntimeError("VIDEO 保存失败(io.Video API 不可用), 请手动填 video 路径") from None
+            video = bridge
         src = Path(video)
         if not src.is_file():
             raise RuntimeError(f"视频不存在: {video}")

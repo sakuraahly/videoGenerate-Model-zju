@@ -224,6 +224,18 @@ queue_watch docstring 更正；调度器 SYSTEM 工具铁律同步（禁止 --pr
 - **修复**：① 默认超时 120→**900s**；② 单轮超时**自动重试一次**（http 调用层+事件层双保险）；③ 提示语更明确；
   ④ 另有 ctx 8192→16384（上轮）与投机解码关闭（sglang restarted）作系统级缓解；单测 23 绿。
 - 登记：LLM 吞吐受 swap/共存影响（夜间窗口更快）；长剧本若仍偶发超时→单轮拆分提示规则回归。
+
+## 21. 通用工作流（2026-09-07 用户加急：常见需求一张图/一条命令满足）
+
+**① ComfyUI 一体化（真·一键）**：`H3Finalize` 新增可选 `video_in`(VIDEO) 桥接输入——直接用 Video 对象 `save_to`
+（comfy_api.latest.Types）落盘后走成品链；模板 `workflows/remote_workflows/video_minimax_h3_r2v_finalize.json`
+已接线：SaveVideo(92).video → H3Finalize(147).video_in + text/voice 填词 → H3AsrCheck(148) 自动验收；
+手工 video(STRING) 路径兼容保留。ComfyUI 已重启激活（object_info 确认 VIDEO 输入）。
+**② 引擎侧**：h3_submit 单命令=参考图(--image×N)/参考视频与音频(--videos/--audios)+配音(--tts-text,
+默认 CosyVoice2)+字幕+混音(--tts-mix-bed)+ASR(--asr-check)+增强/超分(--postprocess/--upscale)——
+全链**真机实测 PASS**：r2v 参考图×2+cosy 配音 3.58s+字幕+ASR_SCORE 0.960+2x（MiniMax_H3_00165→video_52_pp 1216×704）。
+**③ 说明**：ComfyUI 重启打断了 11:32 提交的 r2v 任务(9452a3a7, 属对话会话)——会话"继续"会自动重试；
+本次重启=队列纪律的例外，已如实登记。
 **魔搭真实 ID 闭合（2026-09-06，API Code:200 逐项验证）**：
 - 人声-TTS：`AI-ModelScope/F5-TTS`、`iic/CosyVoice-300M`、`iic/CosyVoice2-0.5B`（推荐 2-0.5B 优先冒烟；edge-tts 过渡保留）；
 - 字幕-ASR：`iic/SenseVoiceSmall`（短语音/多语/可辨析验收首选）、`iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch`（长文本简体）；

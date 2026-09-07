@@ -2,7 +2,7 @@
  "id": "e3f2b845-8f2c-4b5a-9caf-eac1029d3e7e",
  "revision": 0,
  "last_node_id": 148,
- "last_link_id": 283,
+ "last_link_id": 284,
  "nodes": [
   {
    "id": 92,
@@ -29,7 +29,9 @@
     {
      "name": "video",
      "type": "VIDEO",
-     "links": null
+     "links": [
+      284
+     ]
     }
    ],
    "properties": {},
@@ -1229,7 +1231,13 @@
    "flags": {},
    "order": 157,
    "mode": 0,
-   "inputs": [],
+   "inputs": [
+    {
+     "name": "video_in",
+     "type": "VIDEO",
+     "link": 284
+    }
+   ],
    "outputs": [
     {
      "name": "filepath",
@@ -1500,6 +1508,14 @@
    148,
    0,
    "STRING"
+  ],
+  [
+   284,
+   92,
+   0,
+   147,
+   0,
+   "VIDEO"
   ]
  ],
  "groups": [
