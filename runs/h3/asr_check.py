@@ -66,8 +66,10 @@ def verdict(text: str) -> str:
     t = text.strip()
     if not t:
         return "no-speech"
+    # 中文按字符数判（ASR 文本为连续汉字）；英文按词数
+    cjk = sum(1 for ch in t if "\u4e00" <= ch <= "\u9fff")
     words = [w for w in t.split() if len(w) > 1]
-    if len(words) < 3:
+    if cjk < 3 and len(words) < 3:
         return "dubious(too short)"
     # 简单语义通畅性无法自动判定 → 交人工；给出文本
     return "has-speech (human review)" 
