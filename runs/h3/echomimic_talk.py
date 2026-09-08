@@ -59,11 +59,15 @@ def probe_duration(path: Path) -> float:
         return 0.0
 
 
-def select_face(det_bboxes, probs):
-    """与 infer_audio2vid_acc.py 同口径：prob>0.8 里取最大脸。"""
+def select_face(det_bboxes, probs, prob_min=0.5):
+    """与 infer_audio2vid_acc.py 同口径（prob 阈值放宽 0.8→0.5）：
+
+    2026-09-08 冒烟：00187 的 40% 帧 MTCNN 置信度 <0.8（S3FD 可检）→ 旧 0.8 滤掉致
+exit 5；放低到 0.5 且取最大脸即可（EchoMimic 内部只需单一主脸）。
+    """
     if det_bboxes is None or probs is None:
         return None
-    filtered = [b for i, b in enumerate(det_bboxes) if probs[i] > 0.8]
+    filtered = [b for i, b in enumerate(det_bboxes) if probs[i] > prob_min]
     if not filtered:
         return None
     return sorted(filtered, key=lambda x: (x[3] - x[1]) * (x[2] - x[0]), reverse=True)[0]
@@ -132,13 +136,19 @@ def main() -> int:
     if not n:
         print('[错误] 视频帧数读取失败', file=sys.stderr)
         return 4
-    # 参考帧
-    ref_idx = int(n * args.ref_time) if args.ref_time < 1.5 else int(args.ref_time * fps)
-    ref_idx = max(0, min(ref_idx, n - 1))
-    cap.set(cv2.CAP_PROP_POS_FRAMES, ref_idx)
-    ok, ref_frame = cap.read()
+    # 参考帧（多候选：主取 ref_time，失败依次 0.5/0.3/0.6/0.25——防单帧检测不佳）
+    ref_frame = None
+    ref_idx = -1
+    for frac in (args.ref_time, 0.5, 0.3, 0.6, 0.25):
+        ref_idx = int(n * frac) if frac < 1.5 else int(frac * fps)
+        ref_idx = max(0, min(ref_idx, n - 1))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, ref_idx)
+        ok, f = cap.read()
+        if ok and f is not None:
+            ref_frame = f
+            break
     cap.release()
-    if not ok or ref_frame is None:
+    if ref_frame is None:
         print('[错误] 参考帧读取失败', file=sys.stderr)
         return 4
     print('REF: frame=%d/%d fps=%.1f' % (ref_idx, n, fps), flush=True)
