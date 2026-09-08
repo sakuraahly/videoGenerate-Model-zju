@@ -60,3 +60,13 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 **Agent 重启 ✅**：`svc_main.py restart-agent` 后版本指纹 `7a8df97`（spark 本地 commit），7860 页面已含结果区组件（send 输出 10 位：…chatbot/status/note/hist_dd/cid/hist/gallery/box/res_video/res_files）+ 结果区文案；§15d item 4 待用户页面点验（预览可播/下载可存）。过程记录：首版 send 包装缩进误嵌 `_send_impl`（run_app 作用域无 send → NameError，页面启动即崩）→ 修复 commit `4b588bb`（Windows）/ `7a8df97`（spark）→ 重启验证通过。教训：涉及嵌套函数/闭包改动必须 spark 真机启动验证（本地起不来界面）。
 
 **P1.3 选型与启动**：**选型=EchoMimic**（音频驱动+加速版；MuseTalk 因 mmcv/mmpose+Google Drive 权重 ARM64 高风险列为备选，详见 planbook §15e ⑤）。货源=ModelScope 全量镜像（spark 直连）；最小集 ≈12.3GB；代码已落 `~/ai/echomimic`（codeload）；依赖安装中（tts-venv：diffusers 0.24/transformers/moviepy/av/facenet_pytorch/modelscope 等；torch 2.14+cu130 超其 ≤2.2.2 上限待兼容验证）；集成脚本 `runs/h3/echomimic_talk.py` 已写（参考帧→同口径裁切→重渲染→seamlessClone 回贴→mux 台词音轨）。**待夜间窗口（22:00+，队列空闲门槛）**：重量级 W=512 fp16 冒烟（嘴型同步+纹理+无框目检），通过后接入 lipsync 链（--talking-backend echomimic 替代贴皮段）。
+
+## 八、夜间追加 3：用户四联问题修复（2026-09-08 21:00-21:20，agent 重启后首轮真实反馈驱动）
+
+**用户反馈**（任务：母亲卧床/父亲悲痛/5s/720p）：①模型提交后直接等待输入（无自动续接）②模型没用上传的参考图 ③网页没自动传回视频 ④结果文件显示为空。
+
+**根因链（已取证）**：①④=模型转述用**全角冒号**「prompt_id：e0099beb-…」→ `extract_prompt_ids` 旧正则只认半角 `prompt_id:` → **任务未登记进任务表**（session_state tasks=[]，会话 jsonl 仅 1 轮）→ watcher 每 15s tick 有 cid 无任务 → 永不注入「完成」通知（=①、③：不 resume/不取回/无消息）→ 结果区无刷新事件（④ 且普通生成本来就不写会话结果区——原实现只覆盖 lipsync 链）。②=模型本轮未调用 list_references 直接 t2v（agent 日志工具调用计数 0；SYSTEM 词表已有素材规则但模型未执行）。
+
+**修复（Windows 3e78e23 / spark baa31ff，agent 已重启生效，测试 177 绿）**：①`extract_prompt_ids` 支持 `[：:]` 全角+半角，且文本含「TASK_SUBMITTED/已提交」时兜底取首个 UUID（新单测 6 例）；②`h3_submit.py` 新增 `_session_place`：产物（LOCAL_OUTPUT/POSTPROCESS_OUT/TTS_OUT/MIX_OUT）在 VIDEOGEN_SESSION_CID 存在时落 `logs/agent_chats/<cid>/outputs/` + 打印 SESSION_OUT（普通生成入结果区）；③send 注入素材提示：本会话素材池有图且用户未提及时附加一行「人物/场景一致性请 list_references 按 r2v+<Picture N> 契约使用」（参考图未用的行为修正，观察下轮）；④原任务补救：`VIDEOGEN_SESSION_CID=20260908_124614_0863 h3_submit.py --resume e0099beb-…` → LOCAL_OUTPUT video_458.mp4 + POSTPROCESS_OUT video_458_pp.mp4（2560×1472/5.17s/aac）+ 两 SESSION_OUT 入会话结果区；抽帧目检（2s）=母亲病床+父亲悲痛注视，场景契合；Windows 交付 `outputs/video_80_母亲病床.mp4`。
+
+**遗留观察**：①用户页面需「加载所选历史会话」触发结果区刷新（无事件源的已完成任务不自动弹）；②同步注意 spark-local 直跑编号独立（video_458）≠ Windows 目录编号（video_80），交付以 Windows 命名为准；③P1.3 EchoMimic 冒烟任务 22:00 自动执行中，互不影响。
