@@ -76,6 +76,8 @@ H3 主模型（fl2va/ref2va int8 + qwen3vl text encoder + 双 VAE）在 `diffusi
 
 ## 9. 当前待办（快照；详见当日 handoff + planbook 状态表）
 
+**2026-09-08 全天闭环（晚间集中登记，事实=handoff 当日 §五-§十一）**：①**§15d 结果区+会话产物协议**（runs/h3/session_outputs.py：VIDEOGEN_SESSION_CID→logs/agent_chats/<cid>/outputs/，保留10；run_script env 注入；h3_submit _session_place（LOCAL_OUTPUT/POSTPROCESS/TTS/MIX 均 SESSION_OUT）；UI gr.Video+gr.File 结果区+send 包装逐 yield 刷新；**提交真实性硬校验+工具输出真 id 优先登记**+素材池提示注入；②ASR 双轨（asr_check --start/--dur；LINE_*/NARRATION_* 分窗验真）；③S12 --scope-all 收窄（authorized_all_text：未授权即拒，原=警告放行）；④EchoMimic 无框路线装弹+排障（tts-venv torch 2.14+cu130 恢复/依赖 pin 教训 §15e⑥；12.3GB 权重 ModelScope 直拉；echomimic_talk.py 集成脚本；冒烟任务已修重跑中）；⑤夜间队列：nt-hd-4x-ultimate（t2v 版 video_461 1920×1088 已出，4x 收尾）+ **nt-hd-4x-r2v-refs（参考图版终极档：r2v@1080p 已 dry-run 验证模板支持+契约校验）** + nt-echomimic-smoke(修复版)；⑥**M1 创空间静态展示版发布+验收通过**（studio/ 全套→wumingyong0/Automated_video_generation，远端 bda7c3b；用户确认运行中/片墙/表单；入口=空间页内嵌）；⑦交付 video_80（720p 直出）/video_81（r2v 参考图连贯）；⑧1080p 直出片复盘（planbook §15g：全链已通，spark-local 编号独立口径）。
+
 **白天可干**：①用户听测确认（cosy 中文女声/aria 英文音色）；②镜头片 f8217f22 交付取回（对话"继续"）；
 ③"一句话出片"回归（≤768p 全链）；④~~一体模板桥接节点~~✅（VIDEO→路径桥接+模板接线, ComfyUI 已重启激活）；⑤S12 真机演练（需用户配合一轮对话）；
 **ComfyUI 兼容升级（2026-09-08 凌晨，planbook §15c）**：核心 RIFE 打通（flownet.pkl→models/frame_interpolation/flownet.pth，FrameInterpolationModelLoader+FrameInterpolate 可用）；一体模板升级=新 GUI 模板 video_minimax_h3_r2v_rife_finalize.json（生成→插帧 2x(48fps)→H3Finalize(cosy+kai)→ASR 全链 5b308ac9 PASS：outputs/video_65_rife_final_48fps_chain.mp4，864×480@48fps/5.15s，ASR 0.889）；语义坑=插帧后 CreateVideo fps 必须×2（否则慢动作）；S12 真机演练=机械预演全绿，待用户会话轮。
