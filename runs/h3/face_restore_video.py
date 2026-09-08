@@ -135,7 +135,8 @@ def main() -> int:
         'ffmpeg', '-y', '-loglevel', 'error',
         '-framerate', str(mux_fps),
         '-i', str(tmpdir / '%05d.png'),
-        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(out)],
+        '-i', str(src),                       # 源音轨保留（2026-09-08：此前恢复片无音轨→下游 [0:a] 缺失）
+        '-map', '0:v', '-map', '1:a?', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'copy', str(out)],
         capture_output=True, text=True, timeout=1800)
     if r.returncode != 0 or not out.exists():
         print('[错误] 封片失败: %s' % r.stderr[-300:], file=sys.stderr)

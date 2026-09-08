@@ -217,6 +217,15 @@ def main() -> int:
         return 4
     print('W2L_OK: %s' % raw_out, flush=True)
 
+    # 2.5) --face-restore：整脸 GFPGAN 重渲染（自适应边距+泊松=吸收 Wav2Lip 贴皮框，无框）
+    if args.face_restore:
+        restored = work / 'lipsync_restored.mp4'
+        fr_script = str(REPO / 'runs' / 'h3' / 'face_restore_video.py')
+        _run([str(TTS_PY), fr_script, '--video', str(raw_out), '--out', str(restored),
+              '--device', 'cpu'], timeout=3600)
+        print('FACE_RESTORE_OK: %s' % restored, flush=True)
+        raw_out = restored
+
     # 3) keep 收尾：台词字幕（角色原声=台词音轨保留）；旁白=台词结束 0.6s 后开始（不重叠）
     sys.path.insert(0, str(REPO / 'runs'))
     import h3.tts as _tts

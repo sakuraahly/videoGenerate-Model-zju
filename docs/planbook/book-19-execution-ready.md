@@ -386,6 +386,13 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 
 **本轮已落地**：①链产物双落（ComfyUI output/video + 仓库 outputs，打印路径）②工具 env 注入预留（run_script 传 CURRENT_SESSION——链侧读取判断）。
 
+## 15e. 无框路线排查+解法（2026-09-08 用户：'方框更明显'+要求原生口型）
+
+**① 用户提案核查**：'让 MiniMax H3 生成时直接做口型适配'——**本机 ComfyUI 的 H3 节点集无音频驱动/说话头节点**（object_info：仅有 ImageToVideo/ReferenceToVideo/AddGuide/SigmaShift/Music3TextEncode 等；参考音频=氛围条件不驱动口型）→ 原生口型=本版本模型不可行（Hailuo 品类高级版可能有，本地无）。**已登记**。
+**② 方框根因**：video_78 链条未跑整脸修复（--face-restore 未启用）→ Wav2Lip 贴皮框直接可见；且 face_restore_video.py 的 mux 漏带音轨（恢复片纯视频→旁白混音 [0:a] 缺失报错）——已修（-map 1:a? -c:a copy）。
+**③ 当前解法（video_79 已交付）**：链条接通 `--face-restore` = W2L 后**整脸 GFPGAN 重渲染**（自适应边距+泊松无缝）——贴皮框被整脸重渲染吸收（目检 1.8s 帧：面部纹理统一无框）+ 台词完整 + 旁白错开 + ASR 双全；输出脱敏路径。
+**④ 最优无框路线（远期候选，镜像已核有货）**：**LivePortrait / EchoMimic**（hf-mirror：camenduru/LivePortrait、Kijai/LivePortrait_safetensors；BadToBest/EchoMimic 等）——整脸/整头部由模型重生成（天然无贴皮框），音频驱动。实施=模型+代码下载（Windows 中转）→ 推理接入（tts-venv/GPU）→ 与嘴唇链同参数接线（台词→TTS→LivePortrait→字幕→旁白）。排期：夜间窗口或下一迭代首项。
+
 ## 16. S7 实施记录（2026-09-06；7a/7b/7c 已实施，**二级真机 2026-09-06 已 PASS**（video_46 608×352/124f，参考视频+参考音频采纳；抽帧目检场景锁定+推近运镜；音频采纳判据=待用户/ASR——P 链④ 已落地））
 
 - **7a 登记（十九审定稿：扩展现有 video_r2v，不新建 stage）**：capabilities video_r2v 增 slots.videos=[reference×3]、slots.audios=[reference×3]、features.reference_videos=true、params.reference_media note；object_info 在线复核四节点全绿（ref_videos/ref_video_audios/ref_audios 均 COMFY_AUTOGROW_V3、prefix=ref_video_/ref_video_audio_/ref_audio_、max=3、子输入 IMAGE/AUDIO；LoadVideo file/LoadAudio audio 均 COMBO+input 根；GetVideoComponents 输出 images/audio）；workflow_registry add_local 扩展 slots=/features= kw；template_health 设计 B 分型（videos/audios 不数模板行；仅复核注入目标前缀节点存在）+ 注入前缀取 inject_spec.class_prefix；pipeline.json 无需新 stage（r2v 已存在，templates_dir 已确认）。
