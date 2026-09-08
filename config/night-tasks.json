@@ -49,6 +49,13 @@
       "kind": "agent",
       "window": "night",
       "exec": ""
+    },
+    {
+      "id": "nt-ref-video-test",
+      "name": "S7 参考视频测试: 友人视频(00188手部特写)驱动指定内容(父亲装信封r2v+Video 1)",
+      "kind": "engine",
+      "window": "night",
+      "exec": "bash -lc 'cd ~/videoGenerate-Model-zju && ~/qwen-agent-venv/bin/python3 runs/h3_submit.py --stage r2v --resolution 720p --seconds 5 --lora ref2v_8step --image uploads/20260906/6f928fd2_父亲.png --videos ~/ai/ComfyUI/output/video/MiniMax_H3_00188_.mp4 --prompt \"A dim hospital room at night. <Picture 1> the same father in pale green shirt, close-up of his aged hands at the bedside skillfully slipping banknotes into an envelope, hand motion and warm micro-detail framing guided by <Video 1>; mother lying dying in bed blurred behind. The reference images (scene/character/props) are locked throughout the whole shot; they are NOT first-frame/last-frame keyframes; keep every frame consistent. masterpiece, best quality, cinematic lighting, emotional. No text, no watermark, no cuts, no dialogue.\" > ~/nt_refvideo.log 2>&1; echo EXIT=$?'"
     }
   ]
 }
