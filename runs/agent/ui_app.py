@@ -50,6 +50,7 @@ _upload_in_progress = False  # 上传进行中标志：防止上传/发送竞争
 _pending_batch_id: str | None = None  # 当前待发送批次的 batch_id
 _gal_previews: list = []  # 兼容旧引用（保留）
 _gal_by_cid: dict = {}  # book-16：预览按会话隔离（cid -> list）
+_TURN_TOOL_LOGS: list = []  # §15d 真实性校验：本轮工具调用审计（(name, output)），run_turn 每轮重置
 
 
 # ---------------------------------------------------------------- 状态栏 HTML 常量
@@ -440,7 +441,9 @@ def _run_tool(name: str, args) -> str:
         inst = cls()
         args = _parse_and_coerce_args(name, args)  # book-17：统一参数解析+schema 强转
         out = inst.call(args) if args else inst.call({})
-        return str(out)
+        out = str(out)
+        _TURN_TOOL_LOGS.append((name, out[:3000]))  # §15d 真实性校验素材（含 TASK_SUBMITTED 证据）
+        return out
     except Exception as e:  # noqa: BLE001
         return f'[错误] {name} 执行失败: {type(e).__name__}: {e}'
 
@@ -454,6 +457,8 @@ def run_turn(history: list, user_text: str, events: 'queue.Queue'):
     from runs.agent import turn_state
     global _LAST_TOOL  # P0 受控续接：模块级（run_turn 写入 / send 读取）
     _LAST_TOOL = ('', '')
+    global _TURN_TOOL_LOGS
+    _TURN_TOOL_LOGS = []  # §15d：本轮工具审计重置
     global _pending_batch_id
     turn_state.begin_turn(batch_id=_pending_batch_id)
     _pending_batch_id = None
@@ -984,6 +989,18 @@ def _pool_update(cid: str):
         return _gr.update()
 
 
+def _up_status_for(cid: str) -> str:
+    """加载历史会话时的上传状态（真实池口径；不再默认显示'尚未上传'）。"""
+    try:
+        n = _session_pool_count(cid)
+        if n:
+            return _pill(f'本会话素材池 {n} 项（list_references 口径；人物/场景一致性按参考图契约使用）',
+                         '#0a7d32', '#f4fbf6', '#9dd6ae')
+    except Exception:  # noqa: BLE001
+        pass
+    return UP_IDLE
+
+
 def _results_update(cid: str):
     """§15d 会话结果区刷新：gr.Video 预览最新成片 + gr.File 全部产物下载；空态提示。
 
@@ -1349,6 +1366,19 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                             final_text = item.get('text') or '未知错误'
                             break
 
+                    # §15d（2026-09-08 现场）：提交真实性校验——声称已提交/TASK_SUBMITTED 但本轮没有任何
+                    # 提交类工具调用且工具输出无 TASK_SUBMITTED 证据 → 判定虚构，作废本回复（防模型伪造提交）。
+                    if final_text and ('TASK_SUBMITTED' in str(final_text).upper() or '已提交' in final_text):
+                        _real_submit = any(
+                            (n in ('run_script', 'call_comfyui', 'batch_submit'))
+                            and ('TASK_SUBMITTED' in str(o).upper())
+                            for n, o in _TURN_TOOL_LOGS)
+                        if not _real_submit:
+                            final_text = ('⚠️ 本轮未发现真实提交：系统未检测到任何生成/提交工具调用成功，'
+                                         '刚刚出现的 TASK_SUBMITTED 串不可信，请不要等待。'
+                                         '请重新描述需求或直接点「继续」。')
+                            phase = 'error'
+
                     if aborted or phase == 'error':
                         break
 
@@ -1559,7 +1589,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             return (fmt_msgs(msgs), IDLE_HTML,
                     f'已加载会话 {sel}（{len(msgs) // 2} 轮），已重建 {len(_prevs)} 项素材预览。\n（本会话全部素材以 list_references 为准）',
                     gr.update(), sel, msgs,
-                    gr.update(value=_prevs), UP_IDLE, *_results_update(sel))
+                    gr.update(value=_prevs), _up_status_for(sel), *_results_update(sel))
 
         def _new():
             global _current_cid, _pending_batch_id
