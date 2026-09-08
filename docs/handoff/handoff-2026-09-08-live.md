@@ -94,7 +94,9 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 
 **发布**：`wumingyong0/Automated_video_generation`——匿名 clone（初始模板）→ 铺入 studio/ 全套（app.py/config.yaml/requirements.txt/assets 12 文件≈1.2MB/README 改造为创空间卡片 front matter：domain=multi-modal/tags/license Apache2.0）→ 本地 commit `bda7c3b` → **token 环境变量一次性 push**（`4df4f44..bda7c3b`，ModelScope Validation passed checked 1 commit 1011ms）→ `ls-remote` 远端=bda7c3b ✅。**token 未落盘/未入库**（仅本次命令环境变量；用户对话提供）。
 
-**待用户操作**：创空间页面（https://www.modelscope.cn/studios/wumingyong0/Automated_video_generation）刷新可见文件列表；点「运行」由平台构建 Gradio 并分配 `.modelscope.space` 运行域名（当前探测该域名=未分配，属平台侧构建步骤）→ 分配后可回验 M1 验收（URL 打开/片墙可播/表单可用）。
+**M1 验收 ✅ 通过（2026-09-08 深夜，用户确认）**：空间页「运行中」，应用内嵌正常——片墙可播+演示表单可用（用户原话：'是运行中,确实都有,很正常'）。入口=https://www.modelscope.cn/studios/wumingyong0/Automated_video_generation（Gradio 应用内嵌于空间页；`.modelscope.space` 独立域名仅'新标签打开'时分配，未分配≠失败——探测 000 属正常）。
+
+**夜间任务（自动推进中）**：nt-hd-4x-ultimate——1080p 原生已出（outputs/video_461.mp4，1920×1088/5.17s ✅），**4x 超分进行中**（RealESRGAN 4x，GPU 队列处理）→ 待 7680×4352 落盘后收尾；nt-echomimic-smoke——首跑 EXIT=5 已修复（阈值 0.8→0.5+参考帧多候选，Windows 4271147/spark 已同步+状态重置 pending），**等队列空闲自动重跑**。
 
 **兼容说明**：space sdk_version=gradio 4.44；app.py 用 Blocks/Video/Image/Dropdown/Radio/Button/Markdown 通用 API（4.x/6.x 均兼容；6.x 下 Blocks(theme=…) 仅告警不影响）。
 
