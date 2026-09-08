@@ -320,6 +320,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="book-14 T2: 完成后质量增强 none(默认)/fast(2x+降噪+锐化)")
     p.add_argument("--font-size", type=int, default=None,
                    help="S6 字幕字号(像素; 0/缺省=自适应比例 0.05x高; 建议不传)")
+    p.add_argument("--audio-mode", type=str, default="keep", choices=["keep", "replace"],
+                        help="keep=保留角色原声+台词字幕(默认)；replace=台词合成语音替换原轨")
+    p.add_argument("--subtitle-source", type=str, default="asr", choices=["asr", "text"],
+                        help="keep 模式下台词字幕来源：asr=识别角色原声(默认)；text=用 --tts-text 文本")
+    p.add_argument("--narration", type=str, default="", help="keep 模式下旁白文本（合成语音 -15dB 垫轨，不影响角色话语）")
     p.add_argument("--subtitle-style", type=str, default="harmony",
                    choices=["harmony", "kai", "song", "black", "minimal", "classic"],
                    help="字幕风格(2026-09-07 定稿): harmony=默认浑然天成(白字细黑描边淡阴影)/kai=楷体/song=宋体/black=黑字白边(亮底场景)/minimal=更小更轻/classic=旧版")
@@ -780,7 +785,10 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
                 backend=_backend,
                 subtitle_style=getattr(args, "subtitle_style", "harmony"),
                 subtitle_font=getattr(args, "subtitle_font", "auto"),
-                subtitle_color=getattr(args, "subtitle_color", "auto"))
+                subtitle_color=getattr(args, "subtitle_color", "auto"),
+                audio_mode=getattr(args, "audio_mode", "keep"),
+                subtitle_source=getattr(args, "subtitle_source", "asr"),
+                narration=getattr(args, "narration", ""))
             print(f"TTS_OUT: outputs/{_res['path'].name} speech_s={_res['speech_dur']:.2f} "
                   f"srt={'yes' if _res.get('srt') else 'no'}", flush=True)
             _FINAL_PRODUCT = Path(_res["path"])

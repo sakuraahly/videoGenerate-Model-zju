@@ -91,6 +91,9 @@ class H3Finalize:
                 "subtitle_font": (["auto", "kai", "song", "sans"], {"default": "auto"}),
                 "subtitle_color": (["auto", "white", "black"], {"default": "auto"}),
                 "backend": (["cosy", "local", "edge"], {"default": "cosy"}),
+                "audio_mode": (["keep", "replace"], {"default": "keep"}),   # keep=角色原声+台词字幕(ASR/文本)；replace=台词合成替换
+                "subtitle_source": (["asr", "text"], {"default": "asr"}),     # keep 模式下台词字幕来源
+                "narration": ("STRING", {"multiline": True, "default": ""}),  # keep 模式下可选旁白（-15dB 垫轨，不影响角色话语）
             }}
 
     RETURN_TYPES = ("STRING",)
@@ -100,13 +103,14 @@ class H3Finalize:
     OUTPUT_NODE = True
 
     def run(self, video, text, voice="xiaoxiao", video_in=None, bed_audio="", font_size=0,
-            subtitle_style="harmony", subtitle_font="auto", subtitle_color="auto", backend="cosy"):
+            subtitle_style="harmony", subtitle_font="auto", subtitle_color="auto", backend="cosy",
+            audio_mode="keep", subtitle_source="asr", narration=""):
         # 2026-09-07 实证：ComfyUI 执行上下文中，子进程 TTS 若尝试初始化 CUDA 会与主进程 GPU 上下文
         # 争抢→任务长时间挂起（30min+）。强制子进程 CPU 执行（F5/Cosy 本就 CPU 主跑）。
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
         sys.path.insert(0, str(Path(REPO) / "runs"))
         from h3 import tts as _tts
-        if video_in is not None:
+        if video_in is not None and str(video_in).strip():
             # 视频对象自带 save_to（comfy_api.latest.Types.VideoContainer/VideoCodec）
             bridge = f"/tmp/h3_bridge_{os.getpid()}.mp4"
             try:
@@ -124,7 +128,9 @@ class H3Finalize:
         voice_full = _voice_full(voice)
         res = _tts.attach_speech_and_subtitle(
             src, text.strip(), out=out, voice=voice_full,
-            fontsize=int(font_size or 0), backend=backend)
+            fontsize=int(font_size or 0), backend=backend,
+            audio_mode=audio_mode, subtitle_source=subtitle_source,
+            narration=str(narration or "").strip())
         final = Path(res["path"])
         if bed_audio and Path(bed_audio).is_file():
             from h3 import postprocess as _pp

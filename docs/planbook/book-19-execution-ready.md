@@ -367,6 +367,13 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 
 **全链恢复运行（2026-09-08，结果见下）**：修复点在链=生成→SaveVideo→GVC→FrameInterpolate(2x)→CreateVideo(48fps)→H3FaceRestore(215 帧全处理)→H3Finalize(yunxi/cosy/kai)→H3AsrCheck 的 0397f564；首跑 5e70b724（~未展开）+64c35c89（147 误接 video_in 空串）两连小坑自己登记（均为脚本接线，已修：onnx expanduser + video 参数直连 97 输出）；**成品（与全链同参数路径）已先行产出**`outputs/w2l_restore_rife_48fps_chain.mp4`（video_70：864×480@48fps/5.146s，男声 yunxi+楷体+无框痕修复，ASR 0.917 ok）——待 0397f564 全链终验结果回填。
 
+**语义修正：角色原声优先（2026-09-08 用户反馈'配音后不伦不类'）——重大**：
+- 旧语义=整轨替换（把角色原声-英文男声-抹掉换成中文旁白）=错误；用户要点：**角色台词=人物自己的声音（口型天然同步）** + 字幕=台词 + **旁白=独立一轨（不影响角色话语）**。
+- 新架构（tts.attach_speech_and_subtitle `audio_mode`）——**keep(默认)**：保留原声；台词字幕=subtitle_source(asr=识别角色原声/text=设定台词文本)；narration=旁白（合成语音 0.18 音量垫轨，**amix normalize=0 双轨无损**——第一次未加 normalize=0 原声被压 6dB 已修）；`replace`=旧行为（台词合成替换）保留备选。
+- 节点 H3Finalize 新增 audio_mode/subtitle_source/narration 三参数（默认 keep/asr）；引擎 `--audio-mode/--subtitle-source/--narration`；video_in 空串守卫（'VIDEO 保存失败'误报警修——64c35c89 类错误根除）。
+- **实演**（00184 原片）：`outputs/keep_mode_demo.mp4`（video_72）=角色原声（原英文男声保留）+ 中文楷体台词字幕（这个房间，安静得像一座孤岛。）+ 旁白垫轨（夜色中的房间…，-15dB）；ASR 双轨同检=旁白中文+原声残迹（how…）→ 两轨共存无误伤。
+- 说明：H3 模型生成的'英文台词'实为伪英语（ASR 乱码级）→ **台词字幕建议用设定文本（subtitle_source=text）**；asr 模式适用于真实语音素材。
+
 ## 16. S7 实施记录（2026-09-06；7a/7b/7c 已实施，**二级真机 2026-09-06 已 PASS**（video_46 608×352/124f，参考视频+参考音频采纳；抽帧目检场景锁定+推近运镜；音频采纳判据=待用户/ASR——P 链④ 已落地））
 
 - **7a 登记（十九审定稿：扩展现有 video_r2v，不新建 stage）**：capabilities video_r2v 增 slots.videos=[reference×3]、slots.audios=[reference×3]、features.reference_videos=true、params.reference_media note；object_info 在线复核四节点全绿（ref_videos/ref_video_audios/ref_audios 均 COMFY_AUTOGROW_V3、prefix=ref_video_/ref_video_audio_/ref_audio_、max=3、子输入 IMAGE/AUDIO；LoadVideo file/LoadAudio audio 均 COMBO+input 根；GetVideoComponents 输出 images/audio）；workflow_registry add_local 扩展 slots=/features= kw；template_health 设计 B 分型（videos/audios 不数模板行；仅复核注入目标前缀节点存在）+ 注入前缀取 inject_spec.class_prefix；pipeline.json 无需新 stage（r2v 已存在，templates_dir 已确认）。

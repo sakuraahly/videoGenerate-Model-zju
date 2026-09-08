@@ -77,6 +77,8 @@ LOCAL_TTS_PY = os.environ.get(
     "LOCAL_TTS_PY", "/home/Developer/ai/tts-venv/bin/python3")
 COSY_TTS_PY = os.environ.get(
     "COSY_TTS_PY", "/home/Developer/ai/cosy-venv/bin/python3")
+ASR_CHECK_PY = os.environ.get(
+    "ASR_CHECK_PY", "/home/Developer/ai/asr-venv/bin/python3")
 _REF_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "tts_refs"
 REF_SAMPLE_TEXT = "我们一起去公园散步吧，阳光很好。"
 TTS_BACKENDS = ("edge", "local", "cosy")
@@ -296,10 +298,18 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
                                fontsize: int = 0, backend: str = "edge",
                                subtitle_style: str = "harmony",
                                subtitle_font: str = "auto",
-                               subtitle_color: str = "auto") -> dict:
-    """book-14 T2b v2#3：合成中文语音 → 整句 SRT(0→语音时长) → 烧录字幕 → 替换音轨(apad 保时长)。
-    返回 {'path', 'speech_dur', 'srt', 'speech'}（speech=语音产物路径，供混音/ASR 复用）；
-    全部失败即抛（不产半成品）。"""
+                               subtitle_color: str = "auto",
+                               audio_mode: str = "keep",
+                               subtitle_source: str = "asr",
+                               narration: str = "") -> dict:
+    """成品链：字幕烧录 + 音轨策略（2026-09-08 语义升级——角色原声优先）。
+
+    audio_mode:
+      keep(默认)   = 保留角色原声（人物说话口型天然同步）；台词字幕=ASR(识别原声) 或 text 给定；
+                    narration 非空时=旁白（合成语音 -15dB 垫轨，不覆盖角色话语）；
+      replace     = 旧行为：台词=text 合成语音替换原轨。
+    返回 {'path', 'speech_dur', 'srt', 'speech', 'asr_text'}。
+    """
     from h3.postprocess import render_subtitle
     input_video = Path(input_video)
     dest = Path(out) if out else input_video
@@ -309,8 +319,57 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
     res = None
     try:
         dur = probe_duration(input_video)
-        spd = synthesize(text, speech, voice=voice, backend=backend)
         srt = Path(srt_path) if srt_path else dest.with_name(dest.stem + ".srt")
+        if audio_mode == "keep":
+            # 保留角色原声：台词字幕（ASR 或给定文本）→ 烧录；原音轨不动；旁白=可选 -15dB 垫轨
+            if subtitle_source != "asr":
+                line_text = (text or "").strip()
+                asr_text = ""
+            else:
+                asr_text = ""
+                try:
+                    script = str(Path(__file__).resolve().parent / "asr_check.py")
+                    out_asr = subprocess.run(
+                        [ASR_CHECK_PY, script, str(input_video)],
+                        capture_output=True, text=True, timeout=600)
+                    for ln in (out_asr.stdout or "").splitlines():
+                        if ln.startswith("ASR_TEXT:"):
+                            raw = ln.split(":", 1)[1].strip()
+                            import re as _re
+                            asr_text = _re.sub(r"<[^>]*>", "", raw).strip()
+                            break
+                except Exception:  # noqa: BLE001
+                    asr_text = ""
+                line_text = asr_text or (text or "").strip()
+            spd = dur or len(line_text)
+            srt.write_text(f"1\n00:00:00,000 --> {_srt_time(dur or 1.0)}\n{line_text}\n", encoding="utf-8")
+            render_subtitle(input_video, with_sub, srt, fontsize=fontsize,
+                            preset=subtitle_style, font=subtitle_font, color=subtitle_color)
+            # 原音轨保留（with_sub 已含原音轨，直接拷贝）+ 旁白可选垫轨
+            if narration and str(narration).strip():
+                spd2 = synthesize(str(narration).strip(), speech, voice=voice, backend=backend)
+                cmd = ["ffmpeg", "-y", "-i", str(with_sub), "-i", str(speech),
+                       "-map", "0:v", "-map", "[ot]", "-c:v", "copy",
+                       "-filter_complex", "[1:a]volume=0.18[nar];[0:a][nar]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[ot]",
+                       "-c:a", "aac", "-b:a", "192k"]
+            else:
+                spd2 = None
+                speech.unlink(missing_ok=True)
+                cmd = ["ffmpeg", "-y", "-i", str(with_sub),
+                       "-map", "0:v", "-map", "0:a?", "-c:v", "copy", "-c:a", "copy"]
+            if dur and dur > 0:
+                cmd += ["-t", f"{dur:.3f}"]
+            cmd += [str(tmp_out)]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+            if r.returncode != 0 or not tmp_out.is_file():
+                raise ValueError("字幕/原声保留失败: " + (r.stderr or "")[-300:])
+            tmp_out.replace(dest)
+            with_sub.unlink(missing_ok=True)
+            res = {"path": dest, "speech_dur": spd, "srt": srt,
+                   "speech": (speech if speech.is_file() else ""), "asr_text": asr_text}
+            return res
+        # --- 旧行为：replace（台词=text 合成语音替换原轨） ---
+        spd = synthesize(text, speech, voice=voice, backend=backend)
         srt.write_text(f"1\n00:00:00,000 --> {_srt_time(spd)}\n{text}\n", encoding="utf-8")
         render_subtitle(input_video, with_sub, srt, fontsize=fontsize,
                         preset=subtitle_style, font=subtitle_font, color=subtitle_color)
@@ -325,7 +384,7 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
             raise ValueError("TTS 音轨替换失败: " + (r.stderr or "")[-300:])
         tmp_out.replace(dest)
         with_sub.unlink(missing_ok=True)
-        res = {"path": dest, "speech_dur": spd, "srt": srt, "speech": speech}
+        res = {"path": dest, "speech_dur": spd, "srt": srt, "speech": speech, "asr_text": ""}
         return res
     finally:
         if res is None:  # 失败清理语音产物；成功交由调用方（混音/ASR 复用）
