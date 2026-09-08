@@ -541,7 +541,22 @@ class ListReferences(BaseTool):
                 # S12：共享分支需要当前轮标识校验授权（轮末失效）
                 env = {**os.environ, 'REFIMAGE_TURN_ID': str(CURRENT_TURN_ID or '')}
         else:
-            # 无会话上下文（CLI/手工）或显式 all → 全部（带未授权警示）
+            # §15 暴露面收窄（2026-09-08 落地）：all/无会话上下文 → 需当前轮用户明确授权
+            # （authorized_all_text）；未授权即拒（原实现=警告+放行）。
+            _u_all = False
+            try:
+                from h3 import refimage as _ref2
+                _u_all = _ref2.authorized_all_text(CURRENT_USER_TEXT)
+            except Exception:  # noqa: BLE001
+                _u_all = False
+            if session == 'all' and not _u_all:
+                return ('拒绝：session="all"（全部素材）需用户**当前轮**明确授权——'
+                        '请让用户说出「查看全部素材/所有素材」等授权句；'
+                        '更推荐精授权：grant_refs(target=<会话cid>) 后传 session="shared-<cid>"。')
+            if not session and not _u_all:
+                return ('拒绝：当前会话上下文缺失（CURRENT_SESSION 为空，CLI/异常路径）→ 不列全部素材。'
+                        '请传 session=<cid>；调试可经 python runs/h3/refimage.py list --scope-all 直接执行。')
+            # 已获显式授权 → 原警告+放行
             _warn = ('⚠️ 正在列出**全部**素材（含其他会话/历史产物）。'
                      '仅当用户已明确授权 "查询全部素材" 时使用；否则请改为默认的本会话素材，'
                      '或经 grant_refs 签发后使用 shared-<cid>（精授权）；请告知用户 "请先上传/指明素材"。\n')

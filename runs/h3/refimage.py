@@ -427,6 +427,26 @@ def explicit_authorization(text, target: str = '', src_cid: str = '') -> bool:
     return any(k in t for k in _GRANT_AUTH_SESS)
 
 
+# 全量授权判定（§15 暴露面收窄登记落地，2026-09-08）：用户当前轮明确【全部/所有+素材/会话/历史】类授权句。
+_ALL_AUTH_KEYS = ('全部素材', '所有素材', '全部会话', '所有会话', '全部历史', '所有历史',
+                  '全部照片', '所有照片', '全部图片', '所有图片')
+
+
+def authorized_all_text(text) -> bool:
+    """当前轮用户消息是否明确授权查看全部素材（--scope-all / session=all）。
+
+    §15 收窄（原=警告+放行）：无此授权即拒；否定词/疑问句一律 False（与 explicit_authorization 同口径）。
+    """
+    t = str(text or '').strip()
+    if not t:
+        return False
+    if any(k in t for k in _GRANT_AUTH_NEG):
+        return False
+    if '？' in t or '?' in t or t.rstrip('。.!！ ').endswith('吗'):
+        return False
+    return any(k in t for k in _ALL_AUTH_KEYS)
+
+
 def normalize_session(value, current: str = '') -> str:
     """归一化 session 取值（book-05 优化1）：
 

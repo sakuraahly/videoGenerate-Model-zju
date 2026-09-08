@@ -172,6 +172,18 @@ class TestAuthorizationHeuristic(unittest.TestCase):
         self.assertFalse(refimage.explicit_authorization('请列一下素材', ''))  # 无目标
 
 
+class TestAuthorizedAllText(unittest.TestCase):
+    def test_positive_keys(self):
+        for t in ('查看全部素材', '把所有素材都列出来', '用所有会话的图', '全部历史素材可以用'):
+            self.assertTrue(refimage.authorized_all_text(t), t)
+
+    def test_negative(self):
+        self.assertFalse(refimage.authorized_all_text(''))           # 空
+        self.assertFalse(refimage.authorized_all_text('你好'))       # 无授权句
+        self.assertFalse(refimage.authorized_all_text('不用所有素材'))  # 否定
+        self.assertFalse(refimage.authorized_all_text('可以用全部素材吗？'))  # 疑问
+
+
 class TestCleanupGrants(unittest.TestCase):
     def test_clean_removes_grants_with_session(self):
         with tempfile.TemporaryDirectory() as td:
