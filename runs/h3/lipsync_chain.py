@@ -190,6 +190,20 @@ def main() -> int:
         print('[warn] 可检测人脸区间过短（%.2fs），按原片尝试' % (run[1] - run[0]), flush=True)
     src_cp = work / 'face.mp4'
     shutil.copy2(src_face, src_cp)
+    # 补帧到台词全长（克隆末帧）：否则台词比脸源长时尾部被截断（2026-09-08 用户验证'话没讲完'→修复）
+    sys.path.insert(0, str(REPO / 'runs'))
+    from h3 import tts as _tts_prv
+    line_dur = float(_tts_prv.probe_duration(work / 'line.wav') or 0)
+    face_dur = float(_tts_prv.probe_duration(src_cp) or 0)
+    if line_dur > face_dur + 0.15:
+        pad_s = line_dur - face_dur + 0.20
+        pad_out = work / 'face_pad.mp4'
+        _run(['ffmpeg', '-y', '-loglevel', 'error', '-i', str(src_cp),
+              '-vf', 'tpad=stop_mode=clone:stop_duration=%.2f' % pad_s,
+              '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', str(pad_out)])
+        src_cp = pad_out
+        print('FACE_PAD: %.2fs -> %.2fs (line %.2fs)' % (face_dur, face_dur + pad_s, line_dur),
+              flush=True)
     raw_out = work / 'lipsync_raw.mp4'
     _run([str(TTS_PY), str(W2L_SRC / 'inference.py'),
           '--checkpoint_path', str(CKPT), '--face', str(src_cp),
