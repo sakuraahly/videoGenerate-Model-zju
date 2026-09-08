@@ -300,6 +300,8 @@ _GRANT_AUTH_USAGE = ('用', '拿', '复用', '调用', '使用', '参考')
 _GRANT_AUTH_SESS = ('会话', '历史', '上次', '之前', '以前', '那个', '这个',
                     '他', '她', '素材', '图')
 _GRANT_AUTH_NEG = ('不用', '不能', '不行', '不同意', '不可以', '别用', '不要用', '拒绝')
+# 短确认词（级联：上一条助手消息已点名目标并请求确认时，用户回复单词即算授权）
+_GRANT_AUTH_SHORT = ('允许', '同意', '可以', '好', '行', '确认', 'ok', 'OK', '嗯', '是的', '对')
 
 
 def grants_dir() -> Path:
@@ -352,18 +354,12 @@ def grant_check(target: str, turn_id='') -> tuple:
     if not str(turn_id or '').strip():
         return 'no_turn', '调用方未提供当前轮标识（REFIMAGE_TURN_ID）'
     try:
-        ok_turn = int(g.get('turn_id', -1)) == int(turn_id)
-    except (TypeError, ValueError):
-        ok_turn = False
-    if not ok_turn:
-        return 'stale_turn', (f'授权已轮末失效（签发轮 {g.get("turn_id")} ≠ 当前轮 {turn_id}；'
-                              f'一次性授权仅签发轮有效）')
-    try:
         expired = float(g.get('expires', 0)) < time.time()
     except (TypeError, ValueError):
         expired = True
     if expired:
-        return 'expired', '授权已过期（TTL 到期）'
+        return 'expired', '授权已过期（TTL 到期；有效期 3600s，超时需重新签发）'
+    # 2026-09-08 语义升级：轮末失效 → TTL 时间窗（turn_id 保留作审计字段，不再逐轮失效）
     return 'ok', ''
 
 
@@ -385,12 +381,12 @@ def cmd_grant(target: str, src: str, turn_id, ttl=None) -> int:
     print(f'已签发一次性共享授权:')
     print(f'  target={g["target_cid"]}  src={g["src_cid"] or "-"}')
     print(f'  turn={g["turn_id"]}  expires={datetime.fromtimestamp(g["expires"]).strftime("%m-%d %H:%M:%S")}')
-    print('  → list --session shared-<target> 使用（仅本对话轮有效，轮末自动失效）')
+    print('  → list --session shared-<target> 使用（TTL 时间窗内有效；轮末失效已改版见备注）')
     _log(f'grant target={g["target_cid"]} src={g["src_cid"]} turn={g["turn_id"]}')
     return 0
 
 
-def explicit_authorization(text, target: str = '') -> bool:
+def explicit_authorization(text, target: str = '', src_cid: str = '') -> bool:
     """当前轮用户消息是否含明确授权（S12 弱在环启发式）：
 
     须同时命中 ①允许类确认词 ②使用动词 ③目标会话指向（cid 或泛指)；
@@ -413,6 +409,21 @@ def explicit_authorization(text, target: str = '') -> bool:
             return True
         if len(target) > 13 and target[:13] in t:  # 线索展示的 cid 前缀
             return True
+        # 短确认级联（2026-09-08）：用户仅回一个确认词，且上一条助手消息点名该目标并请求确认
+        if len(t) <= 12 and any(c in t for c in _GRANT_AUTH_SHORT) and src_cid:
+            try:
+                sess = grants_dir() / f'{src_cid}.jsonl'
+                if sess.exists():
+                    lines = [ln for ln in sess.read_text(encoding='utf-8', errors='ignore').splitlines()
+                             if '"role": "assistant"' in ln]
+                    if lines:
+                        last = lines[-1]
+                        mentions = (target in last) or (len(target) > 13 and target[:13] in last)
+                        asks = any(k in last for k in ('确认', '授权', '使用', '是否'))
+                        if mentions and asks:
+                            return True
+            except Exception:  # noqa: BLE001
+                pass
     return any(k in t for k in _GRANT_AUTH_SESS)
 
 
@@ -485,7 +496,7 @@ def cmd_list(dirs: dict, show_other: bool = False, pool: str = "",
                             '由调度器经 grant_refs 签发（授权存独立文件 logs/agent_chats/<cid>.grants.json，'
                             '不写入 meta.json——该文件会被会话保存每轮覆写）。' % target),
                 'expired': '授权已过期（TTL 到期）。请重新请求用户授权后再次签发。',
-                'stale_turn': '授权已轮末失效（一次性授权仅签发轮有效）。请重新请求用户授权后再次签发。',
+                'stale_turn': '授权 TTL 时间窗校验（审计字段不匹配不影响——见 grant_check 语义升级）',
                 'no_turn': '无法校验轮次：调用方未提供当前轮标识（REFIMAGE_TURN_ID）。',
                 'corrupt': '授权文件损坏。请重新签发。',
             }
@@ -495,11 +506,11 @@ def cmd_list(dirs: dict, show_other: bool = False, pool: str = "",
             return 0
         sel = _filter_by_session(rows, batch_map, target)
         if not sel:
-            print(f'共享授权（一次性，轮末失效）: 会话 {target} 暂无可用素材')
+            print(f'共享授权（TTL 时间窗有效）: 会话 {target} 暂无可用素材')
             return 0
         sel, notes = _dedupe_by_prefix(sel)
         rows = sel
-        print(f'共享授权（一次性，轮末失效）: 会话过滤 {target}（{len(rows)} 项，按时间倒序）')
+        print(f'共享授权（TTL 时间窗有效）: 会话过滤 {target}（{len(rows)} 项，按时间倒序）')
         for n in notes[:8]:
             print(f'  [注] {n}')
     elif session:

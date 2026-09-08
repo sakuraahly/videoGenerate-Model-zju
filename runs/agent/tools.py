@@ -578,7 +578,7 @@ class GrantRefs(BaseTool):
         'session="shared-<目标cid>"）。**仅当用户在当前轮消息中明确授权**（如 "可以用上次会话的客厅图/'
         '允许使用那个素材"）才能调用；工具会校验当前轮用户消息，未检测到明确授权即拒绝——'
         '禁止自行/代用户签发。用法：用户确认授权 → grant_refs(target=<会话cid>, reason=<一句话理由>) '
-        '→ list_references(session="shared-<目标cid>")；授权仅当前对话轮有效（轮末失效），过期自动作废。'
+        '→ list_references(session="shared-<目标cid>")；授权在 TTL 时间窗内有效（默认 1 小时；时间窗内跨对话轮仍有效，过期自动作废——2026-09-08 语义由轮末失效升级为 TTL 时间窗）。'
     )
     parameters = {
         'type': 'object',
@@ -601,7 +601,7 @@ class GrantRefs(BaseTool):
         reason = str((params or {}).get('reason') or '').strip()[:200]
         try:
             from h3 import refimage as _ref
-            _auth = _ref.explicit_authorization(CURRENT_USER_TEXT, target)
+            _auth = _ref.explicit_authorization(CURRENT_USER_TEXT, target, src_cid=(CURRENT_SESSION or ''))
         except Exception:  # noqa: BLE001
             _auth = False
         if not _auth:

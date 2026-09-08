@@ -51,11 +51,11 @@ class TestGrantStore(unittest.TestCase):
         st, _ = refimage.grant_check(CID_A, turn_id='7')
         self.assertEqual(st, 'ok')
 
-    def test_grant_check_stale_turn(self):
+    def test_grant_check_ttl_window_multiturn(self):
+        # 2026-09-08 语义升级：轮末失效 → TTL 时间窗（turn 仅审计；不同轮仍有效）
         refimage.grant_issue(CID_A, CID_B, 7)
-        st, detail = refimage.grant_check(CID_A, turn_id='8')
-        self.assertEqual(st, 'stale_turn')
-        self.assertIn('轮末', detail)
+        st, _ = refimage.grant_check(CID_A, turn_id='8')
+        self.assertEqual(st, 'ok')
 
     def test_grant_check_expired(self):
         refimage.grant_issue(CID_A, CID_B, 7, ttl=3600)
@@ -133,15 +133,17 @@ class TestListSharedBranch(unittest.TestCase):
         refimage.grant_issue(CID_A, CID_B, 7)
         rc, out = self._list('shared-' + CID_A)
         self.assertEqual(rc, 0)
-        self.assertIn('共享授权（一次性，轮末失效）: 会话过滤 ' + CID_A, out)
+        self.assertIn('共享授权（TTL 时间窗有效）: 会话过滤 ' + CID_A, out)
         self.assertIn('客厅', out)
         self.assertNotIn('另一会话', out)  # 目标会话外的素材不得透出
 
-    def test_shared_stale_turn_denied(self):
+    def test_shared_ttl_window_multiturn(self):
+        # 2026-09-08 语义升级：不同轮（turn 不匹配）在 TTL 窗口内仍可访问
         refimage.grant_issue(CID_A, CID_B, 7)
         rc, out = self._list('shared-' + CID_A, turn_id='8')
         self.assertEqual(rc, 0)
-        self.assertIn('轮末失效', out)
+        self.assertIn('客厅', out)
+        self.assertNotIn('另一会话', out)
 
     def test_shared_expired_denied(self):
         refimage.grant_issue(CID_A, CID_B, 7)

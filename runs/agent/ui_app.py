@@ -966,6 +966,14 @@ def _caption_for(cid: str) -> str:
     return f'会话 {cid} · 已用'
 
 
+def _pool_update(cid: str):
+    """发送后刷新预览池（本会话 + 有效共享授权），S12 可见性即时化。"""
+    try:
+        return gr.update(value=_previews_for_cid(cid) + _shared_for_cid(cid))
+    except Exception:  # noqa: BLE001
+        return gr.update()
+
+
 def _shared_for_cid(cid: str) -> list:
     """S12：当前会话有效共享授权（grants 文件 src==本会话、未过期未用）的目标会话预览（UI 预览池可见性补齐）。"""
     out: list = []
@@ -1162,7 +1170,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             yield (fmt_msgs(chat_hist or []),
                    BUSY_HTML('上一轮仍在处理中，本次点击已忽略'),
                    '上一轮仍在处理中；请等状态变绿或点"停止当前任务"。', gr.update(), cid,
-                   chat_hist or [], gr.update())
+                   chat_hist or [], _pool_update(cid), gr.update())
             return
         try:
             global _stop_requested
@@ -1172,12 +1180,12 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 yield (fmt_msgs(chat_hist or []),
                        BUSY_HTML('上传尚未完成，请稍候再发送'),
                        '⏳ 素材上传进行中，请等待上传完成后再发送。', gr.update(), cid,
-                       chat_hist or [], gr.update())
+                       chat_hist or [], _pool_update(cid), gr.update())
                 return
 
             if not user_text:
                 yield (fmt_msgs(chat_hist or []), IDLE_HTML, '请输入内容。', gr.update(), cid,
-                       chat_hist or [], gr.update())
+                       chat_hist or [], _pool_update(cid), gr.update())
                 return
 
             if not cid:
@@ -1254,14 +1262,14 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                         try:
                             item = ev.get(timeout=0.5)
                         except queue.Empty:
-                            yield shown, BUSY_HTML('处理中...'), '', noop, cid, msgs, (clear_box if first else noop)
+                            yield shown, BUSY_HTML('处理中...'), '', noop, cid, msgs, _pool_update(cid), (clear_box if first else noop)
                             first = False
                             continue
 
                         kind = item.get('kind')
                         if kind in ('hb', 'phase'):
                             status_text = item.get('text', '')
-                            yield shown, status_text, '', noop, cid, msgs, (clear_box if first else noop)
+                            yield shown, status_text, '', noop, cid, msgs, _pool_update(cid), (clear_box if first else noop)
                             first = False
                         elif kind == 'chunk':
                             # book-13 C1：消息级分批渲染——立即追加，不等待整轮
@@ -1273,7 +1281,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                                     if _dup_streak > 2:  # 收紧：第 3 个重复块即停（用户真实测试：上一版 8 次太晚）
                                         phase = 'error'
                                         final_text = '输出异常（检测到持续重复），已自动停止展示；请重试或换一种说法。'
-                                        yield shown, ERROR_HTML, '⚠️ 模型输出重复，已自动停止', noop, cid, msgs, (clear_box if first else noop)
+                                        yield shown, ERROR_HTML, '⚠️ 模型输出重复，已自动停止', noop, cid, msgs, _pool_update(cid), (clear_box if first else noop)
                                         first = False
                                         break
                                 else:
@@ -1283,11 +1291,11 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                                     else:
                                         msgs.append({'role': 'assistant', 'content': text})
                                     shown = fmt_msgs(msgs)
-                                    yield shown, BUSY_HTML('生成中（内容已输出）...'), '', noop, cid, msgs, (clear_box if first else noop)
+                                    yield shown, BUSY_HTML('生成中（内容已输出）...'), '', noop, cid, msgs, _pool_update(cid), (clear_box if first else noop)
                                     first = False
                             continue
                         elif kind == 'tool':
-                            yield shown, BUSY_HTML('工具调用中...'), f'🔧 工具：{item.get("text", "")}', noop, cid, msgs, (clear_box if first else noop)
+                            yield shown, BUSY_HTML('工具调用中...'), f'🔧 工具：{item.get("text", "")}', noop, cid, msgs, _pool_update(cid), (clear_box if first else noop)
                             first = False
                             continue
                         elif kind == 'done':
@@ -1329,7 +1337,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     msgs.append({"role": "user", "content": '[系统自动续接] 请继续完成当前任务。'
                                  + (('[上一步] ' + ((_LAST_TOOL or ('', ''))[1])[:140]) if _LAST_TOOL else '') + '（重试/继续需按真实工具结果；不得虚构提交结果）'})
                     user_text = None
-                    yield (shown, BUSY_HTML('自动续接中...'), ' 自动续接中...', noop, cid, msgs, noop)
+                    yield (shown, BUSY_HTML('自动续接中...'), ' 自动续接中...', noop, cid, msgs, _pool_update(cid), noop)
 
             finally:
                 stop_hb.set()
@@ -1379,11 +1387,11 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                             continue
 
                         if msg['type'] == 'update':
-                            yield (gr.update(), msg['status_html'], msg['note_md'], noop, cid, msgs, noop)
+                            yield (gr.update(), msg['status_html'], msg['note_md'], noop, cid, msgs, _pool_update(cid), noop)
                         elif msg['type'] == 'done':
                             monitor_reported_completion = True
                             if msg['status_html']:
-                                yield (gr.update(), msg['status_html'], msg['note_md'], noop, cid, msgs, noop)
+                                yield (gr.update(), msg['status_html'], msg['note_md'], noop, cid, msgs, _pool_update(cid), noop)
                             break
                 except Exception:
                     pass
@@ -1420,11 +1428,11 @@ def run_app(port: int = 7860, share: bool = False) -> None:
 
             if check_turn_valid(cid, current_turn_id):
                 if stop_event.is_set() or _stop_requested.is_set():
-                    yield (msgs, ABORT_HTML, ' 已中止', noop, cid, msgs, [])
+                    yield (msgs, ABORT_HTML, ' 已中止', noop, cid, msgs, _pool_update(cid), [])
                 elif monitor_reported_completion:
-                    yield (msgs, noop, noop, noop, cid, msgs, [])
+                    yield (msgs, noop, noop, noop, cid, msgs, _pool_update(cid), [])
                 else:
-                    yield (msgs, final_status, note, gr.update(choices=_choices()), cid, msgs, clear_box)
+                    yield (msgs, final_status, note, gr.update(choices=_choices()), cid, msgs, _pool_update(cid), clear_box)
         finally:
             _active_turn.release()
     with gr.Blocks(title='H3 视频生成助手', theme=gr.themes.Soft()) as demo:
@@ -1465,7 +1473,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         note_md = gr.Markdown('_…_')
 
         out = [chatbot, status_html, note_md, hist_dd, cid_state, hist_state]
-        send_out = out + [box]   # 发送输出追加输入框（提交后自动清空）
+        send_out = out + [gallery, box]   # 发送输出追加预览池+输入框（提交后自动清空；S12 池即时刷新）
         new_out = out + [gallery, up_status]  # 新建/加载会话时同时清空上传预览与上传状态
 
         def _auto_new():

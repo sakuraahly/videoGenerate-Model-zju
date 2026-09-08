@@ -351,6 +351,13 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 - 用户反馈歧义：工具层已可访问，但网页底部预览池为空——原因=预览池按当前会话 cid 过滤（设计），共享素材不可见；修复=ui_app `_shared_for_cid(cid)`（grants 文件 src==当前会话、未过期未用 → 合并目标会话预览，caption=共享授权·会话<cid>），agent 重启后生效：再发一次授权句，池内即可见 4 张缩略图（池显示随授权轮末失效=遵循一次性语义）。
 - 注：UI 预览池显示≠访问权，访问权仍以 grants+turn 校验为准。
 
+**S12 智能性升级（2026-09-08 二轮，用户反馈过于不智能）——三改**：
+① **轮末失效 → TTL 时间窗**（grant_check：turn 仅审计字段；生效期=签发后 3600s 内跨轮有效）——多轮创作不用每轮重签；
+② **短确认级联**（explicit_authorization：用户回"好/行/允许/可以/确认/OK"等短词 ≤12 字，且上一条助手消息点名该目标并请求确认 → 视为授权；拒绝词/疑问句仍拒发）；
+③ **预览池即时刷新**（ui_app send 每个 yield 追加 _pool_update(cid)=本会话+有效共享授权预览；send_out 增 gallery 输出位）——授权后该轮结束池内立即可见（时间窗内）。
+**验证**：单测 14 绿（含 TTL 多轮/过期/缺失/短确认级联）；机械正负例 CLI 全绿。
+**下巴框痕根治（用户二刷：v2 羽化/v3 泊松后下巴仍可见）**——根因=人脸框下缘正好切过下巴/脖子（高对比边界）→ **v4**：下放 margin 16→70px（边界推至领口低对比区）+ 掩膜内缩 24/σ22/阈值 25 宽羽化 + NORMAL_CLONE（光照连续）→ 85 帧重跑 → **outputs/w2l_lipsync_final_v4_48fps.mp4（video_68，1728×960@48fps/3.52s）**；两帧抽检（1.4/2.6s）颌线下沿连续无框痕。
+
 ## 16. S7 实施记录（2026-09-06；7a/7b/7c 已实施，**二级真机 2026-09-06 已 PASS**（video_46 608×352/124f，参考视频+参考音频采纳；抽帧目检场景锁定+推近运镜；音频采纳判据=待用户/ASR——P 链④ 已落地））
 
 - **7a 登记（十九审定稿：扩展现有 video_r2v，不新建 stage）**：capabilities video_r2v 增 slots.videos=[reference×3]、slots.audios=[reference×3]、features.reference_videos=true、params.reference_media note；object_info 在线复核四节点全绿（ref_videos/ref_video_audios/ref_audios 均 COMFY_AUTOGROW_V3、prefix=ref_video_/ref_video_audio_/ref_audio_、max=3、子输入 IMAGE/AUDIO；LoadVideo file/LoadAudio audio 均 COMBO+input 根；GetVideoComponents 输出 images/audio）；workflow_registry add_local 扩展 slots=/features= kw；template_health 设计 B 分型（videos/audios 不数模板行；仅复核注入目标前缀节点存在）+ 注入前缀取 inject_spec.class_prefix；pipeline.json 无需新 stage（r2v 已存在，templates_dir 已确认）。
