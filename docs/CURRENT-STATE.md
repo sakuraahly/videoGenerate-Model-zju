@@ -27,7 +27,7 @@
 `diffusers/stable-diffusion-inpainting`（Inpaint）；`checkpoints/sd-v1-5-inpainting.ckpt`；
 `frame_interpolation/`（空——RIFE 权重渠道阻塞登记）。
 H3 主模型（fl2va/ref2va int8 + qwen3vl text encoder + 双 VAE）在 `diffusion_models/text_encoders/vae`（ComfyUI 标准目录）。
-其他：`~/ai/tts-venv`（F5-TTS）、`~/ai/asr-venv`（SenseVoice）、`~/ai/cosy-venv`+ `~/ai/CosyVoice2-0.5B`+ `~/ai/cosyvoice-src`（CosyVoice2 试点）。
+其他：`~/ai/tts-venv`（F5-TTS；主引擎 venv：torch 2.14.0+cu130 + torchvision 0.29+cu130 + torchaudio 2.11+cu130 + cv2 5.0 + numpy 1.26.4 + scipy 1.13.1 + librosa 0.10.2 + onnxruntime + diffusers 0.24.0 + transformers 4.38.2 + huggingface-hub 0.25.1 + facenet_pytorch 2.6.0（MTCNN 权重 wheel 内置）+ moviepy/av/einops/omegaconf/torchmetrics/modelscope——2026-09-08 为 EchoMimic 增装；**pip 一律显式清华源，禁默认源**）、`~/ai/asr-venv`（SenseVoice）、`~/ai/cosy-venv`+ `~/ai/CosyVoice2-0.5B`+ `~/ai/cosyvoice-src`（CosyVoice2 试点）、`~/ai/echomimic`（antgroup/echomimic 代码 + pretrained_weights 12.3GB（ModelScope BadToBest/EchoMimic 子集：denoising_unet_acc/reference_unet/motion_module_acc/face_locator/whisper_tiny/sd-vae-ft-mse/sd-image-variations-diffusers-unet）——§15e 无框路线资产，冒烟=夜间任务 nt-echomimic-smoke）。
 
 ## 4. 生成（H3 本地推理）
 

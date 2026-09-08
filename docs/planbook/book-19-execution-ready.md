@@ -411,6 +411,8 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 - **集成**：`runs/h3/echomimic_talk.py`——参考帧（40%）→ 与 EchoMimic 内部同口径方形裁切（MTCNN select_face+0.5 边距+crop_and_pad）→ infer_audio2vid_acc.py（fp16/6 步/24fps/L=1200 自动按音频截断）→ 渲染 512² 回贴原帧（seamlessClone（NORMAL_CLONE）/越界羽化）→ mux 台词音轨。
 - **排期**：安装+模型下载（现网）→ 冒烟=夜间窗口（22:00+，ComfyUI 队列空闲门槛）——验嘴型同步/纹理/无框；通过后接 lipsync 链（--talking-backend echomimic 替 Wav2Lip+GFPGAN 贴皮段）→ 真机交付 video_N。
 
+**⑥ 环境排障记录（2026-09-08 晚，教训=运维红线）**：①EchoMimic 装依赖时 facenet_pytorch 2.6.0 依赖 torchvision，pip 解析到旧配（tv0.17.2↔torch2.2.2 CPU）——**把 tts-venv 生产 torch 从 2.14.0+cu130 降级且 CUDA 不可用**；恢复=download.pytorch.org/whl/cu130 官方索引重装 torch 2.14.0+cu130 + torchvision 0.29.0+cu130 + torchaudio 2.11.0+cu130（该索引 spark 可达，注意指数级超时需 --timeout 300 --retries 10 循环）。②torchmetrics 把 scipy 拉到 1.18（需 numpy≥2）→ pin scipy==1.13.1；librosa 1.0 需 numpy≥2 → pin librosa==0.10.2.post1。③pip 默认源=files.pythonhosted.org 会超时 → 一律显式 `-i https://pypi.tuna.tsinghua.edu.cn/simple`。④**教训**：往生产 venv 装新依赖前先解析依赖树（`pip download --dry-run`），装后必验 `torch.cuda.is_available()`、`import f5_tts`、S3FD 检测链。⑤下载器通道：GitHub release=spark 不通（MTCNN 等需 wheel 内置或 Windows 中转）；ModelScope 直连 ✅。
+
 ## 15f. 魔搭创空间打包目标（2026-09-08 用户定案）
 
 **目标**：本项目整体打包上传魔搭创空间（ModelScope Studio）。**调研已完成**（创空间=git 仓库+token 发布、免费 CPU 2vCPU/16G+休眠激活、付费 GPU 升配=PAI、app.py 核心；出网部署 ComfyUI 有社区尝试但受 GPU 规格限制）。适配不可整体迁移引擎（GB10+40GB 模型）——**分层**：创空间=展示+交互入口；spark=引擎层（公网 API 调度）。实施序=M1 静态展示版（免费 CPU：片墙+流程+演示表单）→M2 远程调度版（studio_gateway.py 鉴权 API + 创空间出网实测）→M3（免费 GPU→单点模型演示）。**文档写就**：`docs/guides/studio-porting.md`（事实表+设计+里程碑验收）；**skill 卡**：`skills/studio-packaging.md`。**未开始实施**（M1 动工=用户确认后）。
