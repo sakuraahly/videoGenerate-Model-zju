@@ -1382,7 +1382,13 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     if aborted or phase == 'error':
                         break
 
-                    prompt_ids = extract_prompt_ids(final_text)
+                    # §15d（2026-09-08 21:21 现场）：真实性优先——任务登记以工具输出中的真实 prompt_id 为准，
+                    # 模型转述 id 可能编错（真实 ac88b2cb vs 回复里假 4f8b1c2a）：先并集，工具真 id 保证监控/取回正确。
+                    _tool_ids = []
+                    for _n, _o in _TURN_TOOL_LOGS:
+                        _tool_ids += extract_prompt_ids(str(_o))
+                    _claim_ids = extract_prompt_ids(final_text)
+                    prompt_ids = list(dict.fromkeys(_tool_ids + _claim_ids))
                     if prompt_ids:
                         tasks = [{'prompt_id': pid, 'type': 'single'} for pid in prompt_ids]
                         all_pending_tasks.extend(tasks)
