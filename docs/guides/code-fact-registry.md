@@ -60,7 +60,8 @@
 | `TOOL_PRELUDE_TOKENS` | 1500 | nous 工具模板固定开销 |
 | `SAFETY_TOKENS` | 300 | 计数偏差/模板特判余量 |
 | `LLM_CFG.generate_cfg.max_tokens` | 2048 | 调度器 completion 上限（与 REPLY_MAX_TOKENS 一致） |
-| `_SCRIPT_TIMEOUT`（tools.run_script） | 120s | ⚠️ 与 h3_batch `--timeout` 默认 600 错配（book-07 待修） |
+| `_SCRIPT_TIMEOUT`（tools.run_script） | 600s | 2026-09-08 已对齐 h3_batch `--timeout`（原 120s 会误杀多段 status 查询；book-07 遗留闭合） |
+| `h3_batch status --timeout` 默认 | 600s | 与 _SCRIPT_TIMEOUT 一致（原 100s 与文档 600 不一致，已对齐） |
 | `VIDEOGEN_SESSION_CID`（env，run_script 注入） | 当前会话 cid | §15d：链/引擎读取后把终版产物写入 `logs/agent_chats/<cid>/outputs/`；无会话上下文不落盘 |
 
 ---

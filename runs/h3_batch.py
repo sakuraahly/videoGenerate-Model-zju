@@ -433,7 +433,7 @@ def main(argv=None) -> int:
 
     p_stat = sub.add_parser('status')
     p_stat.add_argument('--wait', action='store_true')
-    p_stat.add_argument('--timeout', type=int, default=100)
+    p_stat.add_argument('--timeout', type=int, default=600)
     p_stat.add_argument('--batch', default=None)
     p_stat.add_argument('--json', action='store_true')
 
