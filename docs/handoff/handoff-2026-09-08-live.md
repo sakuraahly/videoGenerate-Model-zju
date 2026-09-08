@@ -89,3 +89,13 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 **P2-⑦ 完成**：1080p 直出片流程复盘 → planbook §15g（全链已通无阻塞；编号口径=spark-local video_4xx≠Windows video_N，交付以 Windows 命名为准；≥768p 夜间排产）。
 **P1-④ M1 动工（用户确认）**：`studio/` 创空间项目根全套——app.py（Gradio 配置驱动：介绍/6 样片墙/五步流程/演示表单→结果卡+风格样片）、config.yaml（sdk gradio 4.44+展示元数据）、requirements.txt、README.md、assets/（12 文件 ≈1.2MB；样片经 spark ffmpeg 压缩 640w/CRF28 + 封面）。**证据**：本地 Gradio 6.26 启动→HTTP 200→/config=53 组件/13 媒体/1 表单依赖。**待用户 token 发布创空间**+M1 验收；M2 待出网实测。
 **夜间窗口**：22:00 自动执行 nt-echomimic-smoke + nt-hd-4x-ultimate（队列空闲门槛）——结果下轮汇报。
+
+## 十一、夜间追加 6：M1 发布创空间完成（2026-09-08 22:00+，用户给 token 一次性推送）
+
+**发布**：`wumingyong0/Automated_video_generation`——匿名 clone（初始模板）→ 铺入 studio/ 全套（app.py/config.yaml/requirements.txt/assets 12 文件≈1.2MB/README 改造为创空间卡片 front matter：domain=multi-modal/tags/license Apache2.0）→ 本地 commit `bda7c3b` → **token 环境变量一次性 push**（`4df4f44..bda7c3b`，ModelScope Validation passed checked 1 commit 1011ms）→ `ls-remote` 远端=bda7c3b ✅。**token 未落盘/未入库**（仅本次命令环境变量；用户对话提供）。
+
+**待用户操作**：创空间页面（https://www.modelscope.cn/studios/wumingyong0/Automated_video_generation）刷新可见文件列表；点「运行」由平台构建 Gradio 并分配 `.modelscope.space` 运行域名（当前探测该域名=未分配，属平台侧构建步骤）→ 分配后可回验 M1 验收（URL 打开/片墙可播/表单可用）。
+
+**兼容说明**：space sdk_version=gradio 4.44；app.py 用 Blocks/Video/Image/Dropdown/Radio/Button/Markdown 通用 API（4.x/6.x 均兼容；6.x 下 Blocks(theme=…) 仅告警不影响）。
+
+**夜间任务**：待查（cron 窗口 22:00 后执行 nt-echomimic-smoke → nt-hd-4x-ultimate，见 state 文件/日志）。
