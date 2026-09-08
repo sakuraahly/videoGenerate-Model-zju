@@ -120,9 +120,16 @@ def list_chats() -> list:
         if not title:
             title = '(空会话)'
         try:
-            ts = datetime.fromtimestamp(p.stat().st_mtime).strftime('%m-%d %H:%M')
+            # 2026-09-08 修复：历史列表强制北京时间（24h 制）——服务器为 UTC 时区，
+            # 用 fromtimestamp(本地) 会慢 8 小时（用户反馈长时间未修的老问题）。
+            import zoneinfo
+            ts = datetime.fromtimestamp(p.stat().st_mtime,
+                                        tz=zoneinfo.ZoneInfo('Asia/Shanghai')).strftime('%m-%d %H:%M')
         except Exception:  # noqa: BLE001
-            ts = '--'
+            try:
+                ts = datetime.fromtimestamp(p.stat().st_mtime).strftime('%m-%d %H:%M')
+            except Exception:  # noqa: BLE001
+                ts = '--'
         items.append((p.stem, f'{ts} {title}'))
     return items
 

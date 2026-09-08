@@ -45,7 +45,7 @@ def _run(cmd, timeout=1800, cwd=None):
 
 def main() -> int:
     ap = argparse.ArgumentParser('真实台词口型链（Wav2Lip 驱动设定台词）')
-    ap.add_argument('--video', required=True, help='人脸源视频（人物说话/近景）')
+    ap.add_argument('--video', default='', help='人脸源视频（人物说话/近景）；缺省=自动取 ComfyUI output/video 最近生成 MiniMax_H3_*.mp4')
     ap.add_argument('--line', required=True, help='台词（角色真实说的话）')
     ap.add_argument('--voice', default='yunxi', choices=list(_VOICE_FULL))
     ap.add_argument('--narration', default='', help='旁白（垫轨 -15dB，不影响台词）')
@@ -59,6 +59,16 @@ def main() -> int:
     args = ap.parse_args()
 
     src = Path(args.video)
+    if not src.is_file():
+        # 自动选最新生成人脸近景（agent 无需关心素材定位）
+        import glob
+        vids = sorted(glob.glob(str(Path(os.path.expanduser('~/ai/ComfyUI/output/video')) + '/MiniMax_H3_*.mp4')),
+                      key=os.path.getmtime, reverse=True)
+        if not vids:
+            print('[错误] 未指定 --video 且 output/video 无 MiniMax_H3_*.mp4', file=sys.stderr)
+            return 3
+        src = Path(vids[0])
+        print('AUTO_VIDEO: %s' % src, flush=True)
     if not src.is_file():
         print('[错误] 视频不存在: %s' % src, file=sys.stderr)
         return 3
@@ -100,17 +110,43 @@ def main() -> int:
         return 4
     print('W2L_OK: %s' % raw_out, flush=True)
 
-    # 3) keep 收尾：台词字幕 + 旁白垫轨（角色原声=台词音轨保留）
+    # 3) keep 收尾：台词字幕（角色原声=台词音轨保留）；旁白=台词结束 0.6s 后开始（不重叠）
     sys.path.insert(0, str(REPO / 'runs'))
     import h3.tts as _tts
+    line_dur = float(_tts.probe_duration(work / 'line.wav') or 0)  # probe? 用 ffprobe 兜底
     res = _tts.attach_speech_and_subtitle(
         raw_out, args.line, out=out, voice=_VOICE_FULL[args.voice],
         fontsize=0, backend=args.backend,
         subtitle_style=args.subtitle_style, subtitle_font=args.subtitle_font,
         subtitle_color=args.subtitle_color,
         audio_mode='keep', subtitle_source='text',
-        narration=str(args.narration or '').strip())
-    print('FINAL: %s %d' % (res['path'], res['path'].stat().st_size), flush=True)
+        narration='')  # 旁白错开在下方单独混入
+    nar = str(args.narration or '').strip()
+    if nar:
+        # 旁白 TTS
+        nar_wav = work / 'narration.wav'
+        nar_wav.unlink(missing_ok=True)
+        _run([str(COSY_PY), str(REPO / 'runs' / 'h3' / 'tts_cosy_check.py'),
+              '--text', nar, '--ref-file', str(ref), '--ref-text', ref_txt,
+              '--output', str(nar_wav)])
+        video_dur = float(_tts.probe_duration(res['path']) or line_dur or 3.0)
+        start = line_dur + 0.6                     # 台词结束 0.6s 后
+        narr_end = start + float(_tts.probe_duration(nar_wav) or 2.0)
+        pad = max(0.0, narr_end - video_dur)
+        ms = int(start * 1000)
+        fcmd = ['ffmpeg', '-y', '-i', str(res['path']), '-i', str(nar_wav),
+                '-map', '0:v', '-map', '[ot]', '-c:v', 'copy',
+                '-filter_complex',
+                '[1:a]volume=0.18,adelay=%d:all=1[na];[0:a][na]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[ot]' % ms]
+        if pad > 0:
+            fcmd[6:6] = ['-vf', 'tpad=stop_mode=clone:stop_duration=%.2f' % pad]
+        fcmd += ['-c:a', 'aac', '-b:a', '192k', str(out)]
+        nr = subprocess.run(fcmd, capture_output=True, text=True, timeout=1800)
+        if nr.returncode != 0:
+            raise RuntimeError('旁白混入失败: ' + (nr.stderr or '')[-300:])
+        print('NARRATION: start=%.2fs dur=%.2fs pad=%.2fs' % (start, narr_end - start, pad), flush=True)
+    print('FINAL: %s %d' % (out, out.stat().st_size), flush=True)
+    res = {'path': out, 'speech_dur': line_dur, 'srt': None, 'speech': '', 'asr_text': ''}
 
     # 4) 可选 ASR 验真（台词回环）
     if args.asr_check:
