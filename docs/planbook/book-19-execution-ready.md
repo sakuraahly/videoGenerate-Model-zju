@@ -358,6 +358,15 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 **验证**：单测 14 绿（含 TTL 多轮/过期/缺失/短确认级联）；机械正负例 CLI 全绿。
 **下巴框痕根治（用户二刷：v2 羽化/v3 泊松后下巴仍可见）**——根因=人脸框下缘正好切过下巴/脖子（高对比边界）→ **v4**：下放 margin 16→70px（边界推至领口低对比区）+ 掩膜内缩 24/σ22/阈值 25 宽羽化 + NORMAL_CLONE（光照连续）→ 85 帧重跑 → **outputs/w2l_lipsync_final_v4_48fps.mp4（video_68，1728×960@48fps/3.52s）**；两帧抽检（1.4/2.6s）颌线下沿连续无框痕。
 
+**GFPGAN 端到端接入 ComfyUI 一体模板（§15b#5 → 完成，2026-09-08）**：
+- 新节点 `H3FaceRestore`（video_in VIDEO → tts-venv 子进程 face_restore_video.py（CPU 推理，防 GPU 争抢）→ 输出区成片 filepath STRING；参数 video/onnx 手动兼容）；
+- 独立脚本 `runs/h3/face_restore_video.py`（引擎侧复用；v5 自适应边距+泊松，6 帧自测 19.3s/帧率保持）；
+- 一体链终验 `5e70b724`：生成→SaveVideo→GetVideoComponents→FrameInterpolate(2x)→CreateVideo(48fps)→**H3FaceRestore**→H3Finalize(yunxi/cosy/kai)→H3AsrCheck —— 结果见下方（产物+ASR）。
+- GUI 模板同步加 97 节点（video_minimax_h3_r2v_rife_finalize.json 升级为 rife+restore 版）。
+**重启事故登记（2026-09-08 03:22，再次自警）**：为激活新节点重启 ComfyUI 时队列里有一个管线监控任务（8225e9fa，非对话会话任务）正在运行——被重启打断（重新检查：重启脚本无队列门禁，本人先查后起仍漏）。**已修**：restart_comfy2.sh 加队列硬门禁（非空即 ABORT exit 2）；凭证据：本次之后重启=队列 0/0 才可执行。受影响任务=管线自动重试类，无用户直接损失（登记）。
+
+**全链恢复运行（2026-09-08，结果见下）**：修复点在链=生成→SaveVideo→GVC→FrameInterpolate(2x)→CreateVideo(48fps)→H3FaceRestore(215 帧全处理)→H3Finalize(yunxi/cosy/kai)→H3AsrCheck 的 0397f564；首跑 5e70b724（~未展开）+64c35c89（147 误接 video_in 空串）两连小坑自己登记（均为脚本接线，已修：onnx expanduser + video 参数直连 97 输出）；**成品（与全链同参数路径）已先行产出**`outputs/w2l_restore_rife_48fps_chain.mp4`（video_70：864×480@48fps/5.146s，男声 yunxi+楷体+无框痕修复，ASR 0.917 ok）——待 0397f564 全链终验结果回填。
+
 ## 16. S7 实施记录（2026-09-06；7a/7b/7c 已实施，**二级真机 2026-09-06 已 PASS**（video_46 608×352/124f，参考视频+参考音频采纳；抽帧目检场景锁定+推近运镜；音频采纳判据=待用户/ASR——P 链④ 已落地））
 
 - **7a 登记（十九审定稿：扩展现有 video_r2v，不新建 stage）**：capabilities video_r2v 增 slots.videos=[reference×3]、slots.audios=[reference×3]、features.reference_videos=true、params.reference_media note；object_info 在线复核四节点全绿（ref_videos/ref_video_audios/ref_audios 均 COMFY_AUTOGROW_V3、prefix=ref_video_/ref_video_audio_/ref_audio_、max=3、子输入 IMAGE/AUDIO；LoadVideo file/LoadAudio audio 均 COMBO+input 根；GetVideoComponents 输出 images/audio）；workflow_registry add_local 扩展 slots=/features= kw；template_health 设计 B 分型（videos/audios 不数模板行；仅复核注入目标前缀节点存在）+ 注入前缀取 inject_spec.class_prefix；pipeline.json 无需新 stage（r2v 已存在，templates_dir 已确认）。

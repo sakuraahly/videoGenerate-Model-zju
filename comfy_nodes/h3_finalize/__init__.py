@@ -184,9 +184,66 @@ class H3AsrCheck:
         return (text, score)
 
 
-NODE_CLASS_MAPPINGS = {"H3LocalTTS": H3LocalTTS, "H3Finalize": H3Finalize, "H3AsrCheck": H3AsrCheck}
+class H3FaceRestore:
+    """GFPGAN 人脸修复（v5：自适应边距+宽羽化泊松=无框痕）；经 tts-venv 子进程执行 CPU 推理。
+
+    2026-09-08：与 RIFE/修复合并为 H3Finalize 增强工序（§15b#5 落地）。
+    输入=VIDEO（save_to 桥接）或手动路径；输出=修复片（含音轨？无——音轨由下游 H3Finalize 用
+    源片音轨替换——注意：本节点输出无音轨，下游 H3Finalize 的 attach 以 TTS 为准；若需保留源
+    音轨请先 TTS 配音（H3Finalize 已是成品链末端，含音轨替换）。"""
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {},
+                "optional": {
+                    "video_in": ("VIDEO",),
+                    "video": ("STRING", {"default": ""}),
+                    "onnx": ("STRING", {"default": "~/ai/gfpgan/GFPGANv1.4.onnx"}),
+                }}
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("filepath",)
+    FUNCTION = "run"
+    CATEGORY = "h3"
+    OUTPUT_NODE = True
+
+    def run(self, video="", video_in=None, onnx="~/ai/gfpgan/GFPGANv1.4.onnx"):
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        if video_in is not None:
+            bridge = f"/tmp/h3_restore_{os.getpid()}.mp4"
+            try:
+                from comfy_api.latest import Types as _Types
+                video_in.save_to(bridge, format=_Types.VideoContainer("mp4"),
+                                 codec=_Types.VideoCodec("h264"))
+            except Exception:  # noqa: BLE001
+                import av  # type: ignore
+                raise RuntimeError("VIDEO 保存失败(io.Video API 不可用), 请手动填 video 路径") from None
+            video = bridge
+        if not video or not Path(video).is_file():
+            raise RuntimeError(f"视频不存在: {video}")
+        script = str(Path(REPO) / "runs" / "h3" / "face_restore_video.py")
+        out = f"/tmp/h3_restore_{os.getpid()}_final.mp4"
+        _sh([TTS_PY, script, "--video", video, "--out", out,
+             "--onnx", os.path.expanduser(str(onnx or "~/ai/gfpgan/GFPGANv1.4.onnx")), "--device", "cpu"])
+        final = Path(out)
+        try:
+            from folder_paths import get_output_directory  # type: ignore
+            outdir = os.path.join(get_output_directory(), "video")
+            os.makedirs(outdir, exist_ok=True)
+            import shutil
+            dest = Path(outdir) / final.name
+            shutil.copy2(str(final), str(dest))
+            final = dest
+        except Exception:  # noqa: BLE001
+            pass
+        return (str(final),)
+
+
+NODE_CLASS_MAPPINGS = {"H3LocalTTS": H3LocalTTS, "H3Finalize": H3Finalize, "H3AsrCheck": H3AsrCheck,
+                       "H3FaceRestore": H3FaceRestore}
 NODE_DISPLAY_NAME_MAPPINGS = {
     "H3LocalTTS": "H3 Local TTS (F5-TTS)",
     "H3Finalize": "H3 Finalize (TTS+Subtitle+Mix)",
     "H3AsrCheck": "H3 ASR Check (SenseVoice)",
+    "H3FaceRestore": "H3 Face Restore (GFPGAN, seamless)",
 }
