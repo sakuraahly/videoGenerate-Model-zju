@@ -374,6 +374,18 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 - **实演**（00184 原片）：`outputs/keep_mode_demo.mp4`（video_72）=角色原声（原英文男声保留）+ 中文楷体台词字幕（这个房间，安静得像一座孤岛。）+ 旁白垫轨（夜色中的房间…，-15dB）；ASR 双轨同检=旁白中文+原声残迹（how…）→ 两轨共存无误伤。
 - 说明：H3 模型生成的'英文台词'实为伪英语（ASR 乱码级）→ **台词字幕建议用设定文本（subtitle_source=text）**；asr 模式适用于真实语音素材。
 
+## 15d. 结果视频页面获取（2026-09-08 用户需求：先入计划书再实施）+ 产物可达性修复
+
+**用户反馈**：Qwen 真实台词链自主执行成功（设计台词/旁白+调链+报告），但**产物只在 /tmp**——用户'找不到结果在哪里'；要求：**页面可获取（下载/预览）结果视频**。另有小项：双声轨 ASR 混判（台词+旁白同检 0.542/poor——改按台词时间窗单独验真=小改进登记）。
+
+**设计（实施顺序）**：
+1. **产物归宿协议**（本次先落地）：链/引擎最终产物一律同时落两处并打印：`~/ai/ComfyUI/output/video/`（ComfyUI 预览画廊可看/下载）+ 仓库 `outputs/`（带语义名，如 lipsync_<ts>_<摘要>.mp4）；工具返回文本含两者路径（agent 报告=可点击的人类可找路径）。
+2. **7860 页面结果区**（下次实施）：会话目录 `logs/agent_chats/<cid>/outputs/`（chain 读 `VIDEOGEN_SESSION_CID` env 放文件——run_script 注入 CURRENT_SESSION）；UI：历史/新会话结果区= `gr.Video`（预览）+ `gr.File`（下载）组件，随发送/加载刷新（复用 _pool_update 模式，send_out 增两输出位）；空态提示'本轮无结果视频'。
+3. **命名规范**：`lipsync_<时间戳>_<台词前4字>.mp4`；老文件清理保留最近 10 个/会话。
+4. **验收**：用户页面点预览能播、点下载能存；agent 报告路径与其一致。
+
+**本轮已落地**：①链产物双落（ComfyUI output/video + 仓库 outputs，打印路径）②工具 env 注入预留（run_script 传 CURRENT_SESSION——链侧读取判断）。
+
 ## 16. S7 实施记录（2026-09-06；7a/7b/7c 已实施，**二级真机 2026-09-06 已 PASS**（video_46 608×352/124f，参考视频+参考音频采纳；抽帧目检场景锁定+推近运镜；音频采纳判据=待用户/ASR——P 链④ 已落地））
 
 - **7a 登记（十九审定稿：扩展现有 video_r2v，不新建 stage）**：capabilities video_r2v 增 slots.videos=[reference×3]、slots.audios=[reference×3]、features.reference_videos=true、params.reference_media note；object_info 在线复核四节点全绿（ref_videos/ref_video_audios/ref_audios 均 COMFY_AUTOGROW_V3、prefix=ref_video_/ref_video_audio_/ref_audio_、max=3、子输入 IMAGE/AUDIO；LoadVideo file/LoadAudio audio 均 COMBO+input 根；GetVideoComponents 输出 images/audio）；workflow_registry add_local 扩展 slots=/features= kw；template_health 设计 B 分型（videos/audios 不数模板行；仅复核注入目标前缀节点存在）+ 注入前缀取 inject_spec.class_prefix；pipeline.json 无需新 stage（r2v 已存在，templates_dir 已确认）。

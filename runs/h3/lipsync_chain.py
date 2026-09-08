@@ -266,6 +266,29 @@ def main() -> int:
                             str(res['path']), '--compare', args.line],
                            capture_output=True, text=True, timeout=600)
         print(r.stdout.strip()[-600:], flush=True)
+    # 产物归宿（§15d）：ComfyUI 输出区（预览/下载）+ 仓库 outputs/——杜绝'找不到结果'
+    import shutil as _sh
+    import time as _tm
+    dest_candidates = []
+    try:
+        outdir = Path(os.path.expanduser('~/ai/ComfyUI/output/video'))
+        outdir.mkdir(parents=True, exist_ok=True)
+        name = 'lipsync_%s_%s.mp4' % (_tm.strftime('%H%M%S'), (args.line or 'line')[:4])
+        c_dst = outdir / name
+        _sh.copy2(str(out), str(c_dst))
+        dest_candidates.append(str(c_dst))
+    except Exception as _e:  # noqa: BLE001
+        print('[warn] ComfyUI 输出区写入失败: %s' % _e, file=sys.stderr)
+    try:
+        r_out = Path(os.path.expanduser('~/videoGenerate-Model-zju/outputs'))
+        r_out.mkdir(parents=True, exist_ok=True)
+        r_dst = r_out / name
+        _sh.copy2(str(out), str(r_dst))
+        dest_candidates.append(str(r_dst))
+    except Exception as _e:  # noqa: BLE001
+        print('[warn] 仓库 outputs 写入失败: %s' % _e, file=sys.stderr)
+    print('COMFY_OUT: %s' % (dest_candidates[0] if dest_candidates else str(out)), flush=True)
+    print('REPO_OUT: %s' % (dest_candidates[1] if len(dest_candidates) > 1 else ''), flush=True)
     print('DONE_LIPSYNC_CHAIN', flush=True)
     return 0
 
