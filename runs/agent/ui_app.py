@@ -968,10 +968,11 @@ def _caption_for(cid: str) -> str:
 
 def _pool_update(cid: str):
     """发送后刷新预览池（本会话 + 有效共享授权），S12 可见性即时化。"""
+    import gradio as _gr
     try:
-        return gr.update(value=_previews_for_cid(cid) + _shared_for_cid(cid))
+        return _gr.update(value=_previews_for_cid(cid) + _shared_for_cid(cid))
     except Exception:  # noqa: BLE001
-        return gr.update()
+        return _gr.update()
 
 
 def _shared_for_cid(cid: str) -> list:
