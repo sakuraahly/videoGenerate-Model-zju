@@ -393,6 +393,10 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 **③ 当前解法（video_79 已交付）**：链条接通 `--face-restore` = W2L 后**整脸 GFPGAN 重渲染**（自适应边距+泊松无缝）——贴皮框被整脸重渲染吸收（目检 1.8s 帧：面部纹理统一无框）+ 台词完整 + 旁白错开 + ASR 双全；输出脱敏路径。
 **④ 最优无框路线（远期候选，镜像已核有货）**：**LivePortrait / EchoMimic**（hf-mirror：camenduru/LivePortrait、Kijai/LivePortrait_safetensors；BadToBest/EchoMimic 等）——整脸/整头部由模型重生成（天然无贴皮框），音频驱动。实施=模型+代码下载（Windows 中转）→ 推理接入（tts-venv/GPU）→ 与嘴唇链同参数接线（台词→TTS→LivePortrait→字幕→旁白）。排期：夜间窗口或下一迭代首项。
 
+## 15f. 魔搭创空间打包目标（2026-09-08 用户定案）
+
+**目标**：本项目整体打包上传魔搭创空间（ModelScope Studio）。**调研已完成**（创空间=git 仓库+token 发布、免费 CPU 2vCPU/16G+休眠激活、付费 GPU 升配=PAI、app.py 核心；出网部署 ComfyUI 有社区尝试但受 GPU 规格限制）。适配不可整体迁移引擎（GB10+40GB 模型）——**分层**：创空间=展示+交互入口；spark=引擎层（公网 API 调度）。实施序=M1 静态展示版（免费 CPU：片墙+流程+演示表单）→M2 远程调度版（studio_gateway.py 鉴权 API + 创空间出网实测）→M3（免费 GPU→单点模型演示）。**文档写就**：`docs/guides/studio-porting.md`（事实表+设计+里程碑验收）；**skill 卡**：`skills/studio-packaging.md`。**未开始实施**（M1 动工=用户确认后）。
+
 ## 16. S7 实施记录（2026-09-06；7a/7b/7c 已实施，**二级真机 2026-09-06 已 PASS**（video_46 608×352/124f，参考视频+参考音频采纳；抽帧目检场景锁定+推近运镜；音频采纳判据=待用户/ASR——P 链④ 已落地））
 
 - **7a 登记（十九审定稿：扩展现有 video_r2v，不新建 stage）**：capabilities video_r2v 增 slots.videos=[reference×3]、slots.audios=[reference×3]、features.reference_videos=true、params.reference_media note；object_info 在线复核四节点全绿（ref_videos/ref_video_audios/ref_audios 均 COMFY_AUTOGROW_V3、prefix=ref_video_/ref_video_audio_/ref_audio_、max=3、子输入 IMAGE/AUDIO；LoadVideo file/LoadAudio audio 均 COMBO+input 根；GetVideoComponents 输出 images/audio）；workflow_registry add_local 扩展 slots=/features= kw；template_health 设计 B 分型（videos/audios 不数模板行；仅复核注入目标前缀节点存在）+ 注入前缀取 inject_spec.class_prefix；pipeline.json 无需新 stage（r2v 已存在，templates_dir 已确认）。
