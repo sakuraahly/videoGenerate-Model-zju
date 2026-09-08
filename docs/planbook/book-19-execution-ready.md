@@ -417,6 +417,18 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 
 **目标**：本项目整体打包上传魔搭创空间（ModelScope Studio）。**调研已完成**（创空间=git 仓库+token 发布、免费 CPU 2vCPU/16G+休眠激活、付费 GPU 升配=PAI、app.py 核心；出网部署 ComfyUI 有社区尝试但受 GPU 规格限制）。适配不可整体迁移引擎（GB10+40GB 模型）——**分层**：创空间=展示+交互入口；spark=引擎层（公网 API 调度）。实施序=M1 静态展示版（免费 CPU：片墙+流程+演示表单）→M2 远程调度版（studio_gateway.py 鉴权 API + 创空间出网实测）→M3（免费 GPU→单点模型演示）。**文档写就**：`docs/guides/studio-porting.md`（事实表+设计+里程碑验收）；**skill 卡**：`skills/studio-packaging.md`。**未开始实施**（M1 动工=用户确认后）。
 
+## 15g. 1080p 直出片流程复盘（2026-09-08，P2-⑦）
+
+**事实基线**：2026-09-07 夜间原生 1080p 探测 PASS（video_53：1920×1088/无 LoRA/20 步/5s/124f/h264+aac）；4x 超分叠加已验证（nt-upscale4x=PASS_chunked_4864×2688_12.458s）。**全链已通、无阻塞**。
+
+**直出片流程（spark-local 一键）**：
+1. `python3 runs/h3_submit.py --stage t2v --width 1920 --height 1088 --lora none --steps 20 [--upscale 4x]`——不加 `--submit-only` 即提交后原地轮询到完成（ComfyUI 队列内 success 后自动落盘）；
+2. 完成自动：LOCAL_OUTPUT outputs/video_N.mp4（含 PROBE 行：宽高/帧率/帧数/时长）；`--upscale 4x` 追加 7680×4352（≈5-8min 另耗）；postprocess/最终件同名 _pp；
+3. 取回=Windows 端 scp（或 sync 流程），交付命名=Windows outputs/video_<N>[_描述].mp4；**注意 spark-local 编号独立（video_4xx），与 Windows 目录编号不互通，交付以 Windows 命名为准**；
+4. 排期纪律：白天禁 ≥768p（用户指示夜间窗口 22-08）；超分/大分辨率活计并入 night_runner engine 任务（队列空闲自动排队），2026-09-08 已登记 nt-hd-4x-ultimate（1080p 原生+4x 终极档，单命令提交即等待）。
+
+**结论**：『1080p 素材直出片』无需人工环节——生成→验收 probe→超分→落盘→取回全自动；剩余=夜间窗口按需排产 + 交付登记。
+
 ## 16. S7 实施记录（2026-09-06；7a/7b/7c 已实施，**二级真机 2026-09-06 已 PASS**（video_46 608×352/124f，参考视频+参考音频采纳；抽帧目检场景锁定+推近运镜；音频采纳判据=待用户/ASR——P 链④ 已落地））
 
 - **7a 登记（十九审定稿：扩展现有 video_r2v，不新建 stage）**：capabilities video_r2v 增 slots.videos=[reference×3]、slots.audios=[reference×3]、features.reference_videos=true、params.reference_media note；object_info 在线复核四节点全绿（ref_videos/ref_video_audios/ref_audios 均 COMFY_AUTOGROW_V3、prefix=ref_video_/ref_video_audio_/ref_audio_、max=3、子输入 IMAGE/AUDIO；LoadVideo file/LoadAudio audio 均 COMBO+input 根；GetVideoComponents 输出 images/audio）；workflow_registry add_local 扩展 slots=/features= kw；template_health 设计 B 分型（videos/audios 不数模板行；仅复核注入目标前缀节点存在）+ 注入前缀取 inject_spec.class_prefix；pipeline.json 无需新 stage（r2v 已存在，templates_dir 已确认）。
