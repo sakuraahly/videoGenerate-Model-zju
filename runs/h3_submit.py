@@ -109,6 +109,28 @@ def _probe_diff(probe_lines: str, width, height, length, seconds) -> str:
     return ""
 
 
+def _session_place(project_dir, dst) -> None:
+    """§15d 会话结果区落盘：VIDEOGEN_SESSION_CID env → logs/agent_chats/<cid>/outputs/。
+
+    普通生成（非链）的终版产物由此进入 7860 页面结果区（gr.Video 预览 + gr.File 下载）；
+    无会话上下文（纯 CLI/编排层）时不落盘；失败仅告警不阻断主产物。
+    """
+    cid = (os.environ.get('VIDEOGEN_SESSION_CID') or '').strip()
+    if not cid:
+        return
+    try:
+        dst = Path(dst)
+        if not dst.is_file():
+            return
+        from h3 import session_outputs as _soc
+        placed = _soc.place_output(Path(project_dir), cid, dst)
+        if placed:
+            print('SESSION_OUT: logs/agent_chats/%s/outputs/%s（会话结果区，页面可预览/下载）'
+                  % (cid, placed.name), flush=True)
+    except Exception as _e:  # noqa: BLE001
+        print('[warn] 会话结果区写入失败: %s' % _e, file=sys.stderr)
+
+
 def _finalize_local_outputs(project_dir, remote_paths, gp=None, prompt_id="") -> None:
     """spark-local 直跑（无外层下载器）：产物本机复制直接保存到程序文件夹 outputs/。
 
@@ -135,6 +157,7 @@ def _finalize_local_outputs(project_dir, remote_paths, gp=None, prompt_id="") ->
             shutil.copy2(src, dst)
             local_files.append(dst)
             print(f"LOCAL_OUTPUT: outputs/{dst.name}", flush=True)
+            _session_place(project_dir, dst)
             _log_event(f"local_output file={dst.name} bytes={dst.stat().st_size}")
             # book-13 P0#6：完成回执带 ffprobe 实测（PROBE 行，无条件）；book-12 B2/T3：产物参数回归守卫（gp 可用时）
             import subprocess as _sp
@@ -773,6 +796,7 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
             _tts.replace_audio_only(_dst, _prep["speech"], _dst, dur=_src_dur)
             print(f"TTS_OUT: outputs/{_dst.name} speech_s={_prep['speech_dur']:.2f} srt=yes", flush=True)
             print(f"POSTPROCESS_OUT: outputs/{_dst.name}", flush=True)
+            _session_place(project_dir, _dst)
             _FINAL_PRODUCT = Path(_dst)
             _log_event(f"tts_done file={_dst.name} voice={_voice} "
                        f"speech={_prep['speech_dur']:.2f}s srt=yes merged_encode=1 backend={_backend}")
@@ -791,6 +815,7 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
                 narration=getattr(args, "narration", ""))
             print(f"TTS_OUT: outputs/{_res['path'].name} speech_s={_res['speech_dur']:.2f} "
                   f"srt={'yes' if _res.get('srt') else 'no'}", flush=True)
+            _session_place(project_dir, _res["path"])
             _FINAL_PRODUCT = Path(_res["path"])
             _log_event(f"tts_done file={_res['path'].name} voice={_voice} "
                        f"speech={_res['speech_dur']:.2f}s srt={bool(_res.get('srt'))} backend={_backend}")
@@ -900,6 +925,7 @@ def _post_tts_checks(project_dir: Path, args: argparse.Namespace,
                             main_db=0.0, bed_db=-12.0)
             _FINAL_PRODUCT = Path(_mixed)
             print(f"MIX_OUT: outputs/{_mixed.name} (ref-audio bed -12dB + TTS main)", flush=True)
+            _session_place(project_dir, _mixed)
             _log_event(f"mix_ref_done file={_mixed.name} bed={Path(_mix_src).name}")
         except Exception as _me:  # noqa: BLE001
             _log_event(f"mix_ref_skip err={type(_me).__name__}")
@@ -1257,6 +1283,7 @@ def main(argv: Optional[list] = None) -> int:
                         _dst = _src.with_name(_src.stem + "_pp.mp4")
                         _pp.run_fast(_src, _dst)
                         print(f"POSTPROCESS_OUT: outputs/{_dst.name}", flush=True)
+                        _session_place(project_dir, _dst)
                         _log_event(f"postprocess_done file={_dst.name}")
                     else:
                         _log_event("postprocess_skip (no local output)")

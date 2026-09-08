@@ -1238,6 +1238,19 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             except Exception:  # noqa: BLE001
                 pass
 
+            # §15e/2026-09-08 现场修复：本会话已有图片素材而用户未提及时注入一行素材提示——
+            # 否则模型常不查 list_references 直接 t2v（参考图未用的根因）
+            try:
+                _n_pool = _session_pool_count(cid)
+                if _n_pool > 0 and user_text and not any(k in user_text for k in
+                        ('参考图', '素材', '图片', '照片', '首帧', '末帧')):
+                    user_text = (user_text + '\n\n（素材提示：本会话素材池已有图片 %d 张；'
+                                 '人物/场景一致性请先 list_references 查看，'
+                                 '并按参考图契约（r2v + <Picture N>）使用）' % _n_pool)
+                    _tools_t.CURRENT_USER_TEXT = user_text
+            except Exception:  # noqa: BLE001
+                pass
+
             ev = queue.Queue()
             stop_hb = threading.Event()
             clear_box = gr.update(value='')
@@ -1815,22 +1828,29 @@ def extract_prompt_ids(text: str) -> list:
     """从工具输出文本中提取所有 prompt_id。
     
     支持格式：
-    - prompt_id: xxx-xxx-xxx
-    - TASK_SUBMITTED: xxx-xxx-xxx
+    - prompt_id: xxx-xxx-xxx（半角/全角冒号：模型转述常用「prompt_id：xxx」）
+    - TASK_SUBMITTED: xxx-xxx-xxx（半角/全角冒号）
+    - 兜底：文本含提交语义（TASK_SUBMITTED/已提交）时取首个 UUID（防转述措辞漂移漏登）
     """
     import re
     ids = []
     if not text:
         return ids
     
-    # 匹配 prompt_id: <uuid> 或 TASK_SUBMITTED: <uuid>
+    # book-19 §15d 修复：模型常以全角冒号转述（prompt_id：e0099beb-…），旧正则只认半角
+    # → 任务不登记 → watcher 不监控/不取回/结果区不刷新（2026-09-08 现场四联问题根因）
     patterns = [
-        r'prompt_id:\s*([a-f0-9\-]{36})',
-        r'TASK_SUBMITTED:\s*([a-f0-9\-]{36})',
+        r'prompt_id[\uFF1A:]\s*([a-f0-9\-]{36})',
+        r'TASK_SUBMITTED[\uFF1A:]\s*([a-f0-9\-]{36})',
     ]
     
     for pattern in patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         ids.extend(matches)
+    
+    if not ids and ('task_submitted' in text.lower() or '已提交' in text):
+        m = re.search(r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', text, re.IGNORECASE)
+        if m:
+            ids.append(m.group(1))
     
     return list(set(ids))  # 去重
