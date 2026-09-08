@@ -98,6 +98,16 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 
 **夜间任务（自动推进中）**：nt-hd-4x-ultimate——1080p 原生已出（outputs/video_461.mp4，1920×1088/5.17s ✅），**4x 超分进行中**（RealESRGAN 4x，GPU 队列处理）→ 待 7680×4352 落盘后收尾；nt-echomimic-smoke——首跑 EXIT=5 已修复（阈值 0.8→0.5+参考帧多候选，Windows 4271147/spark 已同步+状态重置 pending），**等队列空闲自动重跑**。
 
+## 十二、夜间追加 7：参考视频测试+长片 agent 自主任务+遗留扫描（23:00-23:30）
+
+**用户新指令**：①用 ComfyUI 别人的视频做参考生成指定内容（S7 videos 真机测试）②夜间时间充足做长片（主题=我定，其余 agent 自主调用工具）③扫描计划书可做遗留。
+
+**①登记 nt-ref-video-test**：参考视频=MiniMax_H3_00188_.mp4（他人产物，1216×672 手部装钞票特写；抽帧目检内容确证）；指定内容=「父亲在病房床边把钞票装入信封」（r2v + 父亲.png + `--videos 00188` + `<Video 1>` 契约句：hand motion/framing guided by Video 1）；预期=动作/特写镜头由参考视频驱动、人物按参考图锁定。
+
+**②长片《站台上的灯》已交给 agent（Gradio API 注入 send，event 6320b681）**：8 段父子深夜车站告别短片（①空站台长椅 ②父亲拖箱入画 ③列车头灯扫铁轨 ④车厢窗景 ⑤父子对视（此段真台词链 lip-sync，agent 自主设计台词 yunxi+ASR）⑥列车启动手扶车窗 ⑦雾中空站台 ⑧黎明蓝调进站）；指令=agent 自主分镜/逐段提交/第 5 段成品链/汇总剧本+产物清单。证据=run_20260908_151227_212.log agent-llm start→list_references 已调用（自主动工）。**agent 提交任务走 ComfyUI FIFO，与夜间 engine 任务自然排队**。
+
+**③遗留扫描+闭合**：book-13-backlog（已归档册）扫描——**✅已闭合 book-07 遗留**：`_SCRIPT_TIMEOUT` 120→600 对齐 h3_batch `--timeout`（原 100→600；多段 status 查询曾被 120s 误杀；Windows bf89712=3 文件+code-fact-registry 更新）；仍在池观察（不阻塞）：§3.5 h3_batch 轮询 O(1) 重构（book-07，中风险）、§3.4 六工具描述注册表派生（随 book-12，大改）、§3.2 图片解析收敛（标记不建议近期）、nap()/supervisor 语义冲突（§book-13#16，涉服务侧）、book-12 状态复核（描述派生是否随册完成，下一步核）。
+
 **兼容说明**：space sdk_version=gradio 4.44；app.py 用 Blocks/Video/Image/Dropdown/Radio/Button/Markdown 通用 API（4.x/6.x 均兼容；6.x 下 Blocks(theme=…) 仅告警不影响）。
 
 **夜间任务**：待查（cron 窗口 22:00 后执行 nt-echomimic-smoke → nt-hd-4x-ultimate，见 state 文件/日志）。
