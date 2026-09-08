@@ -24,6 +24,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import cv2  # noqa: F401  人脸预检/预筛
+import numpy as np  # noqa: F401  检测批处理
+
 REPO = Path(__file__).resolve().parent.parent.parent
 W2L_SRC = Path(os.path.expanduser('~/ai/wav2lip/src/Wav2Lip-master'))
 TTS_PY = Path(os.path.expanduser('~/ai/tts-venv/bin/python3'))
@@ -60,15 +63,43 @@ def main() -> int:
 
     src = Path(args.video)
     if not src.is_file():
-        # 自动选最新生成人脸近景（agent 无需关心素材定位）
+        # 自动选最新生成的近景人脸素材（先做检测预筛；agent 无需关心素材定位）
         import glob
-        vids = sorted(glob.glob(str(Path(os.path.expanduser('~/ai/ComfyUI/output/video')) + '/MiniMax_H3_*.mp4')),
+        vids = sorted(glob.glob(str(os.path.expanduser('~/ai/ComfyUI/output/video')) + '/MiniMax_H3_*.mp4'),
                       key=os.path.getmtime, reverse=True)
-        if not vids:
+        chosen = None
+        seen = []
+        try:
+            sys.path.insert(0, str(W2L_SRC))
+            from face_detection import FaceAlignment, LandmarksType  # noqa: E402
+            det = FaceAlignment(LandmarksType._2D, flip_input=False, device='cpu')
+            for v in vids[:8]:
+                cap = cv2.VideoCapture(str(v))
+                ok, f = cap.read()
+                mid = None
+                # 取约 40% 处一帧（避开起手遮挡）
+                n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+                if n > 10:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, int(n * 0.4))
+                    ok, f = cap.read()
+                cap.release()
+                if not ok or f is None:
+                    continue
+                import numpy as _np
+                rect = det.get_detections_for_batch(_np.array([f]))[0]
+                seen.append((Path(v).name, bool(rect)))
+                if rect:
+                    chosen = Path(v)
+                    break
+        except Exception as _e:  # noqa: BLE001
+            print('[warn] 人脸预筛不可用: %s（回退最新）' % _e, file=sys.stderr)
+        if chosen is None and vids:
+            chosen = Path(vids[0])
+        if chosen is None:
             print('[错误] 未指定 --video 且 output/video 无 MiniMax_H3_*.mp4', file=sys.stderr)
             return 3
-        src = Path(vids[0])
-        print('AUTO_VIDEO: %s' % src, flush=True)
+        src = chosen
+        print('AUTO_VIDEO: %s  scan=%s' % (src, seen[:5]), flush=True)
     if not src.is_file():
         print('[错误] 视频不存在: %s' % src, file=sys.stderr)
         return 3
@@ -97,9 +128,59 @@ def main() -> int:
           '--output', str(work / 'line.wav')])
     print('TTS_OK: %s' % (work / 'line.wav'), flush=True)
 
-    # 2) Wav2Lip（真实台词驱动嘴型；输出已含台词音轨）
+    # 2) 人脸预检/修剪：逐帧采样（步长 4），无脸段裁掉（起手遮挡等）→ 最长连续有脸区间
+    def _face_run(video: Path):
+        try:
+            import numpy as _np
+            sys.path.insert(0, str(W2L_SRC))
+            from face_detection import FaceAlignment, LandmarksType  # noqa: E402
+            det = FaceAlignment(LandmarksType._2D, flip_input=False, device='cpu')
+            cap = cv2.VideoCapture(str(video))
+            n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
+            states = []
+            idx = 0
+            while True:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                ok, f = cap.read()
+                if not ok or f is None:
+                    break
+                r0 = det.get_detections_for_batch(_np.array([f]))[0]
+                states.append(bool(r0))
+                idx += 4
+            cap.release()
+        except Exception:  # noqa: BLE001
+            return None
+        if not states:
+            return None
+        # 最长连续有脸区间（返回帧区间）
+        best_s = best_l = s = 0
+        cur = 0
+        for i, st in enumerate(states):
+            if st:
+                if cur == 0:
+                    s = i
+                cur += 1
+                if cur > best_l:
+                    best_l, best_s = cur, s
+            else:
+                cur = 0
+        t0 = best_s * 4 / fps
+        t1 = (best_s + best_l) * 4 / fps
+        return t0, t1
+
+    src_face = src
+    run = _face_run(src)
+    if run and run[1] - run[0] >= 1.2:
+        t0, t1 = run
+        src_face = work / 'face_run.mp4'
+        _run(['ffmpeg', '-y', '-loglevel', 'error', '-ss', '%.2f' % t0,
+              '-to', '%.2f' % t1, '-i', str(src), '-c', 'copy', str(src_face)])
+        print('FACE_RUN: %.2fs->%.2fs' % (t0, t1), flush=True)
+    elif run:
+        print('[warn] 可检测人脸区间过短（%.2fs），按原片尝试' % (run[1] - run[0]), flush=True)
     src_cp = work / 'face.mp4'
-    shutil.copy2(src, src_cp)
+    shutil.copy2(src_face, src_cp)
     raw_out = work / 'lipsync_raw.mp4'
     _run([str(TTS_PY), str(W2L_SRC / 'inference.py'),
           '--checkpoint_path', str(CKPT), '--face', str(src_cp),
@@ -123,7 +204,9 @@ def main() -> int:
         narration='')  # 旁白错开在下方单独混入
     nar = str(args.narration or '').strip()
     if nar:
-        # 旁白 TTS
+        # 旁白 TTS（混入临时文件避免与源同路径）
+        mix_out = work / 'mix.mp4'
+        mix_out.unlink(missing_ok=True)
         nar_wav = work / 'narration.wav'
         nar_wav.unlink(missing_ok=True)
         _run([str(COSY_PY), str(REPO / 'runs' / 'h3' / 'tts_cosy_check.py'),
@@ -134,16 +217,21 @@ def main() -> int:
         narr_end = start + float(_tts.probe_duration(nar_wav) or 2.0)
         pad = max(0.0, narr_end - video_dur)
         ms = int(start * 1000)
+        fc = ('[1:a]volume=0.18,adelay=%d:all=1[na];'
+              '[0:a][na]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[ot]' % ms)
         fcmd = ['ffmpeg', '-y', '-i', str(res['path']), '-i', str(nar_wav),
-                '-map', '0:v', '-map', '[ot]', '-c:v', 'copy',
-                '-filter_complex',
-                '[1:a]volume=0.18,adelay=%d:all=1[na];[0:a][na]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[ot]' % ms]
+                '-filter_complex', fc]
         if pad > 0:
-            fcmd[6:6] = ['-vf', 'tpad=stop_mode=clone:stop_duration=%.2f' % pad]
-        fcmd += ['-c:a', 'aac', '-b:a', '192k', str(out)]
+            fc_v = 'tpad=stop_mode=clone:stop_duration=%.2f' % pad
+            fcmd[7] = fc + ';[0:v]' + fc_v + '[vp]'  # fcmd[7]=filter_complex 的值槽
+            fcmd += ['-map', '[vp]', '-map', '[ot]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p']
+        else:
+            fcmd += ['-map', '0:v', '-map', '[ot]', '-c:v', 'copy']
+        fcmd += ['-c:a', 'aac', '-b:a', '192k', str(mix_out)]
         nr = subprocess.run(fcmd, capture_output=True, text=True, timeout=1800)
         if nr.returncode != 0:
             raise RuntimeError('旁白混入失败: ' + (nr.stderr or '')[-300:])
+        mix_out.replace(out)
         print('NARRATION: start=%.2fs dur=%.2fs pad=%.2fs' % (start, narr_end - start, pad), flush=True)
     print('FINAL: %s %d' % (out, out.stat().st_size), flush=True)
     res = {'path': out, 'speech_dur': line_dur, 'srt': None, 'speech': '', 'asr_text': ''}
