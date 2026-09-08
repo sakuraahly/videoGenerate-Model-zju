@@ -64,3 +64,5 @@ docs/agent-communication/state.yaml
 # 夜间任务运行状态（machine runtime；定义在 config/night-tasks.json）
 config/night-tasks.state.json
 .night.lock
+  
+temp/  

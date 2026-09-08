@@ -36,8 +36,8 @@ _VOICE_FULL = {'xiaoxiao': 'zh-CN-XiaoxiaoNeural', 'yunxi': 'zh-CN-YunxiNeural',
                'aria': 'en-US-AriaNeural', 'daler': 'en-US-ChristopherNeural'}
 
 
-def _run(cmd, timeout=1800):
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+def _run(cmd, timeout=1800, cwd=None):
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd)
     if r.returncode != 0:
         raise RuntimeError('fail: ' + ((r.stderr or r.stdout) or '')[-600:])
     return r.stdout
@@ -93,7 +93,8 @@ def main() -> int:
     raw_out = work / 'lipsync_raw.mp4'
     _run([str(TTS_PY), str(W2L_SRC / 'inference.py'),
           '--checkpoint_path', str(CKPT), '--face', str(src_cp),
-          '--audio', str(work / 'line.wav'), '--outfile', str(raw_out)], timeout=3600)
+          '--audio', str(work / 'line.wav'), '--outfile', str(raw_out)],
+         timeout=3600, cwd=W2L_SRC)
     if not raw_out.is_file():
         print('[错误] Wav2Lip 未产出（检查人脸可检测性/GPU）', file=sys.stderr)
         return 4
