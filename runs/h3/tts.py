@@ -350,7 +350,7 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
                 spd2 = synthesize(str(narration).strip(), speech, voice=voice, backend=backend)
                 cmd = ["ffmpeg", "-y", "-i", str(with_sub), "-i", str(speech),
                        "-map", "0:v", "-map", "[ot]", "-c:v", "copy",
-                       "-filter_complex", "[1:a]volume=0.18[nar];[0:a][nar]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[ot]",
+                       "-filter_complex", "[1:a]volume=0.18[nar];[0:a][nar]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[ot]",
                        "-c:a", "aac", "-b:a", "192k"]
             else:
                 spd2 = None

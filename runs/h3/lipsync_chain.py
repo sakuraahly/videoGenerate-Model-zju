@@ -36,6 +36,9 @@ if sys.executable != str(_TTS_PY) and _TTS_PY.is_file():
 import cv2  # noqa: F401  人脸预检/预筛
 import numpy as np  # noqa: F401  检测批处理
 
+# TTS 子进程强制 CPU（ComfyUI/其他进程可能持 GPU 上下文；cosy 有 GPU→CPU 兜底，但会拖）
+os.environ.setdefault('CUDA_VISIBLE_DEVICES', '')
+
 REPO = Path(__file__).resolve().parent.parent.parent
 W2L_SRC = Path(os.path.expanduser('~/ai/wav2lip/src/Wav2Lip-master'))
 TTS_PY = Path(os.path.expanduser('~/ai/tts-venv/bin/python3'))
@@ -240,17 +243,17 @@ def main() -> int:
         narr_end = start + float(_tts.probe_duration(nar_wav) or 2.0)
         pad = max(0.0, narr_end - video_dur)
         ms = int(start * 1000)
-        # duration=longest：旁白在台词后，duration=first 会被台词轨截断（2026-09-08 用户验证'旁白不存在'→修复）
-        fc = ('[1:a]volume=0.18,adelay=%d:all=1[na];'
-              '[0:a][na]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0[ot]' % ms)
+        # 2026-09-08 三修：amix 系引擎（含 dropout/归一化变体）会以不同方式伤台词尾——彻底改用
+        # concat 顺序拼接：台词(0-3.56s) → apad 0.6s 静音 → 旁白。无混合、无淡出，台词必然完整。
+        fc = ('[1:a]volume=0.18[na];[0:a]apad=pad_dur=0.52[a0];[a0][na]concat=n=2:v=0:a=1[aout]')
         fcmd = ['ffmpeg', '-y', '-i', str(res['path']), '-i', str(nar_wav),
                 '-filter_complex', fc]
         if pad > 0:
             fc_v = 'tpad=stop_mode=clone:stop_duration=%.2f' % pad
             fcmd[7] = fc + ';[0:v]' + fc_v + '[vp]'  # fcmd[7]=filter_complex 的值槽
-            fcmd += ['-map', '[vp]', '-map', '[ot]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p']
+            fcmd += ['-map', '[vp]', '-map', '[aout]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p']
         else:
-            fcmd += ['-map', '0:v', '-map', '[ot]', '-c:v', 'copy']
+            fcmd += ['-map', '0:v', '-map', '[aout]', '-c:v', 'copy']
         fcmd += ['-c:a', 'aac', '-b:a', '192k', str(mix_out)]
         nr = subprocess.run(fcmd, capture_output=True, text=True, timeout=1800)
         if nr.returncode != 0:
