@@ -24,6 +24,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+# 2026-09-08：agent run_script 用 qwen-agent-venv（无 cv2/onnxruntime）——重投递须在 import cv2 之前
+_TTS_PY = Path(os.path.expanduser('~/ai/tts-venv/bin/python3'))
+if sys.executable != str(_TTS_PY) and _TTS_PY.is_file():
+    try:
+        import cv2  # noqa: F401
+    except ImportError:
+        print('REEXEC_TTS_VENV', flush=True)
+        os.execv(str(_TTS_PY), [str(_TTS_PY), os.path.abspath(__file__)] + sys.argv[1:])
+
 import cv2  # noqa: F401  人脸预检/预筛
 import numpy as np  # noqa: F401  检测批处理
 
@@ -217,8 +226,9 @@ def main() -> int:
         narr_end = start + float(_tts.probe_duration(nar_wav) or 2.0)
         pad = max(0.0, narr_end - video_dur)
         ms = int(start * 1000)
+        # duration=longest：旁白在台词后，duration=first 会被台词轨截断（2026-09-08 用户验证'旁白不存在'→修复）
         fc = ('[1:a]volume=0.18,adelay=%d:all=1[na];'
-              '[0:a][na]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[ot]' % ms)
+              '[0:a][na]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0[ot]' % ms)
         fcmd = ['ffmpeg', '-y', '-i', str(res['path']), '-i', str(nar_wav),
                 '-filter_complex', fc]
         if pad > 0:
