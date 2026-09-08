@@ -5,11 +5,12 @@
 > 任何新增/修订文档或技能都必须回写本文件（见 §7 同步规则），保证后来者永远能从这里
 > 找到正确、最新、完整的阅读路径与项目架构。
 >
-> 最近更新：**2026-09-04**（创建；含 ctx-8192 token 预算化修复批次成果与工作文件夹速查；
+> 最近更新：**2026-09-08**（§15d 结果区+ASR 双指标夜轮落地：会话产物协议/7860 页面预览下载/双轨验真，见 §6；
+> 2026-09-04 创建：ctx-8192 token 预算化修复批次成果与工作文件夹速查；
 > 第三批：对话历史丢失修复、禁用自动 nap、系统提示词自主性重写、上传体验优化；
 > 第四批：tools.py TimeoutExpired bytes/str 拼接 bug 修复、压力测试验证；
-> 计划书：新增 `docs/planbook/`（系统性修复计划，含基座/前端/输出/自动完成/资源隔离/工作流/引擎/风格/验证，见 §2 第 10 条））
-> 事实权威：`docs/history/session-summary.md`（历史批次与现状）；最新交接：`docs/handoff/handoff-2026-09-04.md`；
+> 计划书：新增 `docs/planbook/`（系统性修复计划，见 §2 第 10 条））
+> 事实权威：`docs/CURRENT-STATE.md`（当前事实唯一权威）；最新交接：`docs/handoff/handoff-2026-09-08-live.md`；
 > 详细参考：`docs/history/reference-2026-09-04.md`。仓库双端：Windows 主库 ↔ GitHub ↔ spark 运行时。
 
 ---
@@ -31,7 +32,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 | 3 | **`docs/CURRENT-STATE.md`** | ⭐⭐ **当前事实唯一权威**（服务/模型/参数/音色/通道/纪律/待办） | 所有（事实以它为准） |
 | 3b | `docs/history/session-summary.md` | 🗄 历史状态快照 + 20.x 轮次审计志（只读；冲突以 CURRENT-STATE 为准） | 追溯 |
 | 3c | `docs/README.md` | **文档地图**：各文档角色/权威/更新规则（新增文档先登记） | 所有 |
-| 4 | `docs/handoff/handoff-2026-09-07-live.md` | **当日现场交接**：音色链真相（F5-TTS 本地=大模型）/aria 双轨/镜头17 实战演/CosyVoice2 试点/运维记录（跨日则新建当日 handoff；旧版 09-03~09-06 为历史） | 所有（接手当日工作前） |
+| 4 | `docs/handoff/handoff-2026-09-08-live.md` | **最新当日现场交接**：口型全链修复/无框方案(video_79)/真台词链 agent 化/S12 TTL/ComfyUI RIFE 兼容/§15d 结果区+ASR 双指标（跨日则新建当日 handoff；旧版 09-03~09-07 为历史） | 所有（接手当日工作前） |
 | 5 | `docs/history/reference-2026-09-04.md` | 详细工程参考：配置注册表、引擎/工具/Agent 契约、模板明细、故障字典 | 所有（查参数/契约/排障） |
 | 6 | `skills/h3-video-generation.md` | 生成任务全流程技能卡（§0b 路径速查与 Z 盘红线、§1.3c 上下文预算机制） | Agent/操作者做生成任务 |
 | 6b | `skills/h3-postproduction.md` | 成品链技能卡（TTS 音色/字幕/音效/ASR 验收/超分/交付） | 生成后装配/验收前 |
@@ -136,6 +137,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 
 | 日期 | 变更 |
 |---|---|
+| 2026-09-08 §15d 落地 | 会话产物协议（runs/h3/session_outputs.py：VIDEOGEN_SESSION_CID → logs/agent_chats/<cid>/outputs/，保留 10）+ 7860 结果区（gr.Video 预览+gr.File 下载，随 send/加载刷新）+ run_script env 注入 + ASR 双轨验真（asr_check --start/--dur；LINE_SCORE/NARRATION_SCORE）；单测 337 绿；spark 待 agent 重启生效 |
 | 2026-09-04 工具模块化计划 | 新增 docs/planbook/book-12-agent-tool-modular.md：Agent 工具自动化/模块化/通用化 + 多工作流配置驱动与便捷更换（注册表+适配器+动态 digest） |
 | 2026-09-06 执行就绪 | 19 轮审核闭环；新增 book-19 执行就绪计划书（打开门禁/执行顺序/统一验收/回滚/执行记录模板）；现场事故修复（上传清单回显/dup 去重镜像/缩略图并行/up_btn 清空）→ 进入执行阶段 |
 | 2026-09-06 用户首验 | 3 段 r2v 产物“参考图=首尾帧”问题归因（tag 计数=0=提示词契约缺失+ref_image_size=match）→ 计划书 P1.5 参考语义修复（最高优先）；新增 handoff-2026-09-06（最新交接） |

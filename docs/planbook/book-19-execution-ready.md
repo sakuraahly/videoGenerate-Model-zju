@@ -386,6 +386,16 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 
 **本轮已落地**：①链产物双落（ComfyUI output/video + 仓库 outputs，打印路径）②工具 env 注入预留（run_script 传 CURRENT_SESSION——链侧读取判断）。
 
+**后续落地（2026-09-08 夜间轮，全部代码已在 Windows 主库 + 已推 Spark 同步；effect 待 agent 重启）**：
+1. **协议模块**：`runs/h3/session_outputs.py`（ENV_CID=VIDEOGEN_SESSION_CID / session_out_dir / session_files / session_videos / place_output / prune_dir / KEEP=10）；单测 `runs/h3/tests/test_session_outputs.py`（6 绿）。
+2. **run_script 注入**：`tools.py RunScript` 在 CURRENT_SESSION 非空时给子进程 env 注入 `VIDEOGEN_SESSION_CID`（链侧读 `os.environ`）。
+3. **链落盘**：`lipsync_chain.py` 终版产物复制到 `logs/agent_chats/<cid>/outputs/<name>`（名称=`lipsync_<YYYYmmdd_HHMMSS>_<台词前4字>.mp4`，相对路径脱敏打印 `SESSION_OUT: …`），每会话保留最近 10 个（place_output 自动修剪）。
+4. **UI 结果区**：`ui_app.py` gallery 下新增 `gr.Video`（预览最新）+ `gr.File`（全部下载，file_count=multiple）；send 经包装为每个 yield 追加 `_results_update(cid)`（复用 _pool_update 模式，send_out/new_out 各增两输出位）；加载历史会话同样刷新；空态=组件 label「暂无结果」；demo.launch allowed_paths 增 `CHATS_DIR`。
+5. **ASR 双指标（同节小项）**：`asr_check.py` 增 `--start/--dur` 时间窗；链 `--asr-check` 改为双轨——台词窗 [0, line_dur+0.3] 报 `LINE_ASR/LINE_SCORE/LINE_MATCH`，旁白窗 [line_dur+0.45, +nar_dur+0.4] 报 `NARRATION_ASR/NARRATION_SCORE`（非重叠、互不混判）。
+
+**实测证据**：单测全覆盖 337 passed / 1 skipped（含新增 6 例）；`consistency_check` 问题 0；ui_app 结果区 glue 冒烟（假 gradio 桩）空态/有产物两分支通过。
+**验收（item 4）**：spark 重启 agent（tmux `agent`，重启=授权项）后真机走链 → 页面预览可播/下载可存、报告路径一致即关闭。
+
 ## 15e. 无框路线排查+解法（2026-09-08 用户：'方框更明显'+要求原生口型）
 
 **① 用户提案核查**：'让 MiniMax H3 生成时直接做口型适配'——**本机 ComfyUI 的 H3 节点集无音频驱动/说话头节点**（object_info：仅有 ImageToVideo/ReferenceToVideo/AddGuide/SigmaShift/Music3TextEncode 等；参考音频=氛围条件不驱动口型）→ 原生口型=本版本模型不可行（Hailuo 品类高级版可能有，本地无）。**已登记**。

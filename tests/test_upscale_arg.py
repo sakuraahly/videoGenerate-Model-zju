@@ -19,7 +19,8 @@ class TestUpscaleArg(unittest.TestCase):
     def test_finalize_with_upscale(self):
         a = build_arg_parser().parse_args(['--stage', 'r2v', '--finalize', '--upscale', '4x'])
         apply_finalize(a)
-        self.assertEqual(a.tts_backend, 'local')
+        # 2026-09-07 定案：TTS 后端默认=cosy（CosyVoice2 自然音色，GPU 优先自动回 CPU）
+        self.assertEqual(a.tts_backend, 'cosy')
         self.assertEqual(a.upscale, '4x')
 
 

@@ -40,3 +40,17 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 - 队列门禁后重启=安全；**不动 ComfyUI 需先 /tmp/restart_comfy2.sh（自带门禁）**；
 - 面向用户输出=零路径；agent 边界=只做制作相关指令（无关拒绝）；
 - 双端同步+文档闭环（skills/dev-workflow）；产物命名规范（lipsync_<ts>_<前4字>.mp4）。
+
+## 六、夜间追加：P1 页面结果区 + ASR 双指标（2026-09-08 晚，代码级完成；spark 未重启）
+
+**做什么**（planbook §15d item 2/3 + 小项）：用户'找不到结果在哪里'——页面可预览/下载本会话成片；ASR 混判改双轨。
+
+**1. 协议模块**：`runs/h3/session_outputs.py`——`VIDEOGEN_SESSION_CID` env → `logs/agent_chats/<cid>/outputs/`；`place_output`（复制+刷新 mtime+修剪保留最近 10）+ `session_videos/session_files`（最新在前）。
+**2. run_script env 注入**：`tools.py RunScript` CURRENT_SESSION 非空 → 注入 `VIDEOGEN_SESSION_CID`（链侧 `os.environ` 读取）。
+**3. 链落盘**：`lipsync_chain.py` 终版产物复制到会话目录；命名 = `lipsync_<YYYYmmdd_HHMMSS>_<台词前4字>.mp4`（原 HHMMSS 升级全时间戳防跨日重名）；脱敏打印 `SESSION_OUT: logs/agent_chats/<cid>/outputs/<name>…`。
+**4. UI 结果区**：`ui_app.py`——gallery 下 `gr.Video`（预览最新）+ `gr.File`（全部下载）；send 改包装器（_send_impl + 逐 yield 追加 `_results_update(cid)`，send_out/new_out 各增 2 输出位）；加载历史会话同步刷新；空态=组件 label『暂无结果』；launch allowed_paths 增 `CHATS_DIR`。
+**5. ASR 双指标**：`asr_check.py` 增 `--start/--dur` 时间窗（ffmpeg 裁剪 → SameVoice 验真）；链 `--asr-check` = 台词窗 [0, line_dur+0.3] 报 `LINE_ASR/LINE_SCORE/LINE_MATCH` + 旁白窗 [line_dur+0.45, +nar_dur+0.4] 报 `NARRATION_ASR/NARRATION_SCORE`（非重叠，不再混判）。
+
+**证据**：`py -3.13 -m pytest runs/h3/tests tests -q` → **337 passed / 1 skipped**（含新增 test_session_outputs.py 6 例）；`consistency_check` 问题 0；ui_app 结果区 glue 冒烟（假 gradio 桩；空态/有产物两分支）过；附修一处**预存**测试失败（test_upscale_arg tts_backend 期望 local→实际默认 cosy，2026-09-07 定案后的索引滞后）。
+
+**未做/下一步**：spark 侧 `runs/sync_to_spark.py` 同步 + **重启 agent（tmux `agent`；重启=授权项）**；然后真机验收=页面预览可播/下载可存（§15d item 4）；剩 P1：LivePortrait/EchoMimic 无框路线（§15e 夜间窗口）、studio M1（等确认）；P2 S12 --scope-all 收窄、1080p×4x 终极档、RIFE 正式出片。

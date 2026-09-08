@@ -7,7 +7,11 @@
   2) Wav2Lip（gan+s3fd，帧对齐 mel+PNG 序列封装——已修补）把 line.wav 驱动到人物嘴型
      （人物真的在说这段台词）→ 产出已含台词音轨的成片；
   3) keep 语义收尾：台词字幕（楷体默认）+ 可选旁白垫轨（-15dB）→ 最终成片；
-  4) --asr-check：SenseVoice 回环比对（台词原文）→ 验证"真的说对了"。
+  4) --asr-check：双轨 ASR 验真——台词窗 [0, line_dur] 单独打分（LINE_ASR/LINE_SCORE，
+     免受旁白混判干扰）+ 旁白窗存在性/打分（NARRATION_ASR/NARRATION_SCORE，非重叠窗）；
+  5) 产物归宿（§15d）：ComfyUI 输出区 + 仓库 outputs + 会话结果区
+     logs/agent_chats/<cid>/outputs/（env VIDEOGEN_SESSION_CID 由 run_script 注入；
+     页面 7860 结果区预览/下载），保留最近 10 个/会话。
 
 用法（agent/引擎侧）：
   python runs/h3/lipsync_chain.py --video <人脸源视频> --line "台词"       [--voice yunxi|xiaoxiao|aria|daler] [--narration "旁白"] [--subtitle-style kai]       [--asr-check] [--out <路径>]
@@ -238,6 +242,7 @@ def main() -> int:
         audio_mode='keep', subtitle_source='text',
         narration='')  # 旁白错开在下方单独混入
     nar = str(args.narration or '').strip()
+    nar_dur = 0.0
     if nar:
         # 旁白 TTS（混入临时文件避免与源同路径）
         mix_out = work / 'mix.mp4'
@@ -249,7 +254,8 @@ def main() -> int:
               '--output', str(nar_wav)])
         video_dur = float(_tts.probe_duration(res['path']) or line_dur or 3.0)
         start = line_dur + 0.6                     # 台词结束 0.6s 后
-        narr_end = start + float(_tts.probe_duration(nar_wav) or 2.0)
+        nar_dur = float(_tts.probe_duration(nar_wav) or 2.0)
+        narr_end = start + nar_dur
         pad = max(0.0, narr_end - video_dur)
         ms = int(start * 1000)
         # 2026-09-08 三修：amix 系引擎（含 dropout/归一化变体）会以不同方式伤台词尾——彻底改用
@@ -272,20 +278,41 @@ def main() -> int:
     print('FINAL: %s %d' % (out, out.stat().st_size), flush=True)
     res = {'path': out, 'speech_dur': line_dur, 'srt': None, 'speech': '', 'asr_text': ''}
 
-    # 4) 可选 ASR 验真（台词回环）
+    # 4) 双轨 ASR 验真（§15d 小项）：台词窗 [0, line_dur] 单独打分（免受旁白混判干扰）
+    #    + 旁白窗存在性/打分（旁白从台词后 0.52s 静音垫开始，与台词不重叠）
     if args.asr_check:
-        r = subprocess.run([str(ASR_PY), str(REPO / 'runs' / 'h3' / 'asr_check.py'),
-                            str(res['path']), '--compare', args.line],
-                           capture_output=True, text=True, timeout=600)
-        print(r.stdout.strip()[-600:], flush=True)
+        import re as _re2
+
+        def _asr_win(tag, start, dur, cmp_txt):
+            r = subprocess.run([str(ASR_PY), str(REPO / 'runs' / 'h3' / 'asr_check.py'),
+                                str(res['path']), '--start', '%.3f' % start,
+                                '--dur', '%.3f' % dur, '--compare', cmp_txt],
+                               capture_output=True, text=True, timeout=600)
+            txt = (r.stdout or '').strip()
+            _at = _re2.search(r'^ASR_TEXT:\s*(.+)$', txt, _re2.M)
+            _sc = _re2.search(r'^ASR_SCORE:\s*([\d.]+)$', txt, _re2.M)
+            _mc = _re2.search(r'^ASR_MATCH:\s*(\w+)$', txt, _re2.M)
+            print('%s_ASR: %s' % (tag, (_at.group(1) if _at else txt[-200:])), flush=True)
+            if _sc:
+                print('%s_SCORE: %s %s' % (tag, _sc.group(1),
+                                           (_mc.group(1) if _mc else '')), flush=True)
+            elif _at:
+                print('%s_SCORE: (无比对文本)' % tag, flush=True)
+
+        _asr_win('LINE', 0.0, line_dur + 0.30, args.line)
+        if nar:
+            _asr_win('NARRATION', line_dur + 0.45, nar_dur + 0.40, nar)
+        else:
+            print('NARRATION_ASR: (未设旁白)', flush=True)
     # 产物归宿（§15d）：ComfyUI 输出区（预览/下载）+ 仓库 outputs/——杜绝'找不到结果'
     import shutil as _sh
     import time as _tm
+    # §15d 命名规范：lipsync_<时间戳>_<台词前4字>.mp4（全时间戳防跨日重名；先定义防单区失败后引用不到）
+    name = 'lipsync_%s_%s.mp4' % (_tm.strftime('%Y%m%d_%H%M%S'), (args.line or 'line')[:4])
     dest_candidates = []
     try:
         outdir = Path(os.path.expanduser('~/ai/ComfyUI/output/video'))
         outdir.mkdir(parents=True, exist_ok=True)
-        name = 'lipsync_%s_%s.mp4' % (_tm.strftime('%H%M%S'), (args.line or 'line')[:4])
         c_dst = outdir / name
         _sh.copy2(str(out), str(c_dst))
         dest_candidates.append(str(c_dst))
@@ -299,6 +326,21 @@ def main() -> int:
         dest_candidates.append(str(r_dst))
     except Exception as _e:  # noqa: BLE001
         print('[warn] 仓库 outputs 写入失败: %s' % _e, file=sys.stderr)
+    # §15d 会话产物目录（7860 页面结果区）：run_script 注入 VIDEOGEN_SESSION_CID → 页面预览/下载
+    try:
+        from h3 import session_outputs as _sess
+        _cid = _sess.current_cid()
+        if _cid:
+            _sess_dst = _sess.place_output(Path(REPO), _cid, out, name=name)
+            if _sess_dst:
+                print('SESSION_OUT: logs/agent_chats/%s/outputs/%s（会话结果区，页面可预览/下载）'
+                      % (_cid, _sess_dst.name), flush=True)
+            else:
+                print('[warn] 会话结果区写入失败（无会话上下文或 IO 异常）', file=sys.stderr)
+        else:
+            print('SESSION_OUT: (无会话上下文，跳过结果区)', flush=True)
+    except Exception as _e:  # noqa: BLE001
+        print('[warn] 会话结果区写入失败: %s' % _e, file=sys.stderr)
     # 面向用户输出脱敏（§15 边界）：只给文件名/相对说法，不给绝对路径
     if dest_candidates:
         print('COMFY_OUT: video/%s（ComfyUI 输出区，可预览/下载）' % Path(dest_candidates[0]).name, flush=True)

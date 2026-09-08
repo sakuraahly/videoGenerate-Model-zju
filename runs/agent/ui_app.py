@@ -70,6 +70,8 @@ UP_LOADING = lambda n: _pill(f'⏳ 正在上传 {n} 个文件（归档+镜像中
 
 from runs.agent import ctx_budget
 from runs.agent.ctx_budget import UI_TRIM_TOKENS, CONV_MSG_BUDGET_TOKENS, is_context_overflow_error
+from runs.h3.session_outputs import session_files as _soc_session_files
+from runs.h3.session_outputs import session_videos as _soc_session_videos
 REPLY_MAX_TOKENS = ctx_budget.REPLY_MAX_TOKENS  # 兼容旧引用（唯一真值在 ctx_budget）
 
 
@@ -982,6 +984,25 @@ def _pool_update(cid: str):
         return _gr.update()
 
 
+def _results_update(cid: str):
+    """§15d 会话结果区刷新：gr.Video 预览最新成片 + gr.File 全部产物下载；空态提示。
+
+    与 _pool_update 同模式：每个 send yield / 会话加载时调用（cid 为会话 id）。
+    """
+    import gradio as _gr
+    try:
+        vids = _soc_session_videos(Path(PROJECT_ROOT), cid)
+        if not vids:
+            return (_gr.update(value=None, label='本轮结果视频（暂无结果）'),
+                    _gr.update(value=None, label='本轮结果文件（暂无）'))
+        files = _soc_session_files(Path(PROJECT_ROOT), cid)
+        return (_gr.update(value=str(vids[0]), label='本轮结果视频（预览 · 最新）'),
+                _gr.update(value=[str(p) for p in files],
+                           label='本轮结果文件（下载）'))
+    except Exception:  # noqa: BLE001
+        return _gr.update(), _gr.update()
+
+
 def _shared_for_cid(cid: str) -> list:
     """S12：当前会话有效共享授权（grants 文件 src==本会话、未过期未用）的目标会话预览（UI 预览池可见性补齐）。"""
     out: list = []
@@ -1164,7 +1185,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         return [{'role': m['role'], 'content': str(m.get('content', ''))}
                 for m in msgs if m.get('role') in ('user', 'assistant')]
 
-    def send(chat_hist, cid, user_text):
+    def _send_impl(chat_hist, cid, user_text):
         MAX_AUTO_CONTINUE = 5  # P0：2→5（任务延续需要；超出即停提示，防无限空转）
         from runs.agent.session_state import (
             get_stop_event, clear_tasks, add_tasks, increment_turn_id, check_turn_valid
@@ -1443,6 +1464,17 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     yield (msgs, final_status, note, gr.update(choices=_choices()), cid, msgs, _pool_update(cid), clear_box)
         finally:
             _active_turn.release()
+
+        def send(chat_hist, cid, user_text):
+            """send 包装（§15d）：为每个 yield 追加会话结果区刷新——结果随轮次/心跳即时可见。
+
+            内部实现=_send_impl（8 元组：chatbot/status/note/hist_dd/cid_state/hist_state/gallery/box）；
+            此处按 cid 补上 res_video/res_files 两个输出位。
+            """
+            for _item in _send_impl(chat_hist, cid, user_text):
+                _cid = _item[4] if len(_item) > 4 else cid
+                yield tuple(_item) + tuple(_results_update(_cid))
+
     with gr.Blocks(title='H3 视频生成助手', theme=gr.themes.Soft()) as demo:
         # 注意：gr.State 必须在 Blocks 上下文内创建（上下文外创建会 KeyError: 0）
         hist_state = gr.State([])   # 完整消息（存档口径：user/assistant 交替）
@@ -1478,11 +1510,17 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         up_status = gr.HTML(UP_IDLE)
         gallery = gr.Gallery(label='上传预览',
                              columns=6, object_fit='cover', interactive=False)
+        # §15d 会话结果区：链/引擎成片自动落 logs/agent_chats/<cid>/outputs/（页面预览+下载）
+        with gr.Row():
+            res_video = gr.Video(label='本轮结果视频（暂无结果）', interactive=False, scale=2)
+            res_files = gr.File(label='本轮结果文件（暂无）', file_count='multiple',
+                                interactive=False, scale=1)
+        gr.Markdown('_结果区：本会话产出的成片自动出现在上方（预览+下载）；加载历史会话可查该会话产物。_')
         note_md = gr.Markdown('_…_')
 
         out = [chatbot, status_html, note_md, hist_dd, cid_state, hist_state]
-        send_out = out + [gallery, box]   # 发送输出追加预览池+输入框（提交后自动清空；S12 池即时刷新）
-        new_out = out + [gallery, up_status]  # 新建/加载会话时同时清空上传预览与上传状态
+        send_out = out + [gallery, box, res_video, res_files]  # 发送输出追加预览池+输入框+结果区（§15d）
+        new_out = out + [gallery, up_status, res_video, res_files]  # 新建/加载：预览/上传状态+结果区同步刷新
 
         def _auto_new():
             global _current_cid, _pending_batch_id
@@ -1495,12 +1533,12 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             return ([], IDLE_HTML,
                     f'✅ 已自动开启新对话（会话 id：`{cid}`），直接输入即可。\n（新会话：上传预览已清空，素材需重新上传到本会话）',
                     gr.update(choices=_choices()), cid, [],
-                    gr.update(value=[]), UP_IDLE)
+                    gr.update(value=[]), UP_IDLE, *_results_update(cid))
 
         def _load(sel):
             global _current_cid
             if not sel:
-                return [], IDLE_HTML, '请先选择历史会话。', gr.update(), '', [], gr.update(value=[]), UP_IDLE
+                return [], IDLE_HTML, '请先选择历史会话。', gr.update(), '', [], gr.update(value=[]), UP_IDLE, *_results_update('')
             _current_cid = sel
             msgs = load_chat(sel)
             _prevs = _previews_for_cid(sel) + _shared_for_cid(sel)  # book-13 P2#9b + S12：本会话+有效共享授权预览
@@ -1508,7 +1546,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             return (fmt_msgs(msgs), IDLE_HTML,
                     f'已加载会话 {sel}（{len(msgs) // 2} 轮），已重建 {len(_prevs)} 项素材预览。\n（本会话全部素材以 list_references 为准）',
                     gr.update(), sel, msgs,
-                    gr.update(value=_prevs), UP_IDLE)
+                    gr.update(value=_prevs), UP_IDLE, *_results_update(sel))
 
         def _new():
             global _current_cid, _pending_batch_id
@@ -1517,7 +1555,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             _pending_batch_id = None
             _gal_by_cid[cid] = []  # book-16：预览按会话隔离
             return [], IDLE_HTML, f'✅ 已开启新对话（会话 id：`{cid}`）。\n（新会话：素材需重新上传到本会话）', \
-                gr.update(choices=_choices()), cid, [], gr.update(value=[]), UP_IDLE
+                gr.update(choices=_choices()), cid, [], gr.update(value=[]), UP_IDLE, *_results_update(cid)
 
         def _del(sel):
             if sel:
@@ -1766,7 +1804,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
     print(f'历史会话目录: {CHATS_DIR}')
     # 预览白名单：Gradio 默认只服务临时目录文件，需放行素材镜像/归档目录
     allowed = [str(THUMBS_DIR), str(_comfy_input_dir() / 'user_uploads'),
-               str(UPLOADS_DIR)]
+               str(UPLOADS_DIR), str(CHATS_DIR)]  # §15d：会话产物目录（results 区预览/下载）
     threading.Thread(target=_notify_watcher, daemon=True, name="p1-notify-watcher").start()
     demo.queue(default_concurrency_limit=16)
     demo.launch(server_name='0.0.0.0', server_port=port, share=share,

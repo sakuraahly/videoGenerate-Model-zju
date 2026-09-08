@@ -13,16 +13,16 @@ run_script(script="runs/h3/lipsync_chain.py", params="--video <人脸源> --line
 - **--line**：台词由你按剧情自主设计（一句话，口语化、切场景；用户给了台词就用用户的）；
 - --voice：匹配角色（默认 yunxi 中文男；xiaoxiao 女；aria 英文女；daler 英文男）；
 - --narration：可选旁白（垫轨 -15dB，不影响角色台词）；
-- --asr-check：自动 ASR 回环验真（台词原文）——报告里引用 ASR_SCORE；
+- --asr-check：自动 **双轨** ASR 验真——台词窗 [0, line_dur] 报 LINE_ASR/LINE_SCORE（≥0.6=ok）+ 旁白窗报 NARRATION_ASR/NARRATION_SCORE（存在性；无旁白=(未设旁白)）；报告里引用两者（不再混判）；
 - --video：**近景/正面清晰人脸**的素材（遮挡严重的源会 Face not detected）。
 
 ## 链的内容（内部）
 1. 台词 TTS（cosy，自然音色）→ 2. Wav2Lip 用台词驱动人物嘴型（人物真的说这句）→
-3. keep 收尾（台词字幕默认楷体 + 旁白垫轨 + 原声保留）→ 4. ASR 回环验真。
+3. keep 收尾（台词字幕默认楷体 + 旁白垫轨 + 原声保留）→ 4. 双轨 ASR 验真（台词窗/旁白窗分开）。
 
 ## 验收判据
-- ASR_TEXT 包含 --line 内容（ASR_SCORE ≥0.6=ok）；
-- 成品=output 路径（工具返回 LOC）。
+- LINE_ASR 包含 --line 内容（LINE_SCORE ≥0.6=ok）；旁白存在性见 NARRATION_ASR（非空）；
+- 成品=输出路径（工具返回 SESSION_OUT/COMFY_OUT/REPO_OUT；SESSION_OUT 会在 7860 页面结果区出现——用户可预览/下载）。
 
 ## 已知限制
 - 人脸源必须可检测（正面/无手遮挡）；口型纹理为 Wav2Lip 96px 模型上限（GFPGAN 修复可选）；

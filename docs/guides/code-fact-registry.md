@@ -45,6 +45,7 @@
 | 输出 | `outputs/`（spark-local 直存）/ scp 下载（win-remote） | 产物 `video_N.mp4` |
 | 运行日志 | `logs/run_<ts>_<ms>.log` 等 | 见 `docs/planbook/book-11`（日志体系） |
 | 会话存档 | `logs/agent_chats/<cid>.jsonl`（spark） | user/assistant 轮次 |
+| 会话产物 | `logs/agent_chats/<cid>/outputs/`（spark） | §15d：链终版成片落此（env `VIDEOGEN_SESSION_CID` 指定会话；7860 结果区 gr.Video/gr.File；保留最近 10 个；协议=`runs/h3/session_outputs.py`） |
 
 ---
 
@@ -60,6 +61,7 @@
 | `SAFETY_TOKENS` | 300 | 计数偏差/模板特判余量 |
 | `LLM_CFG.generate_cfg.max_tokens` | 2048 | 调度器 completion 上限（与 REPLY_MAX_TOKENS 一致） |
 | `_SCRIPT_TIMEOUT`（tools.run_script） | 120s | ⚠️ 与 h3_batch `--timeout` 默认 600 错配（book-07 待修） |
+| `VIDEOGEN_SESSION_CID`（env，run_script 注入） | 当前会话 cid | §15d：链/引擎读取后把终版产物写入 `logs/agent_chats/<cid>/outputs/`；无会话上下文不落盘 |
 
 ---
 

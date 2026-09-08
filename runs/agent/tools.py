@@ -116,6 +116,10 @@ class RunScript(BaseTool):
         env = None
         if script_name == 'h3_submit.py' and '--dry-run' in (extra_args or ''):
             env = {**os.environ, 'H3_CONCISE': '1'}  # 精简 JSON 刷屏，防上下文膨胀
+        # §15d 产物可达性：把当前会话 cid 注入子进程 env（链侧写入 logs/agent_chats/<cid>/outputs/）
+        _run_cid = (CURRENT_SESSION or '').strip()
+        if _run_cid:
+            env = {**(env or dict(os.environ)), 'VIDEOGEN_SESSION_CID': _run_cid}
 
         try:
             result = subprocess.run(

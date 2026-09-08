@@ -38,15 +38,23 @@ def _onnx_dir() -> Path:
     return snap
 
 
-def extract_wav(path: str, tmp: Path) -> Path:
-    """提取 16k 单声道 wav；已经是 wav 直接返回。"""
+def extract_wav(path: str, tmp: Path, start: float = 0.0, dur: float = 0.0) -> Path:
+    """提取 16k 单声道 wav；已经是 wav 且无窗口裁剪时直接返回。
+
+    start/dur（秒）：时间窗裁剪（§15d 双轨验真——台词窗/旁白窗单独 ASR）。
+    """
     p = Path(path)
-    if p.suffix.lower() == ".wav":
+    if p.suffix.lower() == ".wav" and start <= 0 and dur <= 0:
         return p
     wav = tmp / "asr.wav"
-    r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(p),
-                        "-ar", "16000", "-ac", "1", str(wav)],
-                       capture_output=True, text=True)
+    args = ["ffmpeg", "-y", "-v", "error"]
+    if start > 0:
+        args += ["-ss", "%.3f" % start]
+    args += ["-i", str(p)]
+    if dur > 0:
+        args += ["-t", "%.3f" % dur]
+    args += ["-ar", "16000", "-ac", "1", str(wav)]
+    r = subprocess.run(args, capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"ffmpeg 提取失败: {r.stderr[:200]}")
     return wav
@@ -97,9 +105,11 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="ASR 可辨析验收（SenseVoiceSmall ONNX）")
     ap.add_argument("media", help="视频/音频路径")
     ap.add_argument("--compare", default="", help="可选：目标文本（ASR 相似度验收，如 tts_text 台词）")
+    ap.add_argument("--start", type=float, default=0.0, help="可选：时间窗起点（秒，如台词窗/旁白窗）")
+    ap.add_argument("--dur", type=float, default=0.0, help="可选：时间窗长度（秒；0=剩余到结尾）")
     args = ap.parse_args(argv)
     with tempfile.TemporaryDirectory() as td:
-        wav = extract_wav(args.media, Path(td))
+        wav = extract_wav(args.media, Path(td), start=args.start, dur=args.dur)
         text = run_asr(wav)
     print(f"ASR_TEXT: {text}")
     print(f"VERDICT: {verdict(text)}")
