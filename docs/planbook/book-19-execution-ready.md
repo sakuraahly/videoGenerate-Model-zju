@@ -322,6 +322,30 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 - 系统提示：scheduler SYSTEM_MESSAGE 素材边界②落地（线索→请授权→grant_refs→shared-<cid>）；TOOL_NAMES/_TOOL_LIMITS/_TOOL_NAMES/_wrap_call 四注册点齐。
 **验证**：14 单测（tests/test_s12_grant.py：原子写/轮末/过期/缺失/无轮/启发式正反/共享分支过滤与拒绝/随会话删）+ 全套 251 绿；CLI 冒烟（grant→list 共享过滤）通过；☆真机（agent 真实轮：授权→签发→list shared）待队列窗口。
 **剩余登记**：① grants 文件属纯磁盘态，agent 重启后 turn_id 归零→旧授权自动失效（fail-closed，符合预期）；② 弱在环启发式可被绕过（audit 留痕；UI 瞬态确认弹窗=未来增强）；③ --scope-all 暴露面收窄=另立项。
+## 15b. 遗留清单（2026-09-08 登记，含 video_62 缺陷）
+
+**缺陷（用户验收反馈）**：outputs/video_62_w2l_lipsync_final_48fps.mp4（GFPGAN 人脸修复版）嘴部周围存在可见方框区域/割裂——根因=GFPGAN 逐帧回贴为硬矩形粘贴（bbox+12px margin 方框边界可见）。修复方案（已实施）：羽化混合（mask=方框区域 ERODE 15px + GaussianBlur σ10 → 帧与修复结果按 alpha 混合）+ 复跑 GFPGAN→RIFE 全链，新交付见 CURRENT-STATE §9。
+
+**远期/待办清单（对接 CURRENT-STATE §9）**：
+1. 口型换更优模型（自然度上限）：MuseTalk（ONNX，TMElyralab）或 VideoReTalking——中大型工作量=远期；
+2. ComfyUI 核心 RIFE 节点兼容：官方 flownet.pkl（Practical-RIFE 4.25-lite）→ core RIFE 需 rifeXX.pth/flownet.pth 且 state_dict 键匹配——验证中（登记于下节）；不兼容=远期（引擎侧已可用）；
+3. S12 真机演练（一次性授权流）：协议=agent 真实轮 用户授权句→grant_refs 签发→list --session shared-<target> 过滤可见；需用户一轮对话——状态=进行中（用户已发起）；
+4. 听测终确认（cosy 女声/aria 英文音色）——需用户耳朵验收；
+5. GFPGAN 端到端接入 ComfyUI 一体模板（当前引擎侧管线；ComfyUI 节点化=远期候选——可与 RIFE/修复合并为 H3Finalize 增强工序）；
+6. 1080p 4x 叠加终极档（7680×4352，480MB 级）——夜间可用，登记不做首选。
+
+## 15c. ComfyUI 兼容与工作流升级（2026-09-08 凌晨）
+
+**① ComfyUI 核心 RIFE 打通**：官方 Practical-RIFE v4.25-lite 的 train_log/flownet.pkl 重命名为 `models/frame_interpolation/flownet.pth` → ComfyUI 内置 `FrameInterpolationModelLoader` + `FrameInterpolate`（multiplier=2）直接可用（T3RifeTest 一提交 success，174 帧 4s）。==> **遗留②（核心节点兼容）已攻克：ComfyUI 内即可插帧**。
+
+**② 一体模板升级**：新 GUI 模板 `workflows/remote_workflows/video_minimax_h3_r2v_rife_finalize.json`（35 节点）：生成→SaveVideo→GetVideoComponents→FrameInterpolationModelLoader(flownet.pth)→FrameInterpolate(2x)→CreateVideo(**48fps**)→H3Finalize(cosy+kai)→H3AsrCheck。
+
+**③ 语义坑（登记）**：插帧后帧数 2 倍→CreateVideo 必须 fps=原fps×2（48），否则输出=慢动作 2 倍时长（首跑 10.29s@24fps 慢动作已修正）。
+
+**④ 终验**：5b308ac9 上全链 PASS——成片 864×480@48fps/5.146s h264+aac，AI 语音+楷体字幕，ASR 0.889 ok；模板转换器仍会剪掉 147/148（已知 uiapi 限制——GUI 模板=前端可用；API 提交走 基础模板+手工 93-96/147/148 拼接，已验证）。
+
+**⑤ S12 真机演练（用户已发起，2026-09-08 进行中）**：机械预演全绿——负例（无授权→拒绝+指引）/正例（授权 turn 匹配→shared 列出 4 项素材：新游戏眼镜/父亲/沙朗/破旧公寓客厅）/清理（grants.json 已删）；下一步=用户在与 agent 会话输入授权句 → agent grant_refs 签发 → list shared 供验证。
+
 ## 16. S7 实施记录（2026-09-06；7a/7b/7c 已实施，**二级真机 2026-09-06 已 PASS**（video_46 608×352/124f，参考视频+参考音频采纳；抽帧目检场景锁定+推近运镜；音频采纳判据=待用户/ASR——P 链④ 已落地））
 
 - **7a 登记（十九审定稿：扩展现有 video_r2v，不新建 stage）**：capabilities video_r2v 增 slots.videos=[reference×3]、slots.audios=[reference×3]、features.reference_videos=true、params.reference_media note；object_info 在线复核四节点全绿（ref_videos/ref_video_audios/ref_audios 均 COMFY_AUTOGROW_V3、prefix=ref_video_/ref_video_audio_/ref_audio_、max=3、子输入 IMAGE/AUDIO；LoadVideo file/LoadAudio audio 均 COMBO+input 根；GetVideoComponents 输出 images/audio）；workflow_registry add_local 扩展 slots=/features= kw；template_health 设计 B 分型（videos/audios 不数模板行；仅复核注入目标前缀节点存在）+ 注入前缀取 inject_spec.class_prefix；pipeline.json 无需新 stage（r2v 已存在，templates_dir 已确认）。
