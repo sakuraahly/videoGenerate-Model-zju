@@ -1,20 +1,54 @@
 {
   "_comment": "夜间/空闲窗口任务队列（种子定义；运行状态写 night-tasks.state.json）",
   "tasks": [
-    {"id": "nt-1080p-probe", "name": "原生1080p探测(1920×1088,无LoRA,5s)",
-     "kind": "engine", "window": "night",
-     "exec": "cd ~/videoGenerate-Model-zju && python3 runs/h3_submit.py --stage t2v --prompt \"Cinematic aerial establishing shot of a futuristic cyberpunk city street at dawn, warm light, one continuous 5-second take, no text, no watermark\" --seconds 5 --width 1920 --height 1088 --lora none --steps 20 --seed auto"},
-    {"id": "nt-wav2lip", "name": "Wav2Lip 口型冒烟(专题,需agent对话)",
-     "kind": "agent", "window": "night", "exec": ""},
-    {"id": "nt-echomimic-smoke", "name": "EchoMimic 无框路线冒烟(§15e: 512²/fp16/6步, 00187+line.wav)",
-     "kind": "engine", "window": "night",
-     "exec": "bash -lc 'cd ~/videoGenerate-Model-zju && ~/ai/tts-venv/bin/python3 runs/h3/echomimic_talk.py --video ~/ai/ComfyUI/output/video/MiniMax_H3_00187_.mp4 --audio /tmp/lipsync_chain/line.wav --out /tmp/echomimic_smoke.mp4 --steps 6 --fps 24 --seed 420 > ~/echomimic_smoke.log 2>&1; echo EXIT=$?'"},
-    {"id": "nt-hd-4x-ultimate", "name": "1080p×4x 终极档(1920×1088 原生+4x→7680×4352, 单命令提交即等待)",
-     "kind": "engine", "window": "night",
-     "exec": "bash -lc 'cd ~/videoGenerate-Model-zju && ~/qwen-agent-venv/bin/python3 runs/h3_submit.py --stage t2v --prompt \"A dim hospital room at night, an elderly mother lies dying in a hospital bed, IV drip and vital-sign monitor glowing, her middle-aged son in a pale green shirt sits at the bedside holding her hand, warm bedside lamp, window blinds with blurred city lights, soft ambient beeps and night-city hum, empathetic melancholy\" --seconds 5 --width 1920 --height 1088 --lora none --steps 20 --upscale 4x > ~/nt_hd4x.log 2>&1; echo EXIT=$?'"},
-    {"id": "nt-rife", "name": "RIFE 插帧补下(渠道阻塞,需下载验证)",
-     "kind": "agent", "window": "night", "exec": ""},
-    {"id": "nt-upscale4x", "name": "4x 超分电影级叠加验证(需选定成品)",
-     "kind": "agent", "window": "night", "exec": ""}
+    {
+      "id": "nt-1080p-probe",
+      "name": "原生1080p探测(1920×1088,无LoRA,5s)",
+      "kind": "engine",
+      "window": "night",
+      "exec": "cd ~/videoGenerate-Model-zju && python3 runs/h3_submit.py --stage t2v --prompt \"Cinematic aerial establishing shot of a futuristic cyberpunk city street at dawn, warm light, one continuous 5-second take, no text, no watermark\" --seconds 5 --width 1920 --height 1088 --lora none --steps 20 --seed auto"
+    },
+    {
+      "id": "nt-wav2lip",
+      "name": "Wav2Lip 口型冒烟(专题,需agent对话)",
+      "kind": "agent",
+      "window": "night",
+      "exec": ""
+    },
+    {
+      "id": "nt-echomimic-smoke",
+      "name": "EchoMimic 无框路线冒烟(§15e: 512²/fp16/6步, 00187+line.wav)",
+      "kind": "engine",
+      "window": "night",
+      "exec": "bash -lc 'cd ~/videoGenerate-Model-zju && ~/ai/tts-venv/bin/python3 runs/h3/echomimic_talk.py --video ~/ai/ComfyUI/output/video/MiniMax_H3_00187_.mp4 --audio /tmp/lipsync_chain/line.wav --out /tmp/echomimic_smoke.mp4 --steps 6 --fps 24 --seed 420 > ~/echomimic_smoke.log 2>&1; echo EXIT=$?'"
+    },
+    {
+      "id": "nt-hd-4x-ultimate",
+      "name": "1080p×4x 终极档(t2v版,1920×1088 原生+4x→7680×4352, 单命令提交即等待)",
+      "kind": "engine",
+      "window": "night",
+      "exec": "bash -lc 'cd ~/videoGenerate-Model-zju && ~/qwen-agent-venv/bin/python3 runs/h3_submit.py --stage t2v --prompt \"A dim hospital room at night, an elderly mother lies dying in a hospital bed, IV drip and vital-sign monitor glowing, her middle-aged son in a pale green shirt sits at the bedside holding her hand, warm bedside lamp, window blinds with blurred city lights, soft ambient beeps and night-city hum, empathetic melancholy\" --seconds 5 --width 1920 --height 1088 --lora none --steps 20 --upscale 4x > ~/nt_hd4x.log 2>&1; echo EXIT=$?'"
+    },
+    {
+      "id": "nt-hd-4x-r2v-refs",
+      "name": "1080p×4x 终极档·参考图版(r2v+3张参考图→1920×1088→4x 7680×4352)",
+      "kind": "engine",
+      "window": "night",
+      "exec": "bash -lc 'cd ~/videoGenerate-Model-zju && ~/qwen-agent-venv/bin/python3 runs/h3_submit.py --stage r2v --width 1920 --height 1088 --seconds 5 --lora ref2v_8step --image uploads/20260906/6718385e_母亲.png --image uploads/20260906/6f928fd2_父亲.png --image uploads/20260904/530faffd_父母卧室.png --prompt \"A dim hospital room at night. <Picture 1> lies weak and dying in a hospital bed with IV drip and vital-sign monitor beside it, eyes closed, breathing shallow. <Picture 2> the father in a pale green shirt sits at the bedside, leaning forward, gazing at her with grief and sorrow, one hand resting on the blanket. The room matches <Picture 3>: warm bedside lamp, monitor glow, window blinds with blurred city lights at night. Soft sad ambient hospital beeps and faint night-city hum. The reference images (scene/character/props) are locked throughout the whole shot; they are NOT first-frame/last-frame keyframes; keep every frame consistent. masterpiece, best quality, realistic, cinematic lighting, emotional. No text, no watermark, no cuts, no dialogue.\" --upscale 4x > ~/nt_hd4x_r2v.log 2>&1; echo EXIT=$?'"
+    },
+    {
+      "id": "nt-rife",
+      "name": "RIFE 插帧补下(渠道阻塞,需下载验证)",
+      "kind": "agent",
+      "window": "night",
+      "exec": ""
+    },
+    {
+      "id": "nt-upscale4x",
+      "name": "4x 超分电影级叠加验证(需选定成品)",
+      "kind": "agent",
+      "window": "night",
+      "exec": ""
+    }
   ]
 }
