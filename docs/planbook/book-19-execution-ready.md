@@ -346,6 +346,11 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 
 **⑤ S12 真机演练（用户已发起，2026-09-08 进行中）**：机械预演全绿——负例（无授权→拒绝+指引）/正例（授权 turn 匹配→shared 列出 4 项素材：新游戏眼镜/父亲/沙朗/破旧公寓客厅）/清理（grants.json 已删）；下一步=用户在与 agent 会话输入授权句 → agent grant_refs 签发 → list shared 供验证。
 
+**S12 真机演练（2026-09-08 凌晨）——授权链通过 + UI 预览池补齐**：
+- 会话证据（20260908_020115_34fa）：用户授权句（允许使用会话 20260907_113106_3e58 里的参考图）→ 调度器真实签发 + 列出 4 项（新游戏眼镜/父亲/沙朗/破旧公寓客厅）——授权→签发→shared 列出全链真机 PASS。
+- 用户反馈歧义：工具层已可访问，但网页底部预览池为空——原因=预览池按当前会话 cid 过滤（设计），共享素材不可见；修复=ui_app `_shared_for_cid(cid)`（grants 文件 src==当前会话、未过期未用 → 合并目标会话预览，caption=共享授权·会话<cid>），agent 重启后生效：再发一次授权句，池内即可见 4 张缩略图（池显示随授权轮末失效=遵循一次性语义）。
+- 注：UI 预览池显示≠访问权，访问权仍以 grants+turn 校验为准。
+
 ## 16. S7 实施记录（2026-09-06；7a/7b/7c 已实施，**二级真机 2026-09-06 已 PASS**（video_46 608×352/124f，参考视频+参考音频采纳；抽帧目检场景锁定+推近运镜；音频采纳判据=待用户/ASR——P 链④ 已落地））
 
 - **7a 登记（十九审定稿：扩展现有 video_r2v，不新建 stage）**：capabilities video_r2v 增 slots.videos=[reference×3]、slots.audios=[reference×3]、features.reference_videos=true、params.reference_media note；object_info 在线复核四节点全绿（ref_videos/ref_video_audios/ref_audios 均 COMFY_AUTOGROW_V3、prefix=ref_video_/ref_video_audio_/ref_audio_、max=3、子输入 IMAGE/AUDIO；LoadVideo file/LoadAudio audio 均 COMBO+input 根；GetVideoComponents 输出 images/audio）；workflow_registry add_local 扩展 slots=/features= kw；template_health 设计 B 分型（videos/audios 不数模板行；仅复核注入目标前缀节点存在）+ 注入前缀取 inject_spec.class_prefix；pipeline.json 无需新 stage（r2v 已存在，templates_dir 已确认）。

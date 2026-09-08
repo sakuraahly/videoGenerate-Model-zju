@@ -966,6 +966,36 @@ def _caption_for(cid: str) -> str:
     return f'会话 {cid} · 已用'
 
 
+def _shared_for_cid(cid: str) -> list:
+    """S12：当前会话有效共享授权（grants 文件 src==本会话、未过期未用）的目标会话预览（UI 预览池可见性补齐）。"""
+    out: list = []
+    try:
+        import json as _ij
+        for fn in os.listdir(str(CHATS_DIR)):
+            if not fn.endswith('.grants.json'):
+                continue
+            try:
+                g = _ij.loads((CHATS_DIR / fn).read_text(encoding='utf-8'))
+            except Exception:  # noqa: BLE001
+                continue
+            if str(g.get('src_cid') or '') != str(cid):
+                continue
+            if g.get('used'):
+                continue
+            exp = g.get('expires')
+            if exp and time.time() > float(exp):
+                continue
+            tgt = str(g.get('target_cid') or '')
+            if not tgt:
+                continue
+            for p, cap in _previews_for_cid(tgt):
+                if all(p != x[0] for x in out):
+                    out.append((p, f'共享授权·会话 {tgt}'))
+    except OSError:
+        pass
+    return out
+
+
 def _previews_for_cid(cid: str) -> list:
     """book-13 P2#9b：按上传归档日志重建某会话的图片预览列表（加载历史会话时用）。
 
@@ -1457,7 +1487,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 return [], IDLE_HTML, '请先选择历史会话。', gr.update(), '', [], gr.update(value=[]), UP_IDLE
             _current_cid = sel
             msgs = load_chat(sel)
-            _prevs = _previews_for_cid(sel)  # book-13 P2#9b：按会话重建预览
+            _prevs = _previews_for_cid(sel) + _shared_for_cid(sel)  # book-13 P2#9b + S12：本会话+有效共享授权预览
             _gal_by_cid[sel] = _prevs
             return (fmt_msgs(msgs), IDLE_HTML,
                     f'已加载会话 {sel}（{len(msgs) // 2} 轮），已重建 {len(_prevs)} 项素材预览。\n（本会话全部素材以 list_references 为准）',
