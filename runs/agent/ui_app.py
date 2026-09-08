@@ -1465,15 +1465,15 @@ def run_app(port: int = 7860, share: bool = False) -> None:
         finally:
             _active_turn.release()
 
-        def send(chat_hist, cid, user_text):
-            """send 包装（§15d）：为每个 yield 追加会话结果区刷新——结果随轮次/心跳即时可见。
+    def send(chat_hist, cid, user_text):
+        """send 包装（§15d）：为每个 yield 追加会话结果区刷新——结果随轮次/心跳即时可见。
 
-            内部实现=_send_impl（8 元组：chatbot/status/note/hist_dd/cid_state/hist_state/gallery/box）；
-            此处按 cid 补上 res_video/res_files 两个输出位。
-            """
-            for _item in _send_impl(chat_hist, cid, user_text):
-                _cid = _item[4] if len(_item) > 4 else cid
-                yield tuple(_item) + tuple(_results_update(_cid))
+        内部实现=_send_impl（8 元组：chatbot/status/note/hist_dd/cid_state/hist_state/gallery/box）；
+        此处按 cid 补上 res_video/res_files 两个输出位。
+        """
+        for _item in _send_impl(chat_hist, cid, user_text):
+            _cid = _item[4] if len(_item) > 4 else cid
+            yield tuple(_item) + tuple(_results_update(_cid))
 
     with gr.Blocks(title='H3 视频生成助手', theme=gr.themes.Soft()) as demo:
         # 注意：gr.State 必须在 Blocks 上下文内创建（上下文外创建会 KeyError: 0）
