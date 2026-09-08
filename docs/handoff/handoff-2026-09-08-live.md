@@ -70,3 +70,13 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 **修复（Windows 3e78e23 / spark baa31ff，agent 已重启生效，测试 177 绿）**：①`extract_prompt_ids` 支持 `[：:]` 全角+半角，且文本含「TASK_SUBMITTED/已提交」时兜底取首个 UUID（新单测 6 例）；②`h3_submit.py` 新增 `_session_place`：产物（LOCAL_OUTPUT/POSTPROCESS_OUT/TTS_OUT/MIX_OUT）在 VIDEOGEN_SESSION_CID 存在时落 `logs/agent_chats/<cid>/outputs/` + 打印 SESSION_OUT（普通生成入结果区）；③send 注入素材提示：本会话素材池有图且用户未提及时附加一行「人物/场景一致性请 list_references 按 r2v+<Picture N> 契约使用」（参考图未用的行为修正，观察下轮）；④原任务补救：`VIDEOGEN_SESSION_CID=20260908_124614_0863 h3_submit.py --resume e0099beb-…` → LOCAL_OUTPUT video_458.mp4 + POSTPROCESS_OUT video_458_pp.mp4（2560×1472/5.17s/aac）+ 两 SESSION_OUT 入会话结果区；抽帧目检（2s）=母亲病床+父亲悲痛注视，场景契合；Windows 交付 `outputs/video_80_母亲病床.mp4`。
 
 **遗留观察**：①用户页面需「加载所选历史会话」触发结果区刷新（无事件源的已完成任务不自动弹）；②同步注意 spark-local 直跑编号独立（video_458）≠ Windows 目录编号（video_80），交付以 Windows 命名为准；③P1.3 EchoMimic 冒烟任务 22:00 自动执行中，互不影响。
+
+## 九、夜间追加 4：加载历史会话续接——假 id 真相与四修（2026-09-08 21:20-22:00）
+
+**用户反馈**（加载 0863 会话后「重新生成一遍」）：①上传状态变“尚未为本会话上传素材” ②ComfyUI 找不到模型回复的 prompt_id：4f8b1c2a… ③又是等待输入态 ④模型不该承诺“完成后我会取回…”。
+
+**真相（取证）**：模型**确实提交了 r2v**——21:21:07 `run_20260908_132107_630.log` `submitted stage=r2v prompt_id=ac88b2cb-… imgs=母亲,父亲,卧室 720p/5s`（job `h3_20260908_132107_723`，ComfyUI 队列 running）；但**回复里编造了假 id 4f8b1c2a**（history 空）→ 登记走了假 id → watcher poll failed “任务不存在”→ 真实任务无人监控/取回/刷新。①=旧 `_load` 硬编码 UP_IDLE；④=输出纪律漏洞。
+
+**修复（Windows 3c69880/ffcb017；spark bc4e7ac/219500d，agent 重启生效，测试 343 绿）**：①提交真实性硬校验——声称已提交但本轮无提交类工具调用且工具输出无 TASK_SUBMITTED → 本轮作废+提示（防纯虚构）；②**任务登记以工具输出真实 id 优先**（模型转述 id 不可信；合并去重）；③`_load` 上传状态真实化（素材池 N 项 pill）；④SYSTEM：提交回复只写「已提交（任务 id:…）」+一行参数，禁「我会取回/完成后…」承诺句。
+
+**真实任务补救**：`ac88b2cb` resume 完成（本地无参重跑+env）→ `MiniMax_H3_00194_.mp4`（1280×736/5.17s/24fps）→ outputs/video_460.mp4 + SESSION_OUT（会话结果区 video_460.mp4）+ Windows 交付 `outputs/video_81_母亲病床_v2.mp4`（抽帧 2.2s 目检：绿衣父亲床侧握母亲手+监护仪/吊瓶/夜景窗=参考一致性✅）。
