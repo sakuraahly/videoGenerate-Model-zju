@@ -415,7 +415,7 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 
 ## 15f. 魔搭创空间打包目标（2026-09-08 用户定案）
 
-**目标**：本项目整体打包上传魔搭创空间（ModelScope Studio）。**调研已完成**（创空间=git 仓库+token 发布、免费 CPU 2vCPU/16G+休眠激活、付费 GPU 升配=PAI、app.py 核心；出网部署 ComfyUI 有社区尝试但受 GPU 规格限制）。适配不可整体迁移引擎（GB10+40GB 模型）——**分层**：创空间=展示+交互入口；spark=引擎层（公网 API 调度）。实施序=M1 静态展示版（免费 CPU：片墙+流程+演示表单）→M2 远程调度版（studio_gateway.py 鉴权 API + 创空间出网实测）→M3（免费 GPU→单点模型演示）。**文档写就**：`docs/guides/studio-porting.md`（事实表+设计+里程碑验收）；**skill 卡**：`skills/studio-packaging.md`。**未开始实施**（M1 动工=用户确认后）。
+**目标**：本项目整体打包上传魔搭创空间（ModelScope Studio）。**调研已完成**（创空间=git 仓库+token 发布、免费 CPU 2vCPU/16G+休眠激活、付费 GPU 升配=PAI、app.py 核心；出网部署 ComfyUI 有社区尝试但受 GPU 规格限制）。适配不可整体迁移引擎（GB10+40GB 模型）——**分层**：创空间=展示+交互入口；spark=引擎层（公网 API 调度）。实施序=M1 静态展示版（免费 CPU：片墙+流程+演示表单）→M2 远程调度版（studio_gateway.py 鉴权 API + 创空间出网实测）→M3（免费 GPU→单点模型演示）。**文档写就**：`docs/guides/studio-porting.md`（事实表+设计+里程碑验收）；**skill 卡**：`skills/studio-packaging.md`。**M1 已实施（2026-09-08 用户确认后动工）**：`studio/` 目录=创空间项目根——`app.py`（Gradio 配置驱动：项目介绍+能力点+6 部样片墙(压缩≤220KB+封面)+五步流程+演示表单→演示结果卡+风格匹配样片）、`config.yaml`(sdk: gradio 4.44 + 展示元数据)、`requirements.txt`、`README.md`、`assets/`(12 文件≈1.2MB)。**证据**：本地 Gradio 6.26 启动→HTTP 200→`/config` 断言 53 组件/13 媒体组件/1 表单依赖。**待发布验收**（需用户 modelscope token）：clone 创空间仓库→copy 本目录→push（执行清单 1-3）；验收=M1 URL 打开/片墙可播/表单可用；M2 远程调度待出网实测后实施。
 
 ## 15g. 1080p 直出片流程复盘（2026-09-08，P2-⑦）
 

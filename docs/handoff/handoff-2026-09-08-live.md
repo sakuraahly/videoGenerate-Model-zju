@@ -80,3 +80,12 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 **修复（Windows 3c69880/ffcb017；spark bc4e7ac/219500d，agent 重启生效，测试 343 绿）**：①提交真实性硬校验——声称已提交但本轮无提交类工具调用且工具输出无 TASK_SUBMITTED → 本轮作废+提示（防纯虚构）；②**任务登记以工具输出真实 id 优先**（模型转述 id 不可信；合并去重）；③`_load` 上传状态真实化（素材池 N 项 pill）；④SYSTEM：提交回复只写「已提交（任务 id:…）」+一行参数，禁「我会取回/完成后…」承诺句。
 
 **真实任务补救**：`ac88b2cb` resume 完成（本地无参重跑+env）→ `MiniMax_H3_00194_.mp4`（1280×736/5.17s/24fps）→ outputs/video_460.mp4 + SESSION_OUT（会话结果区 video_460.mp4）+ Windows 交付 `outputs/video_81_母亲病床_v2.mp4`（抽帧 2.2s 目检：绿衣父亲床侧握母亲手+监护仪/吊瓶/夜景窗=参考一致性✅）。
+
+## 十、夜间追加 5：任务书扫描 + S12 收窄 + M1 动工（2026-09-08 21:50-22:10，用户确认 M1）
+
+**任务书扫描**：planbook §3 全部 S 项已闭环；剩余=handoff P1(③冒烟 22:00 自动/④M1)/P2/P3。
+**P2-⑤ 完成**：S12 `--scope-all` 暴露面收窄（§15 登记项）——`refimage.authorized_all_text`（全部/所有+素材/会话/历史；否定/疑问即拒）；tools 层未授权即拒（原=警告+放行），CLI 无上下文亦拒+调试提示；S12 测 16 绿/全量 345 绿；Windows a4ddf64 / spark 同步+agent 重启生效。
+**P2-⑥ 登记**：夜间任务 `nt-hd-4x-ultimate`（1920×1088 无 LoRA 20 步 + --upscale 4x→7680×4352 终极档，单命令提交即等待）。
+**P2-⑦ 完成**：1080p 直出片流程复盘 → planbook §15g（全链已通无阻塞；编号口径=spark-local video_4xx≠Windows video_N，交付以 Windows 命名为准；≥768p 夜间排产）。
+**P1-④ M1 动工（用户确认）**：`studio/` 创空间项目根全套——app.py（Gradio 配置驱动：介绍/6 样片墙/五步流程/演示表单→结果卡+风格样片）、config.yaml（sdk gradio 4.44+展示元数据）、requirements.txt、README.md、assets/（12 文件 ≈1.2MB；样片经 spark ffmpeg 压缩 640w/CRF28 + 封面）。**证据**：本地 Gradio 6.26 启动→HTTP 200→/config=53 组件/13 媒体/1 表单依赖。**待用户 token 发布创空间**+M1 验收；M2 待出网实测。
+**夜间窗口**：22:00 自动执行 nt-echomimic-smoke + nt-hd-4x-ultimate（队列空闲门槛）——结果下轮汇报。
