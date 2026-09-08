@@ -403,6 +403,14 @@ ASR 均还原；**待用户听测 → 通过后接入 h3_submit --tts-backend co
 **③ 当前解法（video_79 已交付）**：链条接通 `--face-restore` = W2L 后**整脸 GFPGAN 重渲染**（自适应边距+泊松无缝）——贴皮框被整脸重渲染吸收（目检 1.8s 帧：面部纹理统一无框）+ 台词完整 + 旁白错开 + ASR 双全；输出脱敏路径。
 **④ 最优无框路线（远期候选，镜像已核有货）**：**LivePortrait / EchoMimic**（hf-mirror：camenduru/LivePortrait、Kijai/LivePortrait_safetensors；BadToBest/EchoMimic 等）——整脸/整头部由模型重生成（天然无贴皮框），音频驱动。实施=模型+代码下载（Windows 中转）→ 推理接入（tts-venv/GPU）→ 与嘴唇链同参数接线（台词→TTS→LivePortrait→字幕→旁白）。排期：夜间窗口或下一迭代首项。
 
+**⑤ 实施启动（2026-09-08 夜，选型已定）**：
+- **选型=EchoMimic**（antgroup/echomimic，音频驱动管线+加速版 10x；V1 终验 AAAI 2025）：输入=参考图+音频，整图范围重渲染（非贴皮；背景保持参考帧）。**对比弃用**：MuseTalk（papercup-ai/MuseTalk）理论更贴合「视频原地整脸重生成」，但依赖 mmcv==2.0.1+mmpose==1.1.0（aarch64 无轮子需编译）+ face-parse-bisent（Google Drive）——ARM64 高风险，列为备选；LivePortrait v1 为关键点驱动（音频驱动需 v2/外围），暂缓。
+- **货源**：ModelScope `BadToBest/EchoMimic` 全量镜像（48 文件，与 HF 同构，含 sd-image-variations-diffusers + sd-vae-ft-mse 子目录）——spark 直连下载（免 Windows 中转）；HF hf-mirror 备用。
+- **最小集 ≈12.3GB**：sd-image-variations-diffusers/unet（3.4GB，UNet2DConditionModel 基座）+ denoising_unet_acc.pth（3.4GB）+ reference_unet.pth（3.26GB）+ motion_module_acc.pth（1.8GB）+ sd-vae-ft-mse（335MB）+ audio_processor/whisper_tiny.pt（75MB）+ face_locator.pth（4.4MB）+ 各 config。
+- **代码/依赖**：代码=antgroup/echomimic（codeload zip → ~/ai/echomimic）；依赖装 tts-venv（diffusers==0.24.0/transformers/moviepy 1.0.3/av 11/einops/omegaconf/torchmetrics/torchtyping/ffmpeg-python/facenet_pytorch/modelscope；mediapipe 仅 pose 路径需要，音频路径不装；torch 2.14+cu130 超其上限 2.2.2 → 兼容试探，失败则新建 venv 装 torch 2.2.2+cu121）。
+- **集成**：`runs/h3/echomimic_talk.py`——参考帧（40%）→ 与 EchoMimic 内部同口径方形裁切（MTCNN select_face+0.5 边距+crop_and_pad）→ infer_audio2vid_acc.py（fp16/6 步/24fps/L=1200 自动按音频截断）→ 渲染 512² 回贴原帧（seamlessClone（NORMAL_CLONE）/越界羽化）→ mux 台词音轨。
+- **排期**：安装+模型下载（现网）→ 冒烟=夜间窗口（22:00+，ComfyUI 队列空闲门槛）——验嘴型同步/纹理/无框；通过后接 lipsync 链（--talking-backend echomimic 替 Wav2Lip+GFPGAN 贴皮段）→ 真机交付 video_N。
+
 ## 15f. 魔搭创空间打包目标（2026-09-08 用户定案）
 
 **目标**：本项目整体打包上传魔搭创空间（ModelScope Studio）。**调研已完成**（创空间=git 仓库+token 发布、免费 CPU 2vCPU/16G+休眠激活、付费 GPU 升配=PAI、app.py 核心；出网部署 ComfyUI 有社区尝试但受 GPU 规格限制）。适配不可整体迁移引擎（GB10+40GB 模型）——**分层**：创空间=展示+交互入口；spark=引擎层（公网 API 调度）。实施序=M1 静态展示版（免费 CPU：片墙+流程+演示表单）→M2 远程调度版（studio_gateway.py 鉴权 API + 创空间出网实测）→M3（免费 GPU→单点模型演示）。**文档写就**：`docs/guides/studio-porting.md`（事实表+设计+里程碑验收）；**skill 卡**：`skills/studio-packaging.md`。**未开始实施**（M1 动工=用户确认后）。

@@ -54,3 +54,9 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 **证据**：`py -3.13 -m pytest runs/h3/tests tests -q` → **337 passed / 1 skipped**（含新增 test_session_outputs.py 6 例）；`consistency_check` 问题 0；ui_app 结果区 glue 冒烟（假 gradio 桩；空态/有产物两分支）过；附修一处**预存**测试失败（test_upscale_arg tts_backend 期望 local→实际默认 cosy，2026-09-07 定案后的索引滞后）。
 
 **未做/下一步**：spark 侧 `runs/sync_to_spark.py` 同步 + **重启 agent（tmux `agent`；重启=授权项）**；然后真机验收=页面预览可播/下载可存（§15d item 4）；剩 P1：LivePortrait/EchoMimic 无框路线（§15e 夜间窗口）、studio M1（等确认）；P2 S12 --scope-all 收窄、1080p×4x 终极档、RIFE 正式出片。
+
+## 七、夜间追加 2：P1.3 EchoMimic 无框路线启动（2026-09-08 晚，用户授权重启 agent 后）
+
+**Agent 重启 ✅**：`svc_main.py restart-agent` 后版本指纹 `7a8df97`（spark 本地 commit），7860 页面已含结果区组件（send 输出 10 位：…chatbot/status/note/hist_dd/cid/hist/gallery/box/res_video/res_files）+ 结果区文案；§15d item 4 待用户页面点验（预览可播/下载可存）。过程记录：首版 send 包装缩进误嵌 `_send_impl`（run_app 作用域无 send → NameError，页面启动即崩）→ 修复 commit `4b588bb`（Windows）/ `7a8df97`（spark）→ 重启验证通过。教训：涉及嵌套函数/闭包改动必须 spark 真机启动验证（本地起不来界面）。
+
+**P1.3 选型与启动**：**选型=EchoMimic**（音频驱动+加速版；MuseTalk 因 mmcv/mmpose+Google Drive 权重 ARM64 高风险列为备选，详见 planbook §15e ⑤）。货源=ModelScope 全量镜像（spark 直连）；最小集 ≈12.3GB；代码已落 `~/ai/echomimic`（codeload）；依赖安装中（tts-venv：diffusers 0.24/transformers/moviepy/av/facenet_pytorch/modelscope 等；torch 2.14+cu130 超其 ≤2.2.2 上限待兼容验证）；集成脚本 `runs/h3/echomimic_talk.py` 已写（参考帧→同口径裁切→重渲染→seamlessClone 回贴→mux 台词音轨）。**待夜间窗口（22:00+，队列空闲门槛）**：重量级 W=512 fp16 冒烟（嘴型同步+纹理+无框目检），通过后接入 lipsync 链（--talking-backend echomimic 替代贴皮段）。
