@@ -108,7 +108,7 @@ def main() -> int:
             print('[错误] 未指定 --video 且 output/video 无 MiniMax_H3_*.mp4', file=sys.stderr)
             return 3
         src = chosen
-        print('AUTO_VIDEO: %s  scan=%s' % (src, seen[:5]), flush=True)
+        print('AUTO_VIDEO: %s  scan=%s' % (src.name, seen[:5]), flush=True)
     if not src.is_file():
         print('[错误] 视频不存在: %s' % src, file=sys.stderr)
         return 3
@@ -287,8 +287,11 @@ def main() -> int:
         dest_candidates.append(str(r_dst))
     except Exception as _e:  # noqa: BLE001
         print('[warn] 仓库 outputs 写入失败: %s' % _e, file=sys.stderr)
-    print('COMFY_OUT: %s' % (dest_candidates[0] if dest_candidates else str(out)), flush=True)
-    print('REPO_OUT: %s' % (dest_candidates[1] if len(dest_candidates) > 1 else ''), flush=True)
+    # 面向用户输出脱敏（§15 边界）：只给文件名/相对说法，不给绝对路径
+    if dest_candidates:
+        print('COMFY_OUT: video/%s（ComfyUI 输出区，可预览/下载）' % Path(dest_candidates[0]).name, flush=True)
+    if len(dest_candidates) > 1:
+        print('REPO_OUT: outputs/%s（仓库 outputs，已同步 Windows）' % Path(dest_candidates[1]).name, flush=True)
     print('DONE_LIPSYNC_CHAIN', flush=True)
     return 0
 
