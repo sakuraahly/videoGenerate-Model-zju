@@ -143,7 +143,8 @@ def main() -> int:
         return 4
     print('REF: frame=%d/%d fps=%.1f' % (ref_idx, n, fps), flush=True)
 
-    # 裁切区（与 EchoMimic 内部同口径：MTCNN select_face + 0.5 crop 边距 + 正方形）
+    # 裁切区（与 EchoMimic 内部同口径：MTCNN select_face + 0.5 crop 边距 + 正方形）。
+    # facenet_pytorch 2.6.0 权重随 wheel 内置（pnet/rnet/onet.pt），spark 可离线加载。
     from facenet_pytorch import MTCNN
     det = MTCNN(image_size=320, margin=0, min_face_size=20,
                 thresholds=[0.6, 0.7, 0.7], factor=0.709,
