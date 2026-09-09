@@ -26,7 +26,9 @@ SUBMIT = PROJECT_ROOT / 'runs' / 'h3_submit.py'
 STITCH = PROJECT_ROOT / 'runs' / 'h3' / 'film_stitch.py'
 CONTINUE_TAIL = (' The shot continues seamlessly from the previous frame; same characters, '
                  'same location, same lighting, same color grade; slow continuous motion, no cuts. '
-                 'No text, no watermark, no dialogue.')
+                 'Realistic physical logic: natural human movement, believable weight and gravity, '
+                 'plausible camera; NO written characters, no signage text, no readable letters, '
+                 'no numbers anywhere in frame; no text, no watermark, no dialogue.')
 
 
 def _run(cmd, timeout=3600):
@@ -58,10 +60,17 @@ def main() -> int:
     ap.add_argument('--prompts-file', required=True, help='段提示词 JSON {"0":..., "1":...}')
     ap.add_argument('--start-image', default='', help='首帧图（有则段0 也走 i2v；缺省段0=t2v）')
     ap.add_argument('--resolution', default='480p')
+    ap.add_argument('--lora', default='fl2v_4step',
+                    help='加速档（fl2v_4step 快/物理弱；none=20 步全质=物理与细节最佳；fl2v_8step 居中）')
     ap.add_argument('--seconds', type=int, default=4)
     ap.add_argument('--seed', type=int, default=20260908)
     ap.add_argument('--work-dir', default='/tmp/film_series')
     ap.add_argument('--stitch', action='store_true', help='完成后拼接成片')
+    ap.add_argument('--strip-audio', action='store_true',
+                    help='拼接时剔除各段原生音轨（H3 伪语音=乱码级，用户听感差；真台词由 --voice-segment 补）')
+    ap.add_argument('--voice-segment', type=int, default=-1, help='接真台词链的段索引（生成后本段用 lipsync_chain 版替换）')
+    ap.add_argument('--line', default='', help='台词（--voice-segment 时必填）')
+    ap.add_argument('--voice', default='yunxi')
     ap.add_argument('--out', default='/tmp/film_series.mp4')
     args = ap.parse_args()
 
@@ -77,11 +86,13 @@ def main() -> int:
     for k, idx in enumerate(pidxs):
         if prev_frame is not None and prev_frame.is_file():
             cmd = ['python3', str(SUBMIT), '--stage', 'i2v', '--resolution', args.resolution,
+                   '--lora', args.lora,
                    '--seconds', str(args.seconds), '--seed', str(args.seed),
                    '--image', str(prev_frame),
                    '--prompt', str(prompts[idx]) + CONTINUE_TAIL]
         else:
             cmd = ['python3', str(SUBMIT), '--stage', 't2v', '--resolution', args.resolution,
+                   '--lora', args.lora,
                    '--seconds', str(args.seconds), '--seed', str(args.seed),
                    '--prompt', str(prompts[idx])]
         print(f'== seg{idx} ({"i2v" if cmd[cmd.index("--stage")+1] == "i2v" else "t2v"})', flush=True)
@@ -93,6 +104,27 @@ def main() -> int:
             print(log[-600:], file=sys.stderr)
             return 4
         segp = Path(seg)
+        # 台词段（--voice-segment）：本段产完后用真台词链替换（H3 伪语音/无脸话=用户'无法解析'投诉根因）
+        if int(idx) == args.voice_segment and args.line:
+            chain_cmd = ['python3', str(PROJECT_ROOT / 'runs' / 'h3' / 'lipsync_chain.py'),
+                         '--video', str(segp), '--line', args.line, '--voice', args.voice,
+                         '--asr-check']
+            rc = _run(chain_cmd)
+            cl = (rc.stdout or '') + (rc.stderr or '')
+            import re as _re
+            m = _re.search(r'COMFY_OUT: video/(\S+?)（|FINAL: (\S+) ', cl)
+            chain_path = ''
+            for _l in cl.splitlines():
+                if _l.startswith('COMFY_OUT:'):
+                    chain_path = str(Path.home() / 'ai' / 'ComfyUI' / 'output' / 'video' /
+                                     _l.split('video/')[1].split('（')[0])
+                    break
+            if chain_path and Path(chain_path).is_file():
+                segp = Path(chain_path)
+                print(f'seg{idx} 台词链版: {Path(chain_path).name}', flush=True)
+            else:
+                print(f'[warn] seg{idx} 台词链未成功（保留源段）', file=sys.stderr)
+                print(cl[-400:], file=sys.stderr)
         # 保存段产物引用 + 取末帧作为下一段首帧
         segs_out.append(str(segp))
         lf = work / f'last_{idx}.png'
@@ -104,7 +136,10 @@ def main() -> int:
 
     print('SEGMENTS: ' + ','.join(Path(s).name for s in segs_out), flush=True)
     if args.stitch:
-        r = _run(['python3', str(STITCH), '--segments', ','.join(segs_out), '--out', args.out])
+        _st = ['python3', str(STITCH), '--segments', ','.join(segs_out), '--out', args.out]
+        if args.strip_audio:
+            _st.append('--strip-audio')
+        r = _run(_st)
         print((r.stdout or r.stderr or '')[-400:], flush=True)
         if r.returncode != 0:
             print('[错误] 拼接失败', file=sys.stderr)
