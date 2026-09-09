@@ -1,0 +1,51 @@
+{
+  "_comment": "Agent 任务调度配置（定期/定点/服从安排）。schedule 五段 cron 式（分 时 日 月 周）；kind=engine 由调度器直接执行白名单脚本（可靠）；kind=agent 注入 7860 会话由 agent 执行。",
+  "tasks": [
+    {
+      "id": "sched-watchdog",
+      "name": "调度器自检（每5分钟记录状态）",
+      "kind": "engine",
+      "enabled": true,
+      "schedule": {
+        "min": "*/5"
+      },
+      "script": "agent/night_runner.py",
+      "args": "--status"
+    },
+    {
+      "id": "sched-night-check",
+      "name": "夜间窗口巡检（22-06 每20分钟：队列+夜间任务状态）",
+      "kind": "engine",
+      "enabled": true,
+      "schedule": {
+        "min": "*/20",
+        "hour": "22-23,0-6"
+      },
+      "script": "agent/night_runner.py",
+      "args": "--status"
+    },
+    {
+      "id": "sched-demo-minutely",
+      "name": "演示·每分钟自检（验证调度链，观测后移除）",
+      "kind": "engine",
+      "enabled": true,
+      "schedule": {
+        "min": "*"
+      },
+      "script": "agent/night_runner.py",
+      "args": "--status"
+    },
+    {
+      "id": "sched-daily-report",
+      "name": "每日 20:00 生产简报（agent 对话任务：汇总当日产物并汇报）",
+      "kind": "agent",
+      "enabled": true,
+      "schedule": {
+        "min": "0",
+        "hour": "20"
+      },
+      "cid": "",
+      "prompt": "【定时任务·每日生产简报】请执行 run_script(night_runner.py, --status) 与 run_script(h3_submit.py) 无参（检查队列/产物），然后给用户一条中文简报：今日完成/进行中/失败任务各一行（文件名用相对说法，不露路径）。"
+    }
+  ]
+}
