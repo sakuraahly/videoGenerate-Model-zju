@@ -111,3 +111,13 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 **兼容说明**：space sdk_version=gradio 4.44；app.py 用 Blocks/Video/Image/Dropdown/Radio/Button/Markdown 通用 API（4.x/6.x 均兼容；6.x 下 Blocks(theme=…) 仅告警不影响）。
 
 **夜间任务**：待查（cron 窗口 22:00 后执行 nt-echomimic-smoke → nt-hd-4x-ultimate，见 state 文件/日志）。
+
+## 十三、夜间任务收尾+三修复+长片重启（2026-09-09 晨 08:00-08:40）
+
+**夜间任务全部收尾但完成度打折（ComfyUI 中途挂起事件）**：①nt-hd-4x-ultimate EXIT=0→video_462（1920×1088）✅，**4x 超分被'ComfyUnreachable'跳过**；②nt-hd-4x-r2v-refs EXIT=0→**video_463（参考图版 1920×1088，1.98MB）✅ 已交付 Windows outputs/video_82_母亲病床_r2v1080.mp4（抽帧 2.2s 目检：绿衣父/病床母/卧室环境锁定✅）**，4x 同样跳过；③nt-echomimic-smoke 重跑仍 EXIT=5（**根因实锤**：MTCNN 仅对高分辨率原图有效——00187 全部候选帧 0 boxes、缩放即 0，而参考图 1600×2848→5 框 0.99+；非脸小/非库坏）；④nt-ref-video-test EXIT=3（契约校验：模板 2 槽 vs 传 1 图→要求 <Picture 1/2>）。
+
+**三修复（Windows 551d6e8/d7ad7ad，spark 已同步）**：①`echomimic_talk.py` 新增 **--ref-image 人像模式**（高分辨率人像原图直入 EchoMimic，输出即成品；视频模式错误提示指引）+ 判据修正；night exec 改为父亲.png；②ref-video-test exec 改 2 图+2 tag（父亲+卧室，<Picture 1/2>+<Video 1> 契约）；③新增 `runs/h3/upscale_once.py`（`_run_upscale` 复用）+ **nt-upscale-backfill**（video_462/463 补 4x→7680×4352）。状态已重置（echomimic-smoke/ref-video-test=pending），**今晚 22:00 窗口自动收尾**。
+
+**长片《站台上的灯》**：agent 昨夜提交第 1 段后 Comfy 重启使其失效+通知注入失败为'任务不存在'；agent 陷入断点查询循环、续接耗尽停摆（a265 会话 6 行）。已注入'继续'（event 0ae3f462）重启：指示忽略无关旧断点、重新提交全部 8 段（第 5 段真台词链），白天自主推进。
+
+**观察登记**：ComfyUI 服务形态=pid 2897957 `~/ai/venv/bin/python main.py --listen --reserve-vram 12 --enable-manager`，**不在 tmux comfy 会话**（与 CURRENT-STATE §2 记录不符）——托管方=supervisor/系统侧；与 book-13 #16 nap/supervisor 同族（服务侧逻辑，非本仓面），维持观察并建议下次与用户核对形态。
