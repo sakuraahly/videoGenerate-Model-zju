@@ -188,48 +188,97 @@ def run_segment(idx: int, prompt: str, prev_frame, args, work: Path, st: dict, s
         pass
     else:
         print('[warn] seg%d 末帧提取失败' % idx, file=sys.stderr)
-    syn_seg(st, idx, {'file': str(segp), 'prompt': prompt, 'ph': prompt_hash(prompt)})
+    syn_seg(st, idx, {'file': str(segp), 'src_file': str(segp),
+                      'prompt': prompt, 'ph': prompt_hash(prompt)})
     save_state(work, st)
     print('seg%d OK: %s' % (idx, segp.name), flush=True)
     return str(segp)
 
 
+def line_ph(line: dict) -> str:
+    """台词指纹（文本+音色+语速）：词表变更→台词段重做（画面复用 src_file）。"""
+    return prompt_hash('|'.join([str(line.get('text') or ''),
+                                 str(line.get('voice') or 'yunxi'),
+                                 str(line.get('speed') or 0.95)]))
+
+
+ASR_PY = str(Path.home() / 'ai' / 'asr-venv' / 'bin' / 'python3')
+
+
+def _asr_score(video: Path, start: float, dur: float, cmp_txt: str) -> float:
+    """ASR 双窗验真（发音回环）：返回比例分；失败=-1。"""
+    try:
+        r = subprocess.run([ASR_PY, str(PROJECT_ROOT / 'runs' / 'h3' / 'asr_check.py'),
+                            str(video), '--start', '%.3f' % start,
+                            '--dur', '%.3f' % dur, '--compare', cmp_txt],
+                           capture_output=True, text=True, timeout=600)
+        import re as _re
+        m = _re.search(r'^ASR_SCORE:\s*([\d.]+)$', (r.stdout or ''), _re.M)
+        return float(m.group(1)) if m else -1.0
+    except Exception:  # noqa: BLE001
+        return -1.0
+
+
 def run_line(idx: int, seg_file: str, line: dict, args, work: Path, st: dict) -> str:
-    """台词段：TTS 文本=台词表（先设置后生成）；发音回环+spoken 重试。"""
+    """台词处理（2026-09-09 重写：**无 W2L/GFPGAN 后期贴皮口型**）。
+
+    = 台词先行（文本=台词表）→ CosyVoice2 合成（**人物个性=角色绑定音色+语速**）
+      → 配音替换原轨 + 字幕=台词原文（**语言跟随台词**: 中文台词=中文字幕，
+      英文台词=英文字幕）→ ASR 发音回环（失败自动 spoken 重试）。
+    输出=画面原样+音轨+字幕（无后期口型驱动; 说话镜头如有需要可用 EchoMimic 原生驱动,另见 §15e）。
+    """
     text = str(line.get('text') or '').strip()
     if not text:
         return seg_file
     spoken = str(line.get('spoken') or '').strip() or text
     voice = line.get('voice') or 'yunxi'
+    speed = float(line.get('speed') or 0.95)
     out = work / ('seg_%02d_v.mp4' % idx)
     log = ''
     attempts = (text, spoken) if spoken != text else (text,)
     for attempt, use_text in enumerate(attempts):
-        cmd = ['python3', str(LIPSYNC), '--video', seg_file, '--line', use_text,
-               '--voice', voice, '--asr-check', '--face-restore', '--out', str(out)]
-        print('== seg%d 台词链(t=%d) voice=%s' % (idx, attempt, voice), flush=True)
-        r = _run(cmd, timeout=int(args.timeout))
-        log = (r.stdout or '') + (r.stderr or '')
-        score = _line_score_of(log)
-        ok_file = out.is_file() and out.stat().st_size > 0
+        print('== seg%d 台词处理(t=%d) voice=%s speed=%.2f（无后期口型; 配音+字幕一次完成）'
+              % (idx, attempt, voice, speed), flush=True)
+        try:
+            import sys as _sys
+            if str(PROJECT_ROOT / 'runs') not in _sys.path:
+                _sys.path.insert(0, str(PROJECT_ROOT / 'runs'))
+            import h3.tts as _tts
+            res = _tts.attach_speech_and_subtitle(
+                Path(seg_file), use_text, out=out, voice=voice, backend='cosy',
+                subtitle_style='harmony', subtitle_font='auto', subtitle_color='auto',
+                audio_mode='replace', subtitle_source='text', narration='',
+                speech_speed=speed)
+            spd = float(res.get('speech_dur') or 0)
+        except Exception as e:  # noqa: BLE001
+            log = 'ERR %s' % e
+            score = -1.0
+            out.unlink(missing_ok=True)
+            ok_file = False
+        else:
+            score = _asr_score(out, 0.0, spd + 0.30, use_text)
+            ok_file = out.is_file() and out.stat().st_size > 0
         if ok_file and (attempt == 1 or score >= LINE_SCORE_MIN):
             if attempt == 1:
-                print('seg%d 发音回环 FAIL(%.2f) → spoken 重试（台词文本不变，发音写法替换）'
+                print('seg%d 发音回环 FAIL(%.2f) → spoken 重试（台词文本不变, 发音写法替换）'
                       % (idx, score), flush=True)
             syn_seg(st, idx, {'file': str(out), 'line': text, 'voice': voice,
-                              'score': score, 'spoken_used': attempt == 1})
+                              'speed': speed, 'score': score,
+                              'spoken_used': attempt == 1,
+                              'line_ph': line_ph(line)})
             save_state(work, st)
-            print('seg%d 台词 %s ASR=%.2f' % (idx, 'OK' if score >= LINE_SCORE_MIN else 'OK(spoken)',
-                                              score), flush=True)
+            print('seg%d 台词 %s ASR=%.2f (voice=%s speed=%.2f)'
+                  % (idx, 'OK' if score >= LINE_SCORE_MIN else 'OK(spoken)', score,
+                     voice, speed), flush=True)
             return str(out)
-        if attempt == 0 and score >= LINE_SCORE_MIN and ok_file:
-            syn_seg(st, idx, {'file': str(out), 'line': text, 'voice': voice, 'score': score})
+        if attempt == 0 and ok_file and score >= LINE_SCORE_MIN:
+            syn_seg(st, idx, {'file': str(out), 'line': text, 'voice': voice,
+                              'speed': speed, 'score': score, 'line_ph': line_ph(line)})
             save_state(work, st)
             return str(out)
-    print('[错误] seg%d 台词链最终失败（ASR=%.2f, rc 见上）' % (idx, _line_score_of(log)),
+    print('[错误] seg%d 台词处理最终失败（ASR=%.2f; %s）' % (idx, _line_score_of(log), log[-300:]),
           file=sys.stderr)
-    print(log[-500:], file=sys.stderr)
-    return seg_file  # 兜底：台词失败则保留源段（画面片），报告给用户
+    return seg_file  # 兜底：保留源段（画面片）并报告
 
 
 def cmd_run(args) -> int:
@@ -249,29 +298,42 @@ def cmd_run(args) -> int:
     prompts = [build_prompt(seg, story) for seg in story['segments']]
     phs = [prompt_hash(p) for p in prompts]
     lines = story.get('lines') or {}
-    # 断点=连续头部就绪（文件在+指纹一致+台词段台词完成）；首个不满足=重做起点（链失效传播）
-    first_redo = None
+    # 画面链断点（指纹；不管台词）与台词链断点（line_ph）分离：
+    #   画面链保证 i2v 继承（改稿→该段起全重做）；台词链可独立重做（画面复用，不再重生成）。
+    first_screen = None
     for idx in range(len(story['segments'])):
-        if not seg_ready(st, idx, phs[idx], bool(lines.get(str(idx)))):
-            first_redo = idx
+        if not seg_done(st, idx) or st['segments'][str(idx)].get('ph') != phs[idx]:
+            first_screen = idx
             break
-    if first_redo is not None:
-        print('RESUME: seg%d 起重做（前 %d 段保留；指纹/台词不一致或文件缺失）'
-              % (first_redo, first_redo), flush=True)
+    lphs = {str(i): line_ph(line) for i, line in lines.items()}
+    if first_screen is not None:
+        print('RESUME: 画面链 seg%d 起重做（前 %d 段保留；指纹不一致或文件缺失）'
+              % (first_screen, first_screen), flush=True)
     else:
-        print('RESUME: 全部段已就绪', flush=True)
+        print('RESUME: 画面链全部就绪', flush=True)
     segs = {}
     prev_file = ''
     for idx, seg in enumerate(story['segments']):
-        redo = first_redo is None or idx >= first_redo
         line = lines.get(str(idx))
-        if not redo:
-            file = st['segments'][str(idx)]['file']
+        screen_redo = first_screen is not None and idx >= first_screen
+        need_line = bool(line) and not (
+            bool(st['segments'].get(str(idx), {}).get('line'))
+            and st['segments'].get(str(idx), {}).get('line_ph') == lphs.get(str(idx)))
+        s_cur = st['segments'].get(str(idx), {}) or {}
+        if not screen_redo and not need_line:
+            file = s_cur['file']
             print('seg%d 已存在（resume 跳过）: %s' % (idx, Path(file).name), flush=True)
             segs[idx] = file
         else:
-            prev_frame = Path(prev_file) if prev_file and Path(prev_file).is_file() else None
-            file = run_segment(idx, prompts[idx], prev_frame, args, work, st, story)
+            if not screen_redo and need_line:
+                # 台词独立重做：画面复用源段（src_file），不重新生成
+                file = s_cur.get('src_file') or s_cur.get('file')
+                print('seg%d 台词重做（画面复用 %s; voice=%s speed=%s）'
+                      % (idx, Path(file).name, line.get('voice'), line.get('speed')),
+                      flush=True)
+            else:
+                prev_frame = Path(prev_file) if prev_file and Path(prev_file).is_file() else None
+                file = run_segment(idx, prompts[idx], prev_frame, args, work, st, story)
             segs[idx] = file
             if line:
                 file = run_line(idx, file, line, args, work, st)

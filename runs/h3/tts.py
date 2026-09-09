@@ -20,6 +20,10 @@ VOICE_ALIASES = {
     # 英文台词（父子英文对话/画外独白）：短名 aria=en-US-AriaNeural（美音女声；男英文用 en-US-ChristopherNeural 待登记）
     "aria": "en-US-AriaNeural",
     "en-aria": "en-US-AriaNeural",
+    # 2026-09-09 人物个性音色（edge-tts 参考样本→CosyVoice 零样本克隆；样本在 assets/tts_refs/）：
+    "yunjian": "zh-CN-YunjianNeural",   # 沉稳男（达克式：冷静老成）
+    "yunyang": "zh-CN-YunyangNeural",   # 青年男（莱可式：急切狼狈）
+    "xiaoyi": "zh-CN-XiaoyiNeural",     # 冷静女（海伦式：克制疏离）
 }
 
 _SRT_TIME = re.compile(r"(\d+):(\d{2}):(\d{2})[.,](\d{3})")
@@ -116,7 +120,8 @@ def synth_local(text: str, out: Path, voice: str = DEFAULT_VOICE) -> float:
     return d
 
 
-def synth_cosy(text: str, out: Path, voice: str = DEFAULT_VOICE) -> float:
+def synth_cosy(text: str, out: Path, voice: str = DEFAULT_VOICE,
+                  speed: float = 0.95) -> float:
     """CosyVoice2-0.5B 本地合成（自然音色；GPU 优先、OOM 自动转 CPU）。
 
     依赖 spark ~/ai/cosy-venv + 模型 ~/ai/CosyVoice2-0.5B（魔搭）；参考样本与 F5-TTS 同源
@@ -138,6 +143,7 @@ def synth_cosy(text: str, out: Path, voice: str = DEFAULT_VOICE) -> float:
     script = str(Path(__file__).resolve().parent / "tts_cosy_check.py")
     cmd = [COSY_TTS_PY, script, "--text", text, "--ref-file", str(ref_wav),
            "--ref-text", ref_txt.read_text(encoding="utf-8").strip(),
+           "--speed", str(float(speed or 0.95)),
            "--output", str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
     if r.returncode != 0 or not out.is_file() or out.stat().st_size < 200:
@@ -149,7 +155,7 @@ def synth_cosy(text: str, out: Path, voice: str = DEFAULT_VOICE) -> float:
 
 
 def synthesize(text: str, out: Path, voice: str = DEFAULT_VOICE, rate: str = "-8%",
-               backend: str = "cosy") -> float:
+               backend: str = "cosy", speed: float = 0.95) -> float:
     """合成语音到 out（cosy=CosyVoice2 自然音色默认 / local=F5-TTS / edge=在线云）；返回时长秒。"""
     text = str(text or "").strip()
     if not text:
@@ -160,7 +166,7 @@ def synthesize(text: str, out: Path, voice: str = DEFAULT_VOICE, rate: str = "-8
     if _b == "local":
         return synth_local(text, out, voice=voice)
     if _b == "cosy":
-        return synth_cosy(text, out, voice=voice)
+        return synth_cosy(text, out, voice=voice, speed=speed)
     # book-18：--rate=-8% 用等号语法（argparse 会把以 - 开头的值当成旗标）
     cmd = _edge_tts_cmd() + ["--voice", voice, "--rate=" + rate, "--text", text, "--write-media", str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
@@ -301,7 +307,8 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
                                subtitle_color: str = "auto",
                                audio_mode: str = "replace",
                                subtitle_source: str = "text",
-                               narration: str = "") -> dict:
+                               narration: str = "",
+                               speech_speed: float = 0.95) -> dict:
     """成品链：字幕烧录 + 音轨策略（2026-09-08 语义升级——角色原声优先）。
 
     audio_mode（2026-09-09 修正：默认 replace）:
@@ -368,8 +375,8 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
             res = {"path": dest, "speech_dur": spd, "srt": srt,
                    "speech": (speech if speech.is_file() else ""), "asr_text": asr_text}
             return res
-        # --- 旧行为：replace（台词=text 合成语音替换原轨） ---
-        spd = synthesize(text, speech, voice=voice, backend=backend)
+        # --- 默认：replace（台词=TTS 替换原轨；字幕=台词原文；无后期贴皮口型） ---
+        spd = synthesize(text, speech, voice=voice, backend=backend, speed=speech_speed)
         srt.write_text(f"1\n00:00:00,000 --> {_srt_time(spd)}\n{text}\n", encoding="utf-8")
         render_subtitle(input_video, with_sub, srt, fontsize=fontsize,
                         preset=subtitle_style, font=subtitle_font, color=subtitle_color)
