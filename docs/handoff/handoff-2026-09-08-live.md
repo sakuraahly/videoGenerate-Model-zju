@@ -129,3 +129,9 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 **工程化交付（已启动，后台 pwsh-153）**：`config/film_station_lights_prompts.json`（8 段成品英文 prompt：老站台/父亲入画/列车头灯/车厢窗景/j车窗父了对视/列车启动/雾中空站台/黎明进站，480p/4s/seed 20260908）→ 串行脚本 `/tmp/film_run.sh`：段0 无参续传等待→段1-7 逐段提交-轮询-落盘→**段5(车窗父子对视)接 lipsync_chain（--line '路上小心。' --voice yunxi --asr-check）**；段产物按 prompt_id 逐段留档（film_seg_N.log）。完成后：concat 8 段成片→Windows 交付（video_83_站台上的灯.mp4）；第 1 段 note=已失效 ef680224 不采用。
 
 **h3_batch 能力边界记录**：submit=多图转场 N-1 段（images≥2 fo flf2v），不支持 t2v 独立序列批次——长片序列脚本化时勿走 batch（登记）。
+
+## 十五、《站台上的灯》成片交付 + cosy 环境连环雷修复（2026-09-09 09:00-09:50）
+
+**成片 ✅**：8 段串行生成（00200-00203/00205-00207=480p/4s/同 seed；第 5 段=**真台词链**：TTS→Wav2Lip→字幕旁白→**LINE_SCORE 1.000 ok（'路上小心。' ASR 回环满分）**）→ 逐段归一化（864×480/24fps/aac）→ concat → **32.7s《站台上的灯》** → Windows `outputs/video_83_站台上的灯.mp4`（抽帧 16.5s：车厢夜行氛围✓；父子近景段（00204 源）为近景弱/空镜，后续可选高清源重跑第 5 段）。段清单：00200/01/02/03→链→05/06/07。
+
+**cosy-venv 连环雷修复（运维教训，重要）**：台词链首跑 rc=0→遇 `modelscope import TypeError replace(None)`。根因链=①cosy-venv 数个包**本地安装无 dist-info 元数据**（torch 等）→ `importlib.metadata.version()` 抛错；②site-packages **多版本同名 dist-info 冲突**（tokenizers-0.15.2 vs 0.23.2；torch-2.14.0+cu130 vs symlink 至 tts-venv 的 torch-2.14.0）→ stdlib metadata 返回 None；③transformers 4.x `get_torch_version`（其 import 链在 modelscope→cosyvoice 路径上）。修复（env 级，记录且不移库）：清理冲突 dist-info（tokenizers-0.23.2 / torch-2.14.0 symlink）、补 torch 元数据 METADATA、transformers==4.38.2 + tokenizers==0.15.2 重装、import_utils 加 `_torch_version` 兜底 patch（`torch.__version__` 回退）→ 全链 import 验证通过，链跑通。**教训：装依赖后必验 `importlib.metadata.version` 与 `pip show` 一致性；同名多 dist-info=stdlib 元数据静默返回 None（第三方 importlib_metadata 宽松掩盖）**。
