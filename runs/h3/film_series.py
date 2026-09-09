@@ -37,7 +37,7 @@ def _run(cmd, timeout=3600):
 def _out_of(log: str) -> str:
     """从提交日志提取本段产物（REMOTE_VIDEO_PATH / LOCAL_OUTPUT）。"""
     import re
-    for pat in (r'LOCAL_OUTPUT: (outputs/S+.mp4)', r'REMOTE_VIDEO_PATH: (S+.mp4)'):
+    for pat in (r'LOCAL_OUTPUT: (outputs/\S+\.mp4)', r'REMOTE_VIDEO_PATH: (\S+\.mp4)'):
         m = re.search(pat, log)
         if m:
             v = m.group(1)
