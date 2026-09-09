@@ -135,3 +135,13 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 **成片 ✅**：8 段串行生成（00200-00203/00205-00207=480p/4s/同 seed；第 5 段=**真台词链**：TTS→Wav2Lip→字幕旁白→**LINE_SCORE 1.000 ok（'路上小心。' ASR 回环满分）**）→ 逐段归一化（864×480/24fps/aac）→ concat → **32.7s《站台上的灯》** → Windows `outputs/video_83_站台上的灯.mp4`（抽帧 16.5s：车厢夜行氛围✓；父子近景段（00204 源）为近景弱/空镜，后续可选高清源重跑第 5 段）。段清单：00200/01/02/03→链→05/06/07。
 
 **cosy-venv 连环雷修复（运维教训，重要）**：台词链首跑 rc=0→遇 `modelscope import TypeError replace(None)`。根因链=①cosy-venv 数个包**本地安装无 dist-info 元数据**（torch 等）→ `importlib.metadata.version()` 抛错；②site-packages **多版本同名 dist-info 冲突**（tokenizers-0.15.2 vs 0.23.2；torch-2.14.0+cu130 vs symlink 至 tts-venv 的 torch-2.14.0）→ stdlib metadata 返回 None；③transformers 4.x `get_torch_version`（其 import 链在 modelscope→cosyvoice 路径上）。修复（env 级，记录且不移库）：清理冲突 dist-info（tokenizers-0.23.2 / torch-2.14.0 symlink）、补 torch 元数据 METADATA、transformers==4.38.2 + tokenizers==0.15.2 重装、import_utils 加 `_torch_version` 兜底 patch（`torch.__version__` 回退）→ 全链 import 验证通过，链跑通。**教训：装依赖后必验 `importlib.metadata.version` 与 `pip show` 一致性；同名多 dist-info=stdlib 元数据静默返回 None（第三方 importlib_metadata 宽松掩盖）**。
+
+## 十六、用户三批评落实：程序化+连贯性+配音（2026-09-09 10:00-12:00）
+
+**①concat 程序化+教给 Qwen**：`runs/h3/film_stitch.py`（逐段归一化→demuxer concat→STITCH_OUT/PROBE；参数字段化）与 `runs/h3/film_series.py`（长片连贯链）入库；run_script 白名单描述增两脚本+SYSTEM 增「长片/多段必须 film_series（i2v 首帧继承），禁止逐段独立 t2v」条款；新增 docs/agent-reading/06-film-series.md；agent 已重启生效（教学完成）。注：603d672 一次提交误带 tools.py 描述拼接语法错→f47d88a 修复（教训：大字符串 edit 后必 py_compile 再提交）。
+
+**②连贯性重制（用户批评'各自为战'）**：v1（逐段独立 t2v，32.7s）弃用；**v2=film_series i2v 首帧继承链**——每段首帧=上段末帧+延续句（same characters/location/lighting, continuous, no cuts）；8 段视频 video_474-481 → stitch → **station_lights_v2.mp4 35.86s**（抽帧 6s：同站台/站灯/绿衣父身影/雾中铁轨，段间衔接✓）→ Windows `outputs/video_84_站台上的灯_v2连贯版.mp4`。`--start-image` 也可由首帧图启动。
+
+**③配音机械味**：初版 cosy 未传 speed（默认 1.0，节奏平直）；`tts_cosy_check.py` 增 `--speed 0.95`（默认）并传入 inference_zero_shot；lipsync_chain 子进程默认继承 cosy 参数（0.95）；**听感待用户复验**（仍机械→后续候选：换更长/更贴角色参考样本、增大 speed 档差、或不同声学模型）。
+
+**后续候选（用户可点）**：①v2 第 5 段（车窗对视）未接台词链（v2 为纯视效连贯版）；可对近景脸段接 lipsync_chain（音色=0.95 版）。②第 5 段近景观感重制（高清源）。③Qwen 长片演示轮（现在已教学完成，可让 agent 直接跑 film_series）。
