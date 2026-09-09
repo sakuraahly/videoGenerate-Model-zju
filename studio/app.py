@@ -24,9 +24,9 @@ DEFAULT_SHOW = {
     "tagline": "一句创意 → 参考图/提示词 → 本地大模型生成 → 真台词/字幕/旁白/口型成品链 → ASR 验收交付",
     "hero_points": [
         "文生视频 / 图生视频 / 多参考图连贯 / 首末帧转场",
-        "角色真台词（TTS+口型同步）与 keep 原声语义",
-        "ComfyUI 全链一体化（生成→48fps 插帧→整脸修复→配音字幕→验真）",
-        "1280×736 交付档 + 4x 超分（7680×4352 终极档，夜间窗口）",
+        "故事片主控：剧本→分镜→台词→成片 单命令出片（9 段连贯·可断点续跑）",
+        "台词先行+发音回环：台词表预置→TTS 生成→ASR 验真（字幕=台词原文）",
+        "角色真台词（TTS+口型同步）；ComfyUI 全链一体化；1280×736/4x 超分档",
     ],
     "flow_steps": [
         "① 灵感：一句话剧情；也可上传参考图锁定场景/角色/道具",
@@ -48,6 +48,8 @@ DEFAULT_SHOW = {
          "title": "ComfyUI 全链一体化", "desc": "生成→48fps 插帧→整脸修复→配音字幕→ASR 全链", "style": "真实"},
         {"file": "06_rife_48fps.mp4", "cover": "06_rife_48fps_cover.jpg",
          "title": "RIFE 48fps 插帧", "desc": "24fps→48fps 高帧率（插帧后画面顺滑）", "style": "纪录片"},
+        {"file": "07_story_script.mp4", "cover": "07_story_script_cover.jpg",
+         "title": "剧本→故事片（主控）", "desc": "希区柯克《油价涨了》短篇：剧本 JSON→9 段连贯+4 句真台词字幕；断点续跑", "style": "电影感"},
     ],
     "voices": [("yunxi（中文·男声）", "yunxi"), ("xiaoxiao（中文·女声）", "xiaoxiao"),
                ("aria（英文·女声）", "aria"), ("daler（英文·男声）", "daler")],
@@ -178,7 +180,7 @@ def build_demo(show: dict):
         result_md = gr.Markdown()
         rec_video = gr.Video(label="风格匹配样片", interactive=False)
         submit.click(demo_submit, [plot, line, voice, style, res], [result_md, rec_video])
-        gr.Markdown(f"\n---\n_{show['footer']}_\n\n_空间版本 v1.2（2026-09-09 · 创空间自包含适配；样片与代码为本项目自有，参考素材自备。）_")
+        gr.Markdown(f"\n---\n_{show['footer']}_\n\n_空间版本 v1.3（2026-09-09 · 故事片主控样片+台词先行/回环；样片与代码为本项目自有，参考素材自备。）_")
     return demo
 
 

@@ -1,11 +1,11 @@
 {
   "title": "油价涨了",
   "source": "希区柯克短篇",
-  "style": "Hitchcock suspense, low-key lighting, cold blue winter night vs warm fireplace orange, realistic, cinematic, film grain, no written characters, no signage text, no readable letters, no numbers in frame, no text, no watermark, no cuts, no dialogue",
+  "style": "Hitchcock noir suspense, low-key lighting, cold blue winter night vs warm fireplace orange, realistic, cinematic, film grain, no written characters, no signage text, no readable letters, no numbers in frame, no text, no watermark, no cuts, no dialogue",
   "characters": {
-    "DAK": "45-year-old Asian man, short grey-streaked hair, pale green sweater over white shirt collar, calm composed face",
-    "LAKE": "40-year-old Asian man, heavy dark down jacket, snow boots, knitted beanie, snow-dusted short beard, desperate cold face",
-    "HELEN": "32-year-old Asian woman, long dark hair, dark long coat with grey scarf, pale frozen exhausted face"
+    "DAK": "a 52-year-old Caucasian American man, grey-streaked blond hair, weathered lined face, brown cardigan over a white shirt, calm composed",
+    "LAKE": "a 45-year-old Caucasian American man, dark heavy down jacket, snow boots, knitted beanie, stubbled beard, desperate cold face",
+    "HELEN": "a 34-year-old Caucasian American woman, long dark brown hair, dark long coat with grey scarf, pale frozen exhausted face"
   },
   "segments": [
     {
@@ -16,7 +16,7 @@
       "cast": [
         "DAK"
       ],
-      "prompt": "Interior. Warm wooden cabin by a crackling stone fireplace. DAK (45-year-old Asian man, short grey-streaked hair, pale green sweater over white shirt collar) sits alone reading an old magazine, calm and bored, warm firelight on his face, cold blue window behind showing the blizzard. Cozy yet eerie."
+      "prompt": "Interior. Warm wooden cabin by a crackling stone fireplace. DAK (52-year-old Caucasian American man, grey-streaked blond hair, brown cardigan over white shirt) sits alone reading an old magazine, calm and bored, warm firelight on his face, cold blue window behind showing the blizzard. Cozy yet eerie."
     },
     {
       "cast": [
@@ -88,5 +88,6 @@
   "resolution": "480p",
   "seconds": 4,
   "lora": "fl2v_4step",
-  "seed": 20260911
+  "seed": 20260911,
+  "setting": "1940s rural America, a snowbound remote cabin in the woods, Hitchcock noir; all characters are Caucasian American (Western faces), matching the era and the story"
 }

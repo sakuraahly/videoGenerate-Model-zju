@@ -62,7 +62,15 @@ def main():
           '角色锚定卡注入')
     check('cinematic, no text' in prompt, '风格句注入')
     nop = sf.build_prompt({'prompt': 'x'}, {"title": "t", "segments": [{}], "style": ""})
-    check('Cast' not in nop and nop == 'x', '无角色卡/风格时纯原文')
+    check('Cast' not in nop and 'Only the described action' in nop,
+          '无角色卡/风格时=原文+行为约束句')
+
+    # 2a2) setting 与行为约束注入（剧本遵守）
+    st.setdefault('setting', '1940s rural America')
+    ps = sf.build_prompt({'prompt': 'shotx'}, st)
+    check('Story setting: 1940s rural America' in ps, 'setting 注入')
+    check('Only the described action happens in this shot' in ps
+          and 'characters do not enter, leave' in ps, '行为约束句注入')
 
     # 2b) 在场约束 cast（防模型多塞人物/剧情溢出）
     segc = {'prompt': 'shot9', 'cast': ['DAK', 'LAKE']}
@@ -73,10 +81,11 @@ def main():
     pe = sf.build_prompt(seg_empty, {"title": "t", "segments": [{}], "style": "",
                                      "characters": {}})
     check('No people in this shot; empty scenery only.' in pe, 'cast 空列表=显式无人')
-    # 未声明 cast: 旧行为不追加
+    # 未声明 cast: 不加在场句（行为约束句恒加）
     nop2 = sf.build_prompt({'prompt': 'x'}, {"title": "t", "segments": [{}], "style": "",
                                              "characters": {}})
-    check(nop2 == 'x', '未声明 cast=纯原文(旧行为)')
+    check('Persons in this shot' not in nop2 and 'No people' not in nop2,
+          '未声明 cast=不加在场句')
 
     # 3) 进度 JSON：delta 写入/段完成判定/resume 语义
     with tempfile.TemporaryDirectory() as d:

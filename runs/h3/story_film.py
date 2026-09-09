@@ -76,13 +76,19 @@ def load_story(path: Path) -> dict:
 
 
 def build_prompt(seg: dict, story: dict) -> str:
-    """段提示词 = 作者 prompt + 角色锚定句 + **在场约束** + 风格句。
+    """段提示词 = 作者 prompt + **故事背景** + 角色锚定句 + 在场约束 + 行为约束 + 风格句。
 
-    在场约束（2026-09-09 用户批评'人物混入/剧情溢出'后加）：seg['cast'] 声明本镜
-    头出现的人物名（对应 characters 键）；生成时不允许多余人物入画（H3 偏好把
-    全员塞进镜头，须显式约束）。
+    剧本遵守（2026-09-09 用户批评'人物行为不按剧本/形象不符'后加）：
+      · setting：故事背景句注入（年代/地域/种族适配，如 1940s America -> 欧美面孔）；
+      · characters：角色形象卡（由故事内容设定，不再拍脑袋）；
+      · cast：本镜头人物白名单（防多塞人/剧情溢出）；
+      · 行为约束：只发生描述的动作，人物不提前进场/离场、无多余动作、无重复。
     """
-    parts = [str(seg.get('prompt') or '').strip()]
+    parts = []
+    setting = str(story.get('setting') or '').strip()
+    if setting:
+        parts.append('Story setting: %s' % setting)
+    parts.append(str(seg.get('prompt') or '').strip())
     chars = story.get('characters') or {}
     if chars:
         parts.append('Cast (identical in every shot): ' + '; '.join(
@@ -95,6 +101,10 @@ def build_prompt(seg: dict, story: dict) -> str:
                          % ', '.join(str(c) for c in cast))
         else:
             parts.append('No people in this shot; empty scenery only.')
+    parts.append('Only the described action happens in this shot; '
+                 'characters do not enter, leave, appear or repeat actions '
+                 'unless the prompt says so. The story order follows the '
+                 'shot sequence exactly.')
     parts.append(str(story.get('style') or '').strip())
     return ' '.join(p for p in parts if p)
 

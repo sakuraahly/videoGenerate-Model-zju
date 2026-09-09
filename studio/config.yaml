@@ -1,4 +1,4 @@
-# 魔搭创空间配置 + 展示元数据（M1 静态展示版）
+# 魔搭创空间配置 + 展示元数据（M1 自包含展示版 v1.3，2026-09-09）
 sdk: gradio
 app_file: app.py
 sdk_version: "4.44.0"
@@ -9,15 +9,15 @@ showcase:
   tagline: 一句创意 → 参考图/提示词 → 本地大模型生成 → 真台词/字幕/旁白/口型成品链 → ASR 验收交付
   hero_points:
     - 文生视频 / 图生视频 / 多参考图连贯 / 首末帧转场
-    - 角色真台词（TTS+口型同步）与 keep 原声语义
-    - ComfyUI 全链一体化（生成→48fps 插帧→整脸修复→配音字幕→验真）
-    - 1280×736 交付档 + 4x 超分（7680×4352 终极档，夜间窗口）
+    - 故事片主控：剧本→分镜→台词→成片 单命令出片（9 段连贯·可断点续跑）
+    - 台词先行+发音回环：台词表预置→TTS 生成→ASR 验真（字幕=台词原文）
+    - 角色真台词（TTS+口型同步）；ComfyUI 全链一体化；1280×736/4x 超分档
   flow_steps:
     - "① 灵感：一句话剧情；也可上传参考图锁定场景/角色/道具"
-    - "② 提示词：英文提示词+参考图契约（<Picture N> 全片锁定）"
+    - "② 提示词：英文提示词+参考图契约（<Picture N> 全片锁定）+故事背景/角色形象卡自动注入"
     - "③ 生成：ComfyUI + MiniMax H3 本地推理（本机 GPU，日间≤768p，夜间 1080p 档）"
-    - "④ 成品链：角色真台词（CosyVoice2）→ 口型同步 → 字幕烧录 → 旁白垫轨（错开不叠）→ 整脸无框修复"
-    - "⑤ 验收：SenseVoice ASR 双轨验真（台词窗/旁白窗）→ 交付命名归档"
+    - "④ 成品链：台词先行（剧本台词表）→ CosyVoice2 真台词 → 口型同步 → 字幕=台词原文烧录 → 旁白垫轨 → 整脸无框修复"
+    - "⑤ 验收：SenseVoice ASR 双轨验真（台词窗/旁白窗；发音回环不达标自动用发音写法重试）→ 交付命名归档"
   samples:
     - {file: 01_direct_720p.mp4, cover: 01_direct_720p_cover.jpg, title: "720p 直出 · 病房戏", desc: "1280×736/24fps/5.17s；剧情直出+成品链", style: "电影感"}
     - {file: 02_ref2v_720p.mp4, cover: 02_ref2v_720p_cover.jpg, title: "多参考图连贯（r2v）", desc: "3 张参考图（角色/场景）全片锁定；720p", style: "电影感"}
@@ -25,10 +25,11 @@ showcase:
     - {file: 04_keep_orig.mp4, cover: 04_keep_orig_cover.jpg, title: "角色原声保留 · 旁白错开", desc: "台词=角色原声+字幕；旁白独立垫轨（不干扰话语）", style: "纪录片"}
     - {file: 05_comfy_chain.mp4, cover: 05_comfy_chain_cover.jpg, title: "ComfyUI 全链一体化", desc: "生成→48fps 插帧→整脸修复→配音字幕→ASR 全链", style: "真实"}
     - {file: 06_rife_48fps.mp4, cover: 06_rife_48fps_cover.jpg, title: "RIFE 48fps 插帧", desc: "24fps→48fps 高帧率（插帧后画面顺滑）", style: "纪录片"}
+    - {file: 07_story_script.mp4, cover: 07_story_script_cover.jpg, title: "剧本→故事片（主控）", desc: "希区柯克《油价涨了》短篇：剧本 JSON→9 段连贯+4 句真台词字幕；断点续跑", style: "电影感"}
   voices:
     - ["yunxi（中文·男声）", yunxi]
     - ["xiaoxiao（中文·女声）", xiaoxiao]
     - ["aria（英文·女声）", aria]
     - ["daler（英文·男声）", daler]
   styles: [电影感, 真实, 纪录片, 动漫]
-  footer: 演示模式说明：本页为静态展示（M1）。M2 远程调度上线后，「演示表单」将真实提交至引擎并回传成片；当前提交不产生任务。样片均为本机生成。
+  footer: 演示模式说明：本页为自包含展示（M1）。演示表单仅展示匹配样片与能力说明，不产生真实生成任务（完整生成见 README 与项目仓库）。样片均为本机生成。

@@ -239,8 +239,8 @@ def main() -> int:
         fontsize=0, backend=args.backend,
         subtitle_style=args.subtitle_style, subtitle_font=args.subtitle_font,
         subtitle_color=args.subtitle_color,
-        audio_mode='keep', subtitle_source='text',
-        narration='')  # 旁白错开在下方单独混入
+        audio_mode='replace', subtitle_source='text',
+        narration='')  # 旁白错开在下方单独混入；replace=台词 TTS 替换原轨（原轨=伪语音）
     nar = str(args.narration or '').strip()
     nar_dur = 0.0
     if nar:

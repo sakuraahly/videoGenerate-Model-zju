@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""studio_gateway — 创空间远程调度网关（M2；stdlib 零依赖，监听公网 8080）。
+"""studio_gateway — 创空间远程调度网关（v1.0 交付级；stdlib 零依赖，监听 8080）。
+
+定位（2026-09-09 用户定案）：**工程师联调工具**（实验机侧）。创空间正式交付=自包含
+展示（M1 演示表单自动降级，无远程依赖）——不在交付形态内强依赖本网关。
 
 适配事实（2026-09-09 实测）：spark 公网 106.13.186.155 仅 8080 开放（80/443/22 不通）→
 网关直挂 8080 + token 鉴权（免反代；后续如需 HTTPS 再评估）。
+
+错误码：400 参数非法 / 401 鉴权失败 / 404 作业不存在或未完成 / 429 限流未启用(预留) /
+500 引擎提交失败 / 503 引擎未在线。所有错误信息不含服务器路径。
 
 端点（除 /v1/health 外均需 Authorization: Bearer <STUDIO_TOKEN>）：
   POST /v1/jobs            {stage?,prompt,resolution?,seconds?,seed?} → {job_id,status}

@@ -299,15 +299,15 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
                                subtitle_style: str = "harmony",
                                subtitle_font: str = "auto",
                                subtitle_color: str = "auto",
-                               audio_mode: str = "keep",
-                               subtitle_source: str = "asr",
+                               audio_mode: str = "replace",
+                               subtitle_source: str = "text",
                                narration: str = "") -> dict:
     """成品链：字幕烧录 + 音轨策略（2026-09-08 语义升级——角色原声优先）。
 
-    audio_mode:
-      keep(默认)   = 保留角色原声（人物说话口型天然同步）；台词字幕=ASR(识别原声) 或 text 给定；
-                    narration 非空时=旁白（合成语音 -15dB 垫轨，不覆盖角色话语）；
-      replace     = 旧行为：台词=text 合成语音替换原轨。
+    audio_mode（2026-09-09 修正：默认 replace）:
+      replace(默认) = 台词=TTS 合成语音替换原轨（**原轨=H3 伪语音，乱码级不可辨认**）；
+                      字幕=台词原文（text，不再用 ASR 转录=错字）；音轨含 loudnorm+降噪；
+      keep          = 仅显式要求时用之（保留原声，台词字幕=text/ASR）；旁白= -15dB 垫轨。
     返回 {'path', 'speech_dur', 'srt', 'speech', 'asr_text'}。
     """
     from h3.postprocess import render_subtitle
