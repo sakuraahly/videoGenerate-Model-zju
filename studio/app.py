@@ -75,6 +75,8 @@ def load_show() -> dict:
 
 REMOTE_API = (os.environ.get('REMOTE_API') or '').strip()
 STUDIO_TOKEN = (os.environ.get('STUDIO_TOKEN') or '').strip()
+# 定位（2026-09-09 用户定案）：本空间=**创空间自包含**展示+交互（免费 CPU 档零依赖）；
+# REMOTE_API/STUDIO_TOKEN 仅实验机联调开关（非交付形态，配置缺失即自动演示模式）。
 
 
 def remote_submit(plot: str, line: str, voice_txt: str, style: str, res_val: str,

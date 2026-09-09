@@ -1,2 +1,2 @@
-gradio>=4.44,<7
-pyyaml>=6.0
+# 创空间 Gradio 镜像已内置 gradio 与 requests/pyyaml——本空间零额外依赖（按平台要求最小化，保证启动快/安装零风险）。
+# 若平台镜像缺个别包再按需添加，例如：pyyaml==6.0
