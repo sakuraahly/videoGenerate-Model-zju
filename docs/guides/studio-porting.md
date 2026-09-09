@@ -18,10 +18,12 @@
 **M1 静态展示版**（免费 CPU，先上线）：
 - Gradio `app.py`：项目介绍 + **片墙**（video_50-79 精选样片内嵌/外链）+ 流程说明（意图→参考→生成→成品链）+ 交互表单（剧情描述/台词/音色/风格）→ 提交后展示「演示模式」结果（prebuilt 结果卡）；
 - `config.yaml`（sdk: gradio；app_file: app.py）+ `requirements.txt`（gradio）+ `README.md`（项目说明+许可）+ `assets/`（样片压缩小尺寸）。
-**M2 远程调度版**（验证公网出网后实施）：
-- spark 侧：`runs/api/studio_gateway.py`——最小 WSGI：`POST /v1/jobs`（token 鉴权+参数）→ 入队（复用 h3_submit 提交路径）→ `GET /v1/jobs/<id>`（状态）→ `GET /v1/jobs/<id>/download`（成片，大小限制+有效期）；服务=systemd/tmux + 公网端口 443 反代（自签/证书）；
-- 创空间侧：`studio_remote.py` 调用上述 API（超时/失败优雅降级到演示模式）；
-- 前置实测：创空间应用运行环境出网访问 106.13.186.155 可达性（若不可达→保持 M1 + 说明）。
+**M2 远程调度版——实施中（2026-09-09）**：
+- spark 侧：`runs/api/studio_gateway.py` **已写+本机全流程自测通过**（stdlib 零依赖；`STUDIO_TOKEN` 鉴权(≥16)、字段白名单、留痕 logs/studio_jobs.jsonl、72h 下载有效期、`STUDIO_MODE=mock|real` 双模式；证据：401/400/提交/状态流转/download 200/404 全过）。
+- 创空间侧：`studio/app.py` 已升级**双模式**（env `REMOTE_API`+`STUDIO_TOKEN` 注入→远程提交卡；失败自动降级演示卡——本地 stub 联调 OK/FAIL 双分支通过）。
+- **公网通道实测（负结论，关键）**：106.13.186.155 **仅 8080 TCP 可连**（80/443/22/8000/8188/7860 全不通），但**外部 HTTP 无响应**（curl -v：TCP 建立+GET 发出+服务端无回；spark 本机 localhost API 正常）→ 判定 8080 被云侧代收但未转发实例（或 EIP 映射缺失），非应用问题。
+- **打通路线（账号侧/用户操作）**：①阿里云控制台核实 8080 端口映射/安全组（期望公网 8080 直达 http.server；当前疑云网关代收）②HTTPS 方案（证书+443+反代）或云 API 网关 ③创空间部署后云端出网实测 `requests.get('http://106.13.186.155:8080/v1/health')`；三选一验证通过→启用 real 模式。
+- 服务化挂 tmux/开机=授权项；mock 模式随时可演示。
 **M3 可选**：创空间免费 GPU 到位 → 单点模型演示（CosyVoice TTS 等小模型）。
 
 ## 4. 里程碑与验收

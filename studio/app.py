@@ -73,6 +73,40 @@ def load_show() -> dict:
     return dict(DEFAULT_SHOW)
 
 
+REMOTE_API = (os.environ.get('REMOTE_API') or '').strip()
+STUDIO_TOKEN = (os.environ.get('STUDIO_TOKEN') or '').strip()
+
+
+def remote_submit(plot: str, line: str, voice_txt: str, style: str, res_val: str,
+                  remote_api: str, token: str) -> tuple:
+    """M2 远程提交：调 studio_gateway POST /v1/jobs；返回 (markdown, err)。"""
+    if not remote_api or not token:
+        return '', '未配置远程（REMOTE_API/STUDIO_TOKEN）'
+    try:
+        import requests
+    except Exception:  # noqa: BLE001
+        return '', '环境缺 requests'
+    try:
+        payload = {'prompt': ('A cinematic video scene: ' + (plot or '')).strip()[:1200],
+                   'resolution': '720p' if '720p' in str(res_val) else '360p',
+                   'seconds': 5}
+        r = requests.post(remote_api.rstrip('/') + '/v1/jobs', json=payload,
+                          headers={'Authorization': 'Bearer ' + token}, timeout=25)
+        d = r.json() if r.headers.get('content-type', '').startswith('application/json') else {}
+        if r.status_code == 200 and d.get('job_id'):
+            return ('### 🎬 已提交远程生成（M2 上线模式）\n\n'
+                    f'| 项 | 值 |\n|---|---|\n'
+                    f'| 剧情 | {plot or "（未填写）"} |\n'
+                    f'| 台词 | {line or "（未填写）"} |\n'
+                    f'| 音色 | {voice_txt} |\n'
+                    f'| 分辨率 | {res_val} |\n'
+                    f'| 任务 id | `{d["job_id"]}` |\n\n'
+                    '> M2 网关已接单；页面刷新后可下载成片（网关提供 /v1/jobs/<id>/download）。'), ''
+        return '', f'远程返回 {r.status_code}: {d.get("error", "")[:80]}'
+    except Exception as e:  # noqa: BLE001
+        return '', f'远程不可达: {type(e).__name__}'
+
+
 def build_demo(show: dict):
     import gradio as gr
 
@@ -83,15 +117,22 @@ def build_demo(show: dict):
     def demo_submit(plot, line, voice, style, res):
         voice_txt = dict(show["voices"]).get(voice, voice)
         rec = next((s for s in show["samples"] if s.get("style") == style), show["samples"][0])
+        if REMOTE_API and STUDIO_TOKEN:
+            rmd, err = remote_submit(plot, line, voice_txt, style, res, REMOTE_API, STUDIO_TOKEN)
+            if not err:
+                return rmd, _asset(rec["file"]) or None
+            note = f'> ⚠️ 远程提交失败（{err}），已降级为演示模式。'
+        else:
+            note = '> M2 远程调度未配置，演示模式。'
         md = (
-            f"### 演示结果卡（M1 演示模式）\n\n"
+            f"### 🎬 演示结果卡（M1 演示模式）\n\n"
             f"| 项 | 值 |\n|---|---|\n"
             f"| 剧情 | {plot or '（未填写）'} |\n"
             f"| 台词 | {line or '（未填写；留空=按剧情设计）'} |\n"
             f"| 音色 | {voice_txt} |\n"
             f"| 风格 | {style} |\n"
             f"| 分辨率 | {res} |\n\n"
-            f"> 正式版将提交至本机引擎（MiniMax H3，本页为静态展示）。该风格推荐样片：**{rec['title']}**。"
+            f"> 正式版将提交至本机引擎（MiniMax H3，本页为静态展示）。该风格推荐样片：**{rec['title']}**。\n\n{note}"
         )
         return md, _asset(rec["file"]) or None
 
