@@ -39,7 +39,10 @@ _ALLOWED_WORKFLOW_DIRS = [
 ]
 
 _MAX_OUTPUT = 5000
-_SCRIPT_TIMEOUT = 1800  # 2026-09-09: 600→1800（多段电影系列 9 段×逐段生成 >600s 会被限时中断；单段任务仍 30s 内）
+# 动态计时：按脚本名给足任务体量对应的超时（2026-09-09 起；防'长任务被限时中断'，
+# 如多段电影系列/故事片主控=分钟级~半小时级；单段生成/查询=秒级）。
+# 实现=runs/agent/script_timeout.py（纯 stdlib 独立可测）；仍有进度 JSON+resume 兜底。
+from runs.agent.script_timeout import script_timeout as _script_timeout
 
 # book-05：当前会话 id（由 ui_app 每轮设置；list_references 默认隔离到本会话）
 CURRENT_SESSION = ''
@@ -132,7 +135,7 @@ class RunScript(BaseTool):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=_SCRIPT_TIMEOUT,
+                timeout=_script_timeout(script_name),
                 cwd=PROJECT_ROOT,
                 env=env,
             )

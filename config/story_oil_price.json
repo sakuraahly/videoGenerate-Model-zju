@@ -1,0 +1,65 @@
+{
+  "title": "油价涨了",
+  "source": "希区柯克短篇",
+  "style": "Hitchcock suspense, low-key lighting, cold blue winter night vs warm fireplace orange, realistic, cinematic, film grain, no written characters, no signage text, no readable letters, no numbers in frame, no text, no watermark, no cuts, no dialogue",
+  "characters": {
+    "DAK": "45-year-old Asian man, short grey-streaked hair, pale green sweater over white shirt collar, calm composed face",
+    "LAKE": "40-year-old Asian man, heavy dark down jacket, snow boots, knitted beanie, snow-dusted short beard, desperate cold face",
+    "HELEN": "32-year-old Asian woman, long dark hair, dark long coat with grey scarf, pale frozen exhausted face"
+  },
+  "segments": [
+    {
+      "prompt": "Exterior. A remote wooden cabin on a snow-covered hill at night, fierce blizzard swirling, thick snow drifts, one warm glowing window, deep blue winter darkness, slow cinematic push-in toward the cabin. The only building in the landscape, no other houses, no road signs."
+    },
+    {
+      "prompt": "Interior. Warm wooden cabin by a crackling stone fireplace. DAK (45-year-old Asian man, short grey-streaked hair, pale green sweater over white shirt collar) sits alone reading an old magazine, calm and bored, warm firelight on his face, cold blue window behind showing the blizzard. Cozy yet eerie."
+    },
+    {
+      "prompt": "Rapid urgent knocking. DAK opens the cabin door. LAKE (40-year-old Asian man, dark down jacket, snow boots, beanie, snow-dusted beard) bursts in pushing a swirl of snow, shivering hard, both men in the doorway, freezing wind, warm firelight meeting cold blue outside."
+    },
+    {
+      "prompt": "Close-up of LAKE by the fireplace, snow melting from his beanie and beard, pleading urgent expression, visible breath, firelight flickering on his face, DAK seated opposite in soft-focus background."
+    },
+    {
+      "prompt": "Close-up of DAK calm and composed by the fire, one hand slightly raised, cold steady gaze, firelight on face. Behind him LAKE half in frame looking astounded, tense negotiation."
+    },
+    {
+      "prompt": "Wide shot at the cabin door. LAKE (dark down jacket, beanie) steps out into the blinding blizzard holding a small metal fuel can, cabin door light spilling warm behind him, snow swirling, his footprints vanishing, distant car headlights faint through the snowstorm."
+    },
+    {
+      "prompt": "Exterior snowstorm at the cabin door. A car pulls up and stops in front of the cabin, headlights sweeping snow. LAKE gets out from the driver side, opens the rear passenger door, gently helps HELEN (long dark hair, dark coat, grey scarf, frozen exhausted) step down from the car seat, wraps his arm around her, both walk toward the bright cabin door through deep snow."
+    },
+    {
+      "prompt": "Close-up of HELEN by the fireplace, long dark hair, grey scarf, pale shivering face, she opens a leather handbag and firmly tosses a thick bundle of paper money toward the camera, banknotes fluttering, determined cold expression, firelight on her face."
+    },
+    {
+      "prompt": "Close-up of DAK shocked and pale, pale green sweater, face fully visible front three-quarter view, terrified eyes fixed with dread, a black handgun barely in the bottom corner of frame slightly out of focus not covering his face, fire burning low behind him, dark oppressive suspense."
+    }
+  ],
+  "lines": {
+    "2": {
+      "text": "我叫莱可。我的汽车在八里外没油了,太太还在车里——我只要两加仑汽油就够了。",
+      "voice": "yunxi",
+      "spoken": ""
+    },
+    "4": {
+      "text": "五十元一加仑。您想想,这样的风雪天,人在外面很快就会冻死的。",
+      "voice": "yunxi",
+      "spoken": ""
+    },
+    "7": {
+      "text": "我先生说了汽油的事,我们还想买一加仑。这些钱足够了。",
+      "voice": "xiaoxiao",
+      "spoken": ""
+    },
+    "8": {
+      "text": "香柏银行……你们,是抢劫了香柏银行?",
+      "voice": "yunxi",
+      "spoken": "香柏银行……你们,是抢劫了香柏银行?"
+    }
+  },
+  "resolution": "480p",
+  "seconds": 4,
+  "lora": "fl2v_4step",
+  "seed": 20260911
+}
