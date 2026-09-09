@@ -1730,6 +1730,10 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             """
             from runs.agent import task_watch as _tw
             notified = set()
+            try:
+                _tw._log_tw('p1_watch_started')  # 2026-09-09 启动凭证（监督用）
+            except Exception:  # noqa: BLE001
+                pass
             QUEUE_AGE = 1800   # 排队超阈值(30min)→队列超时文案
             RUN_AGE = 7200     # 运行超阈值(2h)→运行超时文案
             while True:
@@ -1742,6 +1746,7 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                 try:
                     _tw.watcher_beat()
                     if _active_turn.locked():
+                        _tw._log_tw('p1_watch locked-skip')  # 2026-09-09 定位：锁持有者=谁（诊断用）
                         continue  # 仅 idle 注入；用户回合进行中不打断
                     from runs.agent import session_state as _ss
                     cids = _ss.list_cids()
@@ -1855,6 +1860,34 @@ def run_app(port: int = 7860, share: bool = False) -> None:
     allowed = [str(THUMBS_DIR), str(_comfy_input_dir() / 'user_uploads'),
                str(UPLOADS_DIR), str(CHATS_DIR)]  # §15d：会话产物目录（results 区预览/下载）
     threading.Thread(target=_notify_watcher, daemon=True, name="p1-notify-watcher").start()
+
+    def _watcher_supervisor():
+        """2026-09-09 自愈：watcher 心跳过期(>90s)且线程死亡 ⇒ 重启；仅过期但线程活 ⇒ 只报告。"""
+        import json as _j
+        while True:
+            try:
+                time.sleep(60)
+                _hf = Path(PROJECT_ROOT) / 'logs' / 'watcher_hb.json'
+                _age = None
+                try:
+                    _hb = _j.loads(_hf.read_text(encoding='utf-8'))
+                    _age = time.time() - float(_hb.get('ts', 0))
+                except Exception:  # noqa: BLE001
+                    _age = None
+                alive = any(t.name == 'p1-notify-watcher' and t.is_alive()
+                            for t in threading.enumerate())
+                from runs.agent import task_watch as _tw
+                if _age is None or _age > 90:
+                    if not alive:
+                        _tw._log_tw('p1_watch_respawn age=%s' % _age)
+                        threading.Thread(target=_notify_watcher, daemon=True,
+                                         name='p1-notify-watcher').start()
+                    else:
+                        _tw._log_tw('p1_watch_sick age=%s thread=alive' % _age)
+            except BaseException:  # noqa: BLE001
+                continue
+
+    threading.Thread(target=_watcher_supervisor, daemon=True, name="p1-watch-supervisor").start()
     demo.queue(default_concurrency_limit=16)
     demo.launch(server_name='0.0.0.0', server_port=port, share=share,
                 show_error=True, quiet=True, allowed_paths=allowed)

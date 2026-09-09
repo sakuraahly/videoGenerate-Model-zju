@@ -193,9 +193,23 @@ _notify_hb = {"ts": 0.0, "count": 0}
 
 
 def watcher_beat() -> None:
-    """通知 watcher 心跳（每次处理周期调用；供健康校验与降级判定）。"""
+    """通知 watcher 心跳（每次处理周期调用；供健康校验与降级判定）。
+    2026-09-09 增强：心跳落盘 logs/watcher_hb.json（跨进程监督/自愈用；失败不阻断）。"""
     _notify_hb["ts"] = time.monotonic()
     _notify_hb["count"] += 1
+    try:
+        import json as _j
+        _f = Path(os.environ.get('PROJECT_ROOT', '') or '')
+        # PROJECT_ROOT 环境可能未设 → 用本文件推导
+        try:
+            _r = Path(__file__).resolve().parent.parent.parent
+        except Exception:  # noqa: BLE001
+            _r = Path('.')
+        _f = _r / 'logs' / 'watcher_hb.json'
+        _f.parent.mkdir(parents=True, exist_ok=True)
+        _f.write_text(_j.dumps({'ts': time.time(), 'count': _notify_hb['count']}), encoding='utf-8')
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def watcher_health(max_age: float = 90.0) -> tuple:
