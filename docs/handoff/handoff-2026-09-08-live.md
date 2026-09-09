@@ -121,3 +121,11 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 **长片《站台上的灯》**：agent 昨夜提交第 1 段后 Comfy 重启使其失效+通知注入失败为'任务不存在'；agent 陷入断点查询循环、续接耗尽停摆（a265 会话 6 行）。已注入'继续'（event 0ae3f462）重启：指示忽略无关旧断点、重新提交全部 8 段（第 5 段真台词链），白天自主推进。
 
 **观察登记**：ComfyUI 服务形态=pid 2897957 `~/ai/venv/bin/python main.py --listen --reserve-vram 12 --enable-manager`，**不在 tmux comfy 会话**（与 CURRENT-STATE §2 记录不符）——托管方=supervisor/系统侧；与 book-13 #16 nap/supervisor 同族（服务侧逻辑，非本仓面），维持观察并建议下次与用户核对形态。
+
+## 十四、《站台上的灯》工程化交付 + Agent 自主性边界结论（2026-09-09 上午）
+
+**Agent 多段自主性实测（两轮注入均失败）**：第一轮注入后 agent 提交第 1 段（Comfy 重启致其失效）+'任务不存在'；续接耗尽停摆。第二轮（结构化 8 段指令+成品 prompt 全给）:agent 复读'第 1 段提交失败：提示词含空格未加引号'并进入同文案循环（spin 熔断后停），**0 提交**。结论：**Qwen3.8-27B 对'长序列多段制作'自主性不足**（假完成/复读/引号细节不修），agent 适合单段查询/单次提交；多段长片=工程化路径（脚本/批次/夜间任务），登记为 Agent 能力边界（agent-reading 后续注明：不承诺多段自主链，长片类走 runs 脚本）。
+
+**工程化交付（已启动，后台 pwsh-153）**：`config/film_station_lights_prompts.json`（8 段成品英文 prompt：老站台/父亲入画/列车头灯/车厢窗景/j车窗父了对视/列车启动/雾中空站台/黎明进站，480p/4s/seed 20260908）→ 串行脚本 `/tmp/film_run.sh`：段0 无参续传等待→段1-7 逐段提交-轮询-落盘→**段5(车窗父子对视)接 lipsync_chain（--line '路上小心。' --voice yunxi --asr-check）**；段产物按 prompt_id 逐段留档（film_seg_N.log）。完成后：concat 8 段成片→Windows 交付（video_83_站台上的灯.mp4）；第 1 段 note=已失效 ef680224 不采用。
+
+**h3_batch 能力边界记录**：submit=多图转场 N-1 段（images≥2 fo flf2v），不支持 t2v 独立序列批次——长片序列脚本化时勿走 batch（登记）。
