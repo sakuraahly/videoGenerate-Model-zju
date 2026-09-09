@@ -9,30 +9,57 @@
   },
   "segments": [
     {
+      "cast": [],
       "prompt": "Exterior. A remote wooden cabin on a snow-covered hill at night, fierce blizzard swirling, thick snow drifts, one warm glowing window, deep blue winter darkness, slow cinematic push-in toward the cabin. The only building in the landscape, no other houses, no road signs."
     },
     {
+      "cast": [
+        "DAK"
+      ],
       "prompt": "Interior. Warm wooden cabin by a crackling stone fireplace. DAK (45-year-old Asian man, short grey-streaked hair, pale green sweater over white shirt collar) sits alone reading an old magazine, calm and bored, warm firelight on his face, cold blue window behind showing the blizzard. Cozy yet eerie."
     },
     {
+      "cast": [
+        "DAK"
+      ],
       "prompt": "Rapid urgent knocking. DAK opens the cabin door. LAKE (40-year-old Asian man, dark down jacket, snow boots, beanie, snow-dusted beard) bursts in pushing a swirl of snow, shivering hard, both men in the doorway, freezing wind, warm firelight meeting cold blue outside."
     },
     {
+      "cast": [
+        "LAKE"
+      ],
       "prompt": "Close-up of LAKE by the fireplace, snow melting from his beanie and beard, pleading urgent expression, visible breath, firelight flickering on his face, DAK seated opposite in soft-focus background."
     },
     {
+      "cast": [
+        "DAK"
+      ],
       "prompt": "Close-up of DAK calm and composed by the fire, one hand slightly raised, cold steady gaze, firelight on face. Behind him LAKE half in frame looking astounded, tense negotiation."
     },
     {
+      "cast": [
+        "LAKE"
+      ],
       "prompt": "Wide shot at the cabin door. LAKE (dark down jacket, beanie) steps out into the blinding blizzard holding a small metal fuel can, cabin door light spilling warm behind him, snow swirling, his footprints vanishing, distant car headlights faint through the snowstorm."
     },
     {
+      "cast": [
+        "LAKE",
+        "HELEN"
+      ],
       "prompt": "Exterior snowstorm at the cabin door. A car pulls up and stops in front of the cabin, headlights sweeping snow. LAKE gets out from the driver side, opens the rear passenger door, gently helps HELEN (long dark hair, dark coat, grey scarf, frozen exhausted) step down from the car seat, wraps his arm around her, both walk toward the bright cabin door through deep snow."
     },
     {
+      "cast": [
+        "HELEN"
+      ],
       "prompt": "Close-up of HELEN by the fireplace, long dark hair, grey scarf, pale shivering face, she opens a leather handbag and firmly tosses a thick bundle of paper money toward the camera, banknotes fluttering, determined cold expression, firelight on her face."
     },
     {
+      "cast": [
+        "DAK",
+        "LAKE"
+      ],
       "prompt": "Close-up of DAK shocked and pale, pale green sweater, face fully visible front three-quarter view, terrified eyes fixed with dread, a black handgun barely in the bottom corner of frame slightly out of focus not covering his face, fire burning low behind him, dark oppressive suspense."
     }
   ],

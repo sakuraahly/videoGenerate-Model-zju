@@ -64,6 +64,20 @@ def main():
     nop = sf.build_prompt({'prompt': 'x'}, {"title": "t", "segments": [{}], "style": ""})
     check('Cast' not in nop and nop == 'x', '无角色卡/风格时纯原文')
 
+    # 2b) 在场约束 cast（防模型多塞人物/剧情溢出）
+    segc = {'prompt': 'shot9', 'cast': ['DAK', 'LAKE']}
+    pc = sf.build_prompt(segc, st)
+    check('Persons in this shot: DAK, LAKE only' in pc
+          and 'No other people anywhere in the frame.' in pc, 'cast 在场约束注入')
+    seg_empty = {'prompt': 'empty shot', 'cast': []}
+    pe = sf.build_prompt(seg_empty, {"title": "t", "segments": [{}], "style": "",
+                                     "characters": {}})
+    check('No people in this shot; empty scenery only.' in pe, 'cast 空列表=显式无人')
+    # 未声明 cast: 旧行为不追加
+    nop2 = sf.build_prompt({'prompt': 'x'}, {"title": "t", "segments": [{}], "style": "",
+                                             "characters": {}})
+    check(nop2 == 'x', '未声明 cast=纯原文(旧行为)')
+
     # 3) 进度 JSON：delta 写入/段完成判定/resume 语义
     with tempfile.TemporaryDirectory() as d:
         work = Path(d)
