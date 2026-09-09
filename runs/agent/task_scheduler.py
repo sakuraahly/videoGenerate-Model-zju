@@ -149,22 +149,66 @@ def run_engine(task: dict) -> str:
 
 
 def run_agent_task(task: dict) -> str:
-    """注入 7860 会话（agent 执行对话任务）；返回发送结果文本。"""
+    """注入 7860 会话（agent 执行对话任务）：保留会话历史+注入后审计工具调用（假完成检测）。"""
     prompt = str(task.get('prompt') or '').strip()
     if not prompt:
         return 'ERR 无 prompt'
     cid = str(task.get('cid') or '')
+    # 保历史：注入前尝试读取该会话存档（避免 send(hist=[]) 冲掉历史）
+    hist: list = []
+    if cid:
+        try:
+            import json as _j
+            _f = (ROOT / 'logs' / 'agent_chats' / f'{cid}.jsonl')
+            if _f.is_file():
+                hist = [{'role': _j.loads(ln).get('role'), 'content': _j.loads(ln).get('content')}
+                        for ln in _f.read_text(encoding='utf-8').splitlines()
+                        if ln.strip()]
+                hist = [m for m in hist if m.get('role') in ('user', 'assistant') and m.get('content')]
+        except Exception:  # noqa: BLE001
+            hist = []
+    # 审计基线：记录最新 run log 的 mtime+行数
+    import glob as _glob
+    _logs = sorted(_glob.glob(str(ROOT / 'logs' / 'run_*.log')), key=os.path.getmtime, reverse=True)
+    base_log = _logs[0] if _logs else None
+    base_mtime = os.path.getmtime(base_log) if base_log else 0.0
+    base_lines = len(base_log.open(encoding='utf-8', errors='replace').read().splitlines()) if base_log else 0
     try:
-        data = json.dumps({'data': [[], cid, prompt]}, ensure_ascii=False).encode()
+        data = json.dumps({'data': [hist, cid, prompt]}, ensure_ascii=False).encode()
         req = urllib.request.Request(AGENT_URL, data=data,
                                      headers={'Content-Type': 'application/json'}, method='POST')
         with urllib.request.urlopen(req, timeout=30) as r:
             d = json.loads(r.read().decode())
         ev = d.get('event_id') or ''
-        _log('agent 任务注入 event=%s cid=%s' % (ev[:12], cid or '(auto)'))
-        return 'ok event=' + ev[:12]
+        _log('agent 任务注入 event=%s cid=%s hist=%d' % (ev[:12], cid or '(auto)', len(hist)))
     except Exception as e:  # noqa: BLE001
         return 'ERR 注入失败: ' + str(e)[:120]
+    # 审计：注入后 35s 内检查新 run 日志出现工具调用（submitted/run_script call/工具输出）
+    time.sleep(35)
+    try:
+        import glob as _g2
+        _new = sorted(_g2.glob(str(ROOT / 'logs' / 'run_*.log')), key=os.path.getmtime, reverse=True)[:3]
+        found = False
+        for _lf in _new:
+            if not _lf.is_file():
+                continue
+            if os.path.getmtime(_lf) < base_mtime and _lf == base_log:
+                continue
+            txt = _lf.read_text(encoding='utf-8', errors='replace')
+            new_txt = txt.splitlines()
+            start = base_lines if _lf == base_log else 0
+            for ln in new_txt[start:]:
+                if any(k in ln for k in ('call params', 'submitted ', 'TASK_SUBMITTED',
+                                         'tool_call', 'run_script ok', 'LOCAL_OUTPUT')):
+                    found = True
+                    break
+            if found:
+                break
+        if found:
+            return 'ok event=' + ev[:12] + ' 审计: 有工具调用'
+        return 'WARN event=' + ev[:12] + ' 审计: 未见工具调用（疑似未执行/假完成）'
+    except Exception as e:  # noqa: BLE001
+        return 'WARN event=' + ev[:12] + ' 审计异常: ' + str(e)[:80]
 
 
 def tick() -> int:

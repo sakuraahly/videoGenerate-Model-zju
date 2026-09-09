@@ -39,7 +39,7 @@ _ALLOWED_WORKFLOW_DIRS = [
 ]
 
 _MAX_OUTPUT = 5000
-_SCRIPT_TIMEOUT = 600  # book-07 遗留对齐(2026-09-08): 与 h3_batch --timeout 600 一致; 原 120s 会误杀多段 status 查询
+_SCRIPT_TIMEOUT = 600
 
 # book-05：当前会话 id（由 ui_app 每轮设置；list_references 默认隔离到本会话）
 CURRENT_SESSION = ''
@@ -113,7 +113,11 @@ class RunScript(BaseTool):
 
         cmd = [sys.executable, script_path]
         if extra_args:
-            cmd.extend(extra_args.split())
+            try:
+                from runs.agent.toolcall_parse import _split_args
+            except Exception:  # noqa: BLE001
+                from toolcall_parse import _split_args
+            cmd.extend(_split_args(extra_args))
 
         env = None
         if script_name == 'h3_submit.py' and '--dry-run' in (extra_args or ''):
