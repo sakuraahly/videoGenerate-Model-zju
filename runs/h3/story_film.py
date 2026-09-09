@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 import time
@@ -57,7 +58,7 @@ def _out_of(log: str) -> str:
 
 
 def _last_frame(video: Path, out_png: Path) -> bool:
-    r = _run(['ffmpeg', '-y', '-v', 'error', '-sseof', '-0.3', '-i', str(video),
+    r = _run(['ffmpeg', '-nostdin', '-y', '-v', 'error', '-sseof', '-0.3', '-i', str(video),
               '-frames:v', '1', '-q:v', '2', str(out_png)])
     return r.returncode == 0 and out_png.is_file()
 
@@ -166,11 +167,32 @@ def syn_seg(st: dict, idx: int, seg: dict) -> None:
         st['done'].append(idx)
 
 
-def run_segment(idx: int, prompt: str, prev_frame, args, work: Path, st: dict, story: dict) -> str:
-    """生成一段；返回该段视频文件路径。"""
+def eff_seconds(audio_dur: float, base: int) -> int:
+    """台词段视频秒数 = 台词音长 + 0.8s 余量（防'视频结束台词没说完'）；不足 base 用 base。"""
+    import math
+    d = float(audio_dur or 0)
+    if d <= 0:
+        return int(base)
+    return max(int(base), int(math.ceil(d + 0.8)))
+
+
+def instruct_text(line: dict) -> str:
+    """台词个性=指令语气（CosyVoice2 instruct2）：line['tone'] 中文语气 → 指令文本。"""
+    tone = str(line.get('tone') or '').strip()
+    if not tone:
+        return ''
+    if not tone.endswith('地说'):
+        tone = tone + '地说'
+    return '用' + tone
+
+
+def run_segment(idx: int, prompt: str, prev_frame, args, work: Path, st: dict,
+                story: dict, sec: int | None = None) -> str:
+    """生成一段；返回该段视频文件路径。sec=本段视频秒数（台词段按台词时长匹配）。"""
     cmd = ['python3', str(SUBMIT), '--stage', 'i2v' if prev_frame else 't2v',
            '--resolution', args.resolution, '--lora', args.lora,
-           '--seconds', str(args.seconds), '--seed', str(args.seed)]
+           '--seconds', str(int(sec or args.seconds)), '--seed', str(args.seed),
+           '--force-new']  # 故事片主控自带进度管理; 不用 h3_submit 的 last_job 断点
     if prev_frame:
         cmd += ['--image', str(prev_frame)]
     cmd += ['--prompt', prompt]
@@ -189,17 +211,20 @@ def run_segment(idx: int, prompt: str, prev_frame, args, work: Path, st: dict, s
     else:
         print('[warn] seg%d 末帧提取失败' % idx, file=sys.stderr)
     syn_seg(st, idx, {'file': str(segp), 'src_file': str(segp),
-                      'prompt': prompt, 'ph': prompt_hash(prompt)})
+                      'prompt': prompt,
+                      'ph': prompt_hash(prompt + '|sec=%d' % int(sec or args.seconds)),
+                      'sec': int(sec or args.seconds)})
     save_state(work, st)
     print('seg%d OK: %s' % (idx, segp.name), flush=True)
     return str(segp)
 
 
 def line_ph(line: dict) -> str:
-    """台词指纹（文本+音色+语速）：词表变更→台词段重做（画面复用 src_file）。"""
+    """台词指纹（文本+音色+语速+语气）：词表/个性变更→台词段重做（画面复用 src_file）。"""
     return prompt_hash('|'.join([str(line.get('text') or ''),
                                  str(line.get('voice') or 'yunxi'),
-                                 str(line.get('speed') or 0.95)]))
+                                 str(line.get('speed') or 0.95),
+                                 str(line.get('tone') or '')]))
 
 
 ASR_PY = str(Path.home() / 'ai' / 'asr-venv' / 'bin' / 'python3')
@@ -248,7 +273,7 @@ def run_line(idx: int, seg_file: str, line: dict, args, work: Path, st: dict) ->
                 Path(seg_file), use_text, out=out, voice=voice, backend='cosy',
                 subtitle_style='harmony', subtitle_font='auto', subtitle_color='auto',
                 audio_mode='replace', subtitle_source='text', narration='',
-                speech_speed=speed)
+                speech_speed=speed, instruct=instruct_text(line))
             spd = float(res.get('speech_dur') or 0)
         except Exception as e:  # noqa: BLE001
             log = 'ERR %s' % e
@@ -295,14 +320,33 @@ def cmd_run(args) -> int:
     work = Path(args.work_dir)
     work.mkdir(parents=True, exist_ok=True)
     st = load_state(work, story)
-    prompts = [build_prompt(seg, story) for seg in story['segments']]
-    phs = [prompt_hash(p) for p in prompts]
     lines = story.get('lines') or {}
-    # 画面链断点（指纹；不管台词）与台词链断点（line_ph）分离：
-    #   画面链保证 i2v 继承（改稿→该段起全重做）；台词链可独立重做（画面复用，不再重生成）。
+    # 台词先行×时长匹配（2026-09-09 用户批评'视频结束还没说完'）：
+    #   台词段先合成台词音频预览 → 按音长定视频秒数（eff_seconds=音长+0.8s 余量），
+    #   再生成画面（生成长度与台词匹配）；指纹含秒数（台词变化→秒数变→重做）。
+    if str(PROJECT_ROOT / 'runs') not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT / 'runs'))
+    import h3.tts as _tts
+    plan = []          # (prompt, ph, sec, line_or_None)
+    for idx, seg in enumerate(story['segments']):
+        prompt = build_prompt(seg, story)
+        line = lines.get(str(idx))
+        eff_sec = int(args.seconds)
+        qph = prompt_hash(prompt)
+        if line:
+            # 时长匹配（2026-09-09）：台词先行→按文本长度估算秒数（0.36s/字 + 1s 余量，
+            # 实测中速朗读≈0.30-0.34s/字；取 0.36 保证语音在画面内说完）——
+            # 不预合成音频（cosy CPU 合成过慢会拖死流程），正式合成在 run_line 一步完成。
+            n_ch = len(str(line.get('text') or '').strip())
+            eff_sec = max(int(args.seconds), int(math.ceil(n_ch * 0.36)) + 1)
+            print('seg%d 台词 %d 字 → 视频 %ds（台词匹配估算）' % (idx, n_ch, eff_sec),
+                  flush=True)
+        qph = prompt_hash(prompt + '|sec=%d' % eff_sec)
+        plan.append((prompt, qph, eff_sec, line))
+    # 画面链断点（指纹含台词段秒数）与台词链断点（line_ph）分离：
     first_screen = None
-    for idx in range(len(story['segments'])):
-        if not seg_done(st, idx) or st['segments'][str(idx)].get('ph') != phs[idx]:
+    for idx, (prompt, qph, eff_sec, line) in enumerate(plan):
+        if not seg_done(st, idx) or st['segments'][str(idx)].get('ph') != qph:
             first_screen = idx
             break
     lphs = {str(i): line_ph(line) for i, line in lines.items()}
@@ -313,8 +357,7 @@ def cmd_run(args) -> int:
         print('RESUME: 画面链全部就绪', flush=True)
     segs = {}
     prev_file = ''
-    for idx, seg in enumerate(story['segments']):
-        line = lines.get(str(idx))
+    for idx, (prompt, qph, eff_sec, line) in enumerate(plan):
         screen_redo = first_screen is not None and idx >= first_screen
         need_line = bool(line) and not (
             bool(st['segments'].get(str(idx), {}).get('line'))
@@ -333,7 +376,8 @@ def cmd_run(args) -> int:
                       flush=True)
             else:
                 prev_frame = Path(prev_file) if prev_file and Path(prev_file).is_file() else None
-                file = run_segment(idx, prompts[idx], prev_frame, args, work, st, story)
+                file = run_segment(idx, prompt, prev_frame, args, work, st, story,
+                                   sec=eff_sec)
             segs[idx] = file
             if line:
                 file = run_line(idx, file, line, args, work, st)

@@ -87,6 +87,16 @@ def main():
     check('Persons in this shot' not in nop2 and 'No people' not in nop2,
           '未声明 cast=不加在场句')
 
+    # 6) 台词时长匹配与语气指令
+    check(sf.eff_seconds(5.3, 4) == 7, 'eff_seconds 音长+0.8 上取整(5.3→7)')
+    check(sf.eff_seconds(2.1, 4) == 4, 'eff_seconds 短台词保底 4s')
+    check(sf.eff_seconds(0, 4) == 4, 'eff_seconds 无时长保底')
+    check(sf.instruct_text({'tone': '急切地喘着气恳求'}) == '用急切地喘着气恳求地说',
+          'tone→指令语气文本')
+    check(sf.instruct_text({}) == '', '无 tone=零样本自然语气')
+    check(sf.line_ph({'text': '台词', 'voice': 'yunxi', 'speed': 0.9})
+          != sf.line_ph({'text': '台词', 'voice': 'yunjian', 'speed': 0.9}), 'line_ph 含音色')
+
     # 3) 进度 JSON：delta 写入/段完成判定/resume 语义
     with tempfile.TemporaryDirectory() as d:
         work = Path(d)

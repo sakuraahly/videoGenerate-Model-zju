@@ -29,6 +29,13 @@ VOICE_ALIASES = {
 _SRT_TIME = re.compile(r"(\d+):(\d{2}):(\d{2})[.,](\d{3})")
 
 
+def _ffmpeg_cmd(parts: list) -> list:
+    """ffmpeg 统一加 -nostdin（无 tty 场景避免进入交互模式等待 stdin 而挂死）。"""
+    if parts and str(parts[0]).find('ffmpeg') >= 0 and '-nostdin' not in parts:
+        return parts[:1] + ['-nostdin'] + parts[1:]
+    return parts
+
+
 def probe_duration(path: Path) -> float:
     try:
         r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -121,7 +128,7 @@ def synth_local(text: str, out: Path, voice: str = DEFAULT_VOICE) -> float:
 
 
 def synth_cosy(text: str, out: Path, voice: str = DEFAULT_VOICE,
-                  speed: float = 0.95) -> float:
+                  speed: float = 0.95, instruct: str = "") -> float:
     """CosyVoice2-0.5B 本地合成（自然音色；GPU 优先、OOM 自动转 CPU）。
 
     依赖 spark ~/ai/cosy-venv + 模型 ~/ai/CosyVoice2-0.5B（魔搭）；参考样本与 F5-TTS 同源
@@ -143,8 +150,10 @@ def synth_cosy(text: str, out: Path, voice: str = DEFAULT_VOICE,
     script = str(Path(__file__).resolve().parent / "tts_cosy_check.py")
     cmd = [COSY_TTS_PY, script, "--text", text, "--ref-file", str(ref_wav),
            "--ref-text", ref_txt.read_text(encoding="utf-8").strip(),
-           "--speed", str(float(speed or 0.95)),
-           "--output", str(out)]
+           "--speed", str(float(speed or 0.95))]
+    if str(instruct or "").strip():
+        cmd += ["--instruct", str(instruct).strip()]
+    cmd += ["--output", str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
     if r.returncode != 0 or not out.is_file() or out.stat().st_size < 200:
         raise ValueError("CosyVoice2 合成失败: " + (r.stderr or "")[-400:])
@@ -155,7 +164,7 @@ def synth_cosy(text: str, out: Path, voice: str = DEFAULT_VOICE,
 
 
 def synthesize(text: str, out: Path, voice: str = DEFAULT_VOICE, rate: str = "-8%",
-               backend: str = "cosy", speed: float = 0.95) -> float:
+               backend: str = "cosy", speed: float = 0.95, instruct: str = "") -> float:
     """合成语音到 out（cosy=CosyVoice2 自然音色默认 / local=F5-TTS / edge=在线云）；返回时长秒。"""
     text = str(text or "").strip()
     if not text:
@@ -166,7 +175,7 @@ def synthesize(text: str, out: Path, voice: str = DEFAULT_VOICE, rate: str = "-8
     if _b == "local":
         return synth_local(text, out, voice=voice)
     if _b == "cosy":
-        return synth_cosy(text, out, voice=voice, speed=speed)
+        return synth_cosy(text, out, voice=voice, speed=speed, instruct=instruct)
     # book-18：--rate=-8% 用等号语法（argparse 会把以 - 开头的值当成旗标）
     cmd = _edge_tts_cmd() + ["--voice", voice, "--rate=" + rate, "--text", text, "--write-media", str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
@@ -238,7 +247,7 @@ def build_track(parts: list, total: float, out: Path, tmp: Path) -> Path:
     parts = sorted(parts)
     if not parts:
         raise ValueError("无语音片段，无法建音轨")
-    cmd = ["ffmpeg", "-y"]
+    cmd = _ffmpeg_cmd(["ffmpeg", "-y"])
     for (_s, _d, wav) in parts:
         cmd += ["-i", str(wav)]
     filters, labels = [], []
@@ -286,9 +295,9 @@ def replace_audio_only(input_video: Path, audio: Path, out: Path, dur: float = 0
         dur = 0.0
     out = Path(out)
     tmp = out.with_name(out.stem + "_aud" + out.suffix)
-    cmd = ["ffmpeg", "-y", "-i", str(input_video), "-i", str(audio),
+    cmd = _ffmpeg_cmd(["ffmpeg", "-y", "-i", str(input_video), "-i", str(audio),
            "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-           "-filter:a", "apad,afftdn=nf=-25,loudnorm=I=-14:TP=-1.0:LRA=11", "-c:a", "aac", "-b:a", "192k"]
+           "-filter:a", "apad,afftdn=nf=-25,loudnorm=I=-14:TP=-1.0:LRA=11", "-c:a", "aac", "-b:a", "192k"])
     if dur and dur > 0:
         cmd += ["-t", f"{dur:.3f}"]
     cmd += [str(tmp)]
@@ -308,7 +317,8 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
                                audio_mode: str = "replace",
                                subtitle_source: str = "text",
                                narration: str = "",
-                               speech_speed: float = 0.95) -> dict:
+                               speech_speed: float = 0.95,
+                               instruct: str = "") -> dict:
     """成品链：字幕烧录 + 音轨策略（2026-09-08 语义升级——角色原声优先）。
 
     audio_mode（2026-09-09 修正：默认 replace）:
@@ -355,15 +365,15 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
             # 原音轨保留（with_sub 已含原音轨，直接拷贝）+ 旁白可选垫轨
             if narration and str(narration).strip():
                 spd2 = synthesize(str(narration).strip(), speech, voice=voice, backend=backend)
-                cmd = ["ffmpeg", "-y", "-i", str(with_sub), "-i", str(speech),
+                cmd = _ffmpeg_cmd(["ffmpeg", "-y", "-i", str(with_sub), "-i", str(speech),
                        "-map", "0:v", "-map", "[ot]", "-c:v", "copy",
                        "-filter_complex", "[1:a]volume=0.18[nar];[0:a][nar]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[ot]",
-                       "-c:a", "aac", "-b:a", "192k"]
+                       "-c:a", "aac", "-b:a", "192k"])
             else:
                 spd2 = None
                 speech.unlink(missing_ok=True)
-                cmd = ["ffmpeg", "-y", "-i", str(with_sub),
-                       "-map", "0:v", "-map", "0:a?", "-c:v", "copy", "-c:a", "copy"]
+                cmd = _ffmpeg_cmd(["ffmpeg", "-y", "-i", str(with_sub),
+                       "-map", "0:v", "-map", "0:a?", "-c:v", "copy", "-c:a", "copy"])
             if dur and dur > 0:
                 cmd += ["-t", f"{dur:.3f}"]
             cmd += [str(tmp_out)]
@@ -376,13 +386,14 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
                    "speech": (speech if speech.is_file() else ""), "asr_text": asr_text}
             return res
         # --- 默认：replace（台词=TTS 替换原轨；字幕=台词原文；无后期贴皮口型） ---
-        spd = synthesize(text, speech, voice=voice, backend=backend, speed=speech_speed)
+        spd = synthesize(text, speech, voice=voice, backend=backend, speed=speech_speed,
+                        instruct=instruct)
         srt.write_text(f"1\n00:00:00,000 --> {_srt_time(spd)}\n{text}\n", encoding="utf-8")
         render_subtitle(input_video, with_sub, srt, fontsize=fontsize,
                         preset=subtitle_style, font=subtitle_font, color=subtitle_color)
-        cmd = ["ffmpeg", "-y", "-i", str(with_sub), "-i", str(speech),
+        cmd = _ffmpeg_cmd(["ffmpeg", "-y", "-i", str(with_sub), "-i", str(speech),
                "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-               "-filter:a", "apad,afftdn=nf=-25,loudnorm=I=-14:TP=-1.0:LRA=11", "-c:a", "aac", "-b:a", "192k"]
+               "-filter:a", "apad,afftdn=nf=-25,loudnorm=I=-14:TP=-1.0:LRA=11", "-c:a", "aac", "-b:a", "192k"])
         if dur and dur > 0:
             cmd += ["-t", f"{dur:.3f}"]
         cmd += [str(tmp_out)]
@@ -411,9 +422,9 @@ def replace_with_speech_text(input_video: Path, text: str, out: Path = None,
     dur = probe_duration(input_video)
     try:
         synthesize(text, speech, voice=voice)
-        cmd = ["ffmpeg", "-y", "-i", str(input_video), "-i", str(speech),
+        cmd = _ffmpeg_cmd(["ffmpeg", "-y", "-i", str(input_video), "-i", str(speech),
                "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-               "-filter:a", "apad", "-c:a", "aac", "-b:a", "192k"]
+               "-filter:a", "apad", "-c:a", "aac", "-b:a", "192k"])
         if dur and dur > 0:
             cmd += ["-t", f"{dur:.3f}"]
         cmd += [str(tmp_out)]

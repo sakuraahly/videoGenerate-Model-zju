@@ -43,6 +43,11 @@ def main(argv=None) -> int:
     ap.add_argument("--output", default="", help="输出 wav 路径（默认当前目录 cosy_out.wav）")
     ap.add_argument("--speed", type=float, default=0.95,
                     help="语速（CosyVoice2 speed；0.95 略放缓更自然；1.0 偏快平有机械味）")
+    ap.add_argument("--force-cpu", action="store_true",
+                    help="强制 CPU 合成（避开 ComfyUI/SGLang 的 GPU 占用；OOM 自动子进程回退）")
+    ap.add_argument("--instruct", default="",
+                    help="指令语气（CosyVoice2 inference_instruct2；如'用沉稳不紧不慢的语气说'——"
+                         "人物个性由语气指令表达；缺省=零样本自然语气）")
     args = ap.parse_args(argv)
 
     model_dir = _resolve()
@@ -59,20 +64,42 @@ def main(argv=None) -> int:
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
         t0 = time.time()
         cv = CosyVoice2(str(model_dir), load_jit=False, load_trt=False, fp16=False)
-        for _i, j in enumerate(cv.inference_zero_shot(
-                args.text, args.ref_text, args.ref_file, speed=args.speed)):
+        # 零样本口径：spk2info 先注册参考样本（frontend 以 wav 路径为 spk_id 索引；
+        # 未注册会 KeyError——见 2026-09-09 新音色样本踩坑）。注册后 zero-shot 分支走缓存。
+        key = str(args.ref_file)
+        if key not in cv.list_available_spks():
+            cv.add_zero_shot_spk(args.ref_text, args.ref_file, key)
+        if args.instruct:
+            if not hasattr(cv, "inference_instruct2"):
+                raise ValueError("模型无 inference_instruct2（需要 CosyVoice2 指令模型形态）")
+            gen = cv.inference_instruct2(args.text, args.instruct, args.ref_text,
+                                         args.ref_file, speed=args.speed)
+        else:
+            gen = cv.inference_zero_shot(args.text, args.ref_text, args.ref_file,
+                                         speed=args.speed)
+        for _i, j in enumerate(gen):
             torchaudio.save(out, j["tts_speech"], cv.sample_rate)
         return time.time() - t0
 
     try:
-        dt = run(cpu=False)  # GPU 优先
+        dt = run(cpu=args.force_cpu)  # GPU 优先（--force-cpu 直接 CPU）
     except Exception as e:  # noqa: BLE001
         msg = str(e)
-        if "out of memory" in msg.lower() or "CUDA error" in msg.lower():
-            print("GPU_OOM: fallback to CPU", flush=True)
-            dt = run(cpu=True)
-        else:
-            raise
+        if "out of memory" in msg.lower() or "CUDA error" in msg.lower() or "AcceleratorError" in msg:
+            # GPU OOM：子进程 + 全新 CUDA_VISIBLE_DEVICES=''（当前进程的 CUDA 上下文无法变更）
+            print("GPU_OOM: fallback to CPU child process", flush=True)
+            import os as _os
+            import subprocess as _sp
+            env = dict(_os.environ)
+            env["CUDA_VISIBLE_DEVICES"] = ""
+            argv = [_os.path.abspath(__file__), "--force-cpu"]
+            argv += sys.argv[1:]
+            p = _sp.run([_sys.executable] + argv, env=env, text=True, timeout=3600)
+            if p.returncode != 0 or not Path(out).is_file():
+                raise
+            print("FALLBACK_CPU_OK", flush=True)
+            return 0
+        raise
     size = os.path.getsize(out)
     print(f"OUT_WAV: {out} ({size} bytes, {dt:.1f}s)", flush=True)
     return 0
