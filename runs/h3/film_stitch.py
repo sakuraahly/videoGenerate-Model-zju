@@ -23,6 +23,10 @@ FFMPEG = 'ffmpeg'
 
 
 def _run(cmd, timeout=1800):
+    # -nostdin（2026-09-09）：ssh/无 tty 场景下 ffmpeg 会进入交互命令模式等待 stdin 而挂死
+    # （症状：'Enter command: <target>|all <time> -1 <command>' 停驻，CPU 100% 无产出）
+    if str(cmd[0]).find('ffmpeg') >= 0 and '-nostdin' not in cmd:
+        cmd = cmd[:1] + ['-nostdin'] + cmd[1:]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if r.returncode != 0:
         raise RuntimeError('fail: ' + ((r.stderr or r.stdout) or '')[-500:])
