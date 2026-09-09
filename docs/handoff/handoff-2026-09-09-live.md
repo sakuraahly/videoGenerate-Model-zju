@@ -41,6 +41,13 @@
 - 09671bf 调度器时区语义修复
 - spark 工作树=上述最新(scp 同步;git HEAD 落后 53b832c 无碍,以工作树为准)。
 
+### 7. 故事短片《油价涨了》(用户剧本→agent 生成;2026-09-09 下午)
+- 玩法: 模拟用户对话(7860 send 注入 3 轮)[剧本+9 段分镜+台词表]→agent 自主完成 9 段连贯电影系列(film_series 480p/4s/i2v 首帧继承)+ 段2/4/7 台词链(lipsync_chain+ASR+face-restore)。
+- agent 卡点: ①run_script 600s 超时容不下 9 段(→1800s,已提交)②长任务后模型轮两次停摆(>10 分钟无活动,重启恢复)③段文件映射两次错位。
+- 兜底: 段8 原素材(手枪顶额)W2L 全帧无脸→重生成正面脸版(video_518)后台词链;最终拼接由 shell 完成。
+- 产物: outputs/story_oil_price.mp4(864×480/48.0s/9 段;4 句台词字幕;段8 ASR 0.786 ok)→已取回 Windows outputs/video_88_油价涨了_希区柯克短篇.mp4(6.6MB)。
+- config: story_oil_price_prompts.json(9 段)+story_oil_price_lines.md(台词表)已入库;教训=长链路 agent 欠稳,路径映射须幂等。
+
 ## 三、当前待办(下一步)
 1. sched-daily-report 今晚北京 20:00 首测(agent 对话任务;UTC 12:00 tick)。
 2. nt-upscale-backfill 今夜自动(UTC 14:00 窗口开始,V >14:00 后 ComfyUI 空闲即跑)。
