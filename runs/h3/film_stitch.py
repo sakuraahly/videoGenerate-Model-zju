@@ -43,7 +43,9 @@ def normalize(src: Path, dst: Path, width: int, height: int, fps: int, strip_aud
 
 
 def stitch(segments: list, out: Path, width: int = 864, height: int = 480,
-           fps: int = 24, keep_norm: bool = False, strip_audio: bool = False) -> Path:
+           fps: int = 24, keep_norm: bool = False, strip_audio: bool = False,
+           keep_segs: set | None = None) -> Path:
+    keep_segs = keep_segs or set()
     work = Path(tempfile.mkdtemp(prefix='film_stitch_'))
     try:
         norm_paths = []
@@ -52,7 +54,8 @@ def stitch(segments: list, out: Path, width: int = 864, height: int = 480,
             if not sp.is_file():
                 raise RuntimeError(f'段文件不存在: {seg}')
             np_ = work / f'n{i:02d}.mp4'
-            normalize(sp, np_, width, height, fps, strip_audio=strip_audio)
+            _keep = str(i) in keep_segs
+            normalize(sp, np_, width, height, fps, strip_audio=(strip_audio and not _keep))
             norm_paths.append(np_)
         lst = work / 'list.txt'
         lst.write_text(chr(10).join(f"file '{p}'" for p in norm_paths) + chr(10), encoding='utf-8')
@@ -76,10 +79,12 @@ def main() -> int:
     ap.add_argument('--fps', type=int, default=24)
     ap.add_argument('--keep-norm', action='store_true')
     ap.add_argument('--strip-audio', action='store_true', help='剔除各段原生音轨（H3 伪语音=乱码级）')
+    ap.add_argument('--keep-audio-segs', default='', help='逗号分隔段索引（0 基）——strip-audio 时仍保留音轨（如真台词段）')
     args = ap.parse_args()
     segs = [s.strip() for s in args.segments.split(',') if s.strip()]
+    keep_segs = {s.strip() for s in args.keep_audio_segs.split(',') if s.strip()}
     out = Path(args.out)
-    stitch(segs, out, args.width, args.height, args.fps, args.keep_norm, args.strip_audio)
+    stitch(segs, out, args.width, args.height, args.fps, args.keep_norm, args.strip_audio, keep_segs)
     _p = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
                          '-show_entries', 'stream=width,height,r_frame_rate',
                          '-show_entries', 'format=duration',

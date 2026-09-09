@@ -154,4 +154,10 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 
 **v3 联产中（pwsh-160 后台）**：8 段 720p/20 步/同 seed/零文字 → 第5段真台词（路上小心。/yunxi/0.95）→ stitch --strip-audio → /tmp/station_lights_v3.mp4（预计 60-90min）；完成后交付 Windows video_85 + 抽帧+ASR。
 
+## 十九、v3 终版交付 + 链排障 + 方向修正收尾（2026-09-09 13:00-14:30）
+
+**v3 终版 ✅**：8 段 720p/none(20步)/i2v 首帧继承/零文字（video_482-489，35.7s）→ **台词段重制**：v3 各段均无近景脸（远景脸 18-47px→Wav2Lip Face not detected）→ **单独生成特写近景**（MiniMax_H3_00225_：263×303 大脸 ✓）→ **逐帧全检**（107 帧中 92 有脸；最长连续 80 帧=1.13-4.46s）→ 显式裁剪该区间入链 → **LININE_SCORE 1.000（“路上小心。”）** → film_stitch 新增 **--keep-audio-segs 4**（仅台词段保留音轨，其余全去 H3 伪语音）→ **station_lights_v3_final.mp4 32.58s** → Windows `outputs/video_85_站台上的灯_v3终版.mp4`（抽帧 16s：绿衣老人大脸站台+车窗人影✓）。
+
+**方向修正（用户定案）**：①spark 仅为实验机——「创空间→spark 远程调度（M2 gateway）」**作废、非交付形态**（gateway 仅实验联调）；创空间适配正解=**自包含**：M1（展示交互，已验收）→ M3（平台免费 GPU/PAI 单点演示，视规格）；H3 引擎（40GB+/GPU）在免费 CPU 档**不可行并如实告知**。②**M1 精修 v1.2**：requirements 零依赖+表单多行/示例填充/说明卡/页脚版本/README 限制如实；本地回归 200/56 组件/3 交互。③公网实测：仅 8080 TCP 可达、HTTP 无回（云侧未转发），打通路线=账号侧（已记 studio-porting §3）。
+
 **候选③ agent 演示已备**：`config/demo_cat_night_prompts.json`（3 段《雨夜便利店前的猫》零文字版）——v3 完成后注入 agent：run_script(h3/film_series.py …demo… --stitch)，验证 Qwen 学会长片链（SYS+06 文档已教学）。
