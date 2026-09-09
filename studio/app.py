@@ -156,19 +156,29 @@ def build_demo(show: dict):
         gr.Markdown("\n### 🧭 制作流程")
         for t in show["flow_steps"]:
             gr.Markdown(f"**{t.split('：')[0]}**：{t.split('：', 1)[-1]}")
-        gr.Markdown("\n### ✍️ 演示表单（现在=演示模式；M2 上线后=真实调度）")
+        gr.Markdown("\n### ✍️ 演示表单\n_本空间为**自包含演示**：选择参数→提交→展示匹配样片与格式说明；不产生真实生成任务（完整生成能力见项目文档）。_")
         with gr.Row():
-            plot = gr.Textbox(label="剧情描述", placeholder="例如：母亲躺在床上奄奄一息，父亲悲痛地看着她…", scale=2)
-            line = gr.Textbox(label="角色台词（可选）", placeholder="让角色说的一句台词", scale=1)
+            plot = gr.Textbox(label="剧情描述", lines=3, max_lines=6,
+                              placeholder="例如：雨夜便利店前，一只猫望着暖光；或你的一句话创意…", scale=2)
+            line = gr.Textbox(label="角色台词（可选）", lines=2, placeholder="例如：路上小心。", scale=1)
         with gr.Row():
             voice = gr.Dropdown(choices=[v[0] for v in show["voices"]], value=show["voices"][0][0], label="音色")
             style = gr.Radio(choices=show["styles"], value=show["styles"][0], label="风格")
             res = gr.Radio(choices=["360p 验证档", "720p 交付档"], value="720p 交付档", label="分辨率")
-        submit = gr.Button("提交演示（不产生真实任务）", variant="primary")
+        with gr.Row():
+            demo_btn = gr.Button("填入示例", size="sm")
+            clear_btn = gr.Button("清空", size="sm")
+            submit = gr.Button("提交演示（不产生真实任务）", variant="primary", scale=2)
+
+        def _fill_example():
+            return ("雨夜，老站台的昏黄站灯下，绿衣老人拖着行李箱望向驶来的绿皮火车，雾气弥漫。",
+                    "路上小心。")
+        demo_btn.click(_fill_example, None, [plot, line])
+        clear_btn.click(lambda: ("", ""), None, [plot, line])
         result_md = gr.Markdown()
         rec_video = gr.Video(label="风格匹配样片", interactive=False)
         submit.click(demo_submit, [plot, line, voice, style, res], [result_md, rec_video])
-        gr.Markdown(f"\n---\n_{show['footer']}_")
+        gr.Markdown(f"\n---\n_{show['footer']}_\n\n_空间版本 v1.2（2026-09-09 · 创空间自包含适配；样片与代码为本项目自有，参考素材自备。）_")
     return demo
 
 
