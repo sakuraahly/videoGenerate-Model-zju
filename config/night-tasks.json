@@ -17,10 +17,10 @@
     },
     {
       "id": "nt-echomimic-smoke",
-      "name": "EchoMimic 无框路线冒烟(§15e: 512²/fp16/6步, 00187+line.wav)",
+      "name": "EchoMimic 无框路线冒烟(人像模式: 父亲.png 1600×2848 原图+MTCNN判据 ✓; 512²/6步)",
       "kind": "engine",
       "window": "night",
-      "exec": "bash -lc 'cd ~/videoGenerate-Model-zju && ~/ai/tts-venv/bin/python3 runs/h3/echomimic_talk.py --video ~/ai/ComfyUI/output/video/MiniMax_H3_00187_.mp4 --audio /tmp/lipsync_chain/line.wav --out /tmp/echomimic_smoke.mp4 --steps 6 --fps 24 --seed 420 > ~/echomimic_smoke.log 2>&1; echo EXIT=$?'"
+      "exec": "bash -lc 'cd ~/videoGenerate-Model-zju && ~/ai/tts-venv/bin/python3 runs/h3/echomimic_talk.py --ref-image uploads/20260906/6f928fd2_父亲.png --audio /tmp/lipsync_chain/line.wav --out /tmp/echomimic_smoke.mp4 --steps 6 --fps 24 --seed 420 > ~/echomimic_smoke.log 2>&1; echo EXIT=$?'"
     },
     {
       "id": "nt-hd-4x-ultimate",
@@ -52,10 +52,17 @@
     },
     {
       "id": "nt-ref-video-test",
-      "name": "S7 参考视频测试: 友人视频(00188手部特写)驱动指定内容(父亲装信封r2v+Video 1)",
+      "name": "S7 参考视频测试: 他人视频00188(手部特写)驱动指定内容(父亲装信封 r2v 2图+<Video 1>)",
       "kind": "engine",
       "window": "night",
-      "exec": "bash -lc 'cd ~/videoGenerate-Model-zju && ~/qwen-agent-venv/bin/python3 runs/h3_submit.py --stage r2v --resolution 720p --seconds 5 --lora ref2v_8step --image uploads/20260906/6f928fd2_父亲.png --videos ~/ai/ComfyUI/output/video/MiniMax_H3_00188_.mp4 --prompt \"A dim hospital room at night. <Picture 1> the same father in pale green shirt, close-up of his aged hands at the bedside skillfully slipping banknotes into an envelope, hand motion and warm micro-detail framing guided by <Video 1>; mother lying dying in bed blurred behind. The reference images (scene/character/props) are locked throughout the whole shot; they are NOT first-frame/last-frame keyframes; keep every frame consistent. masterpiece, best quality, cinematic lighting, emotional. No text, no watermark, no cuts, no dialogue.\" > ~/nt_refvideo.log 2>&1; echo EXIT=$?'"
+      "exec": "bash -lc 'cd ~/videoGenerate-Model-zju && ~/qwen-agent-venv/bin/python3 runs/h3_submit.py --stage r2v --resolution 720p --seconds 5 --lora ref2v_8step --image uploads/20260906/6f928fd2_父亲.png --image uploads/20260904/530faffd_父母卧室.png --videos ~/ai/ComfyUI/output/video/MiniMax_H3_00188_.mp4 --prompt \"A dim hospital room at night. <Picture 1> the same father in pale green shirt, close-up of his aged hands at the bedside skillfully slipping banknotes into an envelope, hand motion and warm micro-detail framing guided by <Video 1>; mother lying dying in bed blurred behind. <Picture 2> the room stays exactly as reference: warm bedside lamp, monitor glow, window blinds with night city lights. The reference images (scene/character/props) are locked throughout the whole shot; they are NOT first-frame/last-frame keyframes; keep every frame consistent. masterpiece, best quality, cinematic lighting, emotional. No text, no watermark, no cuts, no dialogue.\" > ~/nt_refvideo.log 2>&1; echo EXIT=$?'"
+    },
+    {
+      "id": "nt-upscale-backfill",
+      "name": "4x 超分补跑(video_462/video_463 因 Comfy 瞬时不可达跳过; 现补齐 7680×4352)",
+      "kind": "engine",
+      "window": "night",
+      "exec": "bash -lc 'cd ~/videoGenerate-Model-zju && ~/qwen-agent-venv/bin/python3 runs/h3/upscale_once.py --video outputs/video_463.mp4 && ~/qwen-agent-venv/bin/python3 runs/h3/upscale_once.py --video outputs/video_462.mp4 > ~/nt_upscale_backfill.log 2>&1; echo EXIT=$?'"
     }
   ]
 }
