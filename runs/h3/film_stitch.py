@@ -30,16 +30,22 @@ def _run(cmd, timeout=1800):
 
 
 def normalize(src: Path, dst: Path, width: int, height: int, fps: int, strip_audio: bool = False) -> None:
-    cmd = [FFMPEG, '-y', '-v', 'error', '-i', str(src),
-           '-vf', f'scale={width}:{height}', '-r', str(fps),
-           '-c:v', 'libx264', '-crf', '21', '-preset', 'fast',
-           '-pix_fmt', 'yuv420p']
     if strip_audio:
-        cmd.append('-an')
+        # 2026-09-09 修复：不能 -an（concat demuxer 要求全部输入流一致，缺音轨会把 keep 段的音轨一起丢）
+        # → 垫静音音轨（同参数 aac/双声道/44100）；注意所有 -i 必须在 -vf 等输出选项之前
+        cmd = [FFMPEG, '-y', '-v', 'error', '-i', str(src),
+               '-f', 'lavfi', '-t', '999', '-i', 'anullsrc=r=44100:cl=stereo',
+               '-map', '0:v:0', '-map', '1:a:0', '-shortest', '-c:a', 'aac',
+               '-vf', f'scale={width}:{height}', '-r', str(fps), '-c:v', 'libx264',
+               '-crf', '21', '-preset', 'fast', '-pix_fmt', 'yuv420p']
     else:
-        cmd += ['-c:a', 'aac', '-ac', '2', '-ar', '44100']
+        cmd = [FFMPEG, '-y', '-v', 'error', '-i', str(src),
+               '-vf', f'scale={width}:{height}', '-r', str(fps),
+               '-c:v', 'libx264', '-crf', '21', '-preset', 'fast',
+               '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ac', '2', '-ar', '44100']
     cmd.append(str(dst))
     _run(cmd)
+    return
 
 
 def stitch(segments: list, out: Path, width: int = 864, height: int = 480,
