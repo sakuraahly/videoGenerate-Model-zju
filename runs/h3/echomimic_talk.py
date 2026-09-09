@@ -98,7 +98,10 @@ def crop_and_pad(image, rect):
 
 def main() -> int:
     ap = argparse.ArgumentParser('EchoMimic 原生口型集成（无框）')
-    ap.add_argument('--video', required=True, help='人脸源视频（近景/正面）')
+    ap.add_argument('--video', default='', help='人脸源视频（近景/正面）；与 --ref-image 二选一')
+    ap.add_argument('--ref-image', default='',
+                    help='高分辨率人像参考图（推荐，MTCNN 判据：EchoMimic 内部在原图上检测人脸，'
+                         '低分辨率小脸帧会 miss——见 2026-09-08 冒烟排障；给出后直接以人像为源，无回贴）')
     ap.add_argument('--audio', required=True, help='台词 wav（EchoMimic 驱动音频）')
     ap.add_argument('--out', default='', help='输出路径（缺省 /tmp/echomimic_out.mp4）')
     ap.add_argument('--ref-time', type=float, default=0.4,
@@ -114,8 +117,12 @@ def main() -> int:
 
     src = Path(args.video)
     wav = Path(args.audio)
+    ref_img_arg = Path(args.ref_image) if args.ref_image else None
+    if ref_img_arg is not None and not ref_img_arg.is_file():
+        print('[错误] 参考图不存在: %s' % ref_img_arg, file=sys.stderr)
+        return 3
     if not src.is_file() or not wav.is_file():
-        print('[错误] 视频/音频不存在', file=sys.stderr)
+        print('[错误] 视频/音频不存在（视频可用 --ref-image 替代）', file=sys.stderr)
         return 3
     if args.dry_run:
         print('DRY_RUN: video=%s audio=%s W=%d H=%d steps=%d fps=%d' %
@@ -130,28 +137,38 @@ def main() -> int:
     work.mkdir(parents=True, exist_ok=True)
     out = Path(args.out) if args.out else Path('/tmp/echomimic_out.mp4')
 
-    cap = cv2.VideoCapture(str(src))
-    n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
-    if not n:
-        print('[错误] 视频帧数读取失败', file=sys.stderr)
-        return 4
-    # 参考帧（多候选：主取 ref_time，失败依次 0.5/0.3/0.6/0.25——防单帧检测不佳）
+    # 源：--ref-image 高人像（MTCNN 判据=原图检测，推荐）/ 视频候选帧（多候选轮询）
+    is_portrait = ref_img_arg is not None
     ref_frame = None
     ref_idx = -1
-    for frac in (args.ref_time, 0.5, 0.3, 0.6, 0.25):
-        ref_idx = int(n * frac) if frac < 1.5 else int(frac * fps)
-        ref_idx = max(0, min(ref_idx, n - 1))
-        cap.set(cv2.CAP_PROP_POS_FRAMES, ref_idx)
-        ok, f = cap.read()
-        if ok and f is not None:
-            ref_frame = f
-            break
-    cap.release()
-    if ref_frame is None:
-        print('[错误] 参考帧读取失败', file=sys.stderr)
-        return 4
-    print('REF: frame=%d/%d fps=%.1f' % (ref_idx, n, fps), flush=True)
+    n = 0
+    fps = args.fps
+    if is_portrait:
+        ref_frame = cv2.imread(str(ref_img_arg))  # 原图不缩放（EchoMimic 内部/我们 MTCNN 都在原图上检测）
+        if ref_frame is None:
+            print('[错误] 参考图读取失败', file=sys.stderr)
+            return 4
+        print('REF: image=%s %dx%d' % (ref_img_arg.name, ref_frame.shape[1], ref_frame.shape[0]), flush=True)
+    else:
+        cap = cv2.VideoCapture(str(src))
+        n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
+        if not n:
+            print('[错误] 视频帧数读取失败', file=sys.stderr)
+            return 4
+        for frac in (args.ref_time, 0.5, 0.3, 0.6, 0.25):
+            ref_idx = int(n * frac) if frac < 1.5 else int(frac * fps)
+            ref_idx = max(0, min(ref_idx, n - 1))
+            cap.set(cv2.CAP_PROP_POS_FRAMES, ref_idx)
+            ok, f = cap.read()
+            if ok and f is not None:
+                ref_frame = f
+                break
+        cap.release()
+        if ref_frame is None:
+            print('[错误] 参考帧读取失败', file=sys.stderr)
+            return 4
+        print('REF: frame=%d/%d fps=%.1f' % (ref_idx, n, fps), flush=True)
 
     # 裁切区（与 EchoMimic 内部同口径：MTCNN select_face + 0.5 crop 边距 + 正方形）。
     # facenet_pytorch 2.6.0 权重随 wheel 内置（pnet/rnet/onet.pt），spark 可离线加载。
@@ -162,7 +179,8 @@ def main() -> int:
     det_bboxes, probs = det.detect(ref_frame)
     sel = select_face(det_bboxes, probs)
     if sel is None:
-        print('[错误] 参考帧未检测到人脸（prob>0.8）', file=sys.stderr)
+        print('[错误] 参考帧/参考图未检测到人脸（MTCNN 原图判据）。'
+              '低分辨率小脸帧常见（00187 类；建议 --ref-image 高分辨率人像，如上传的 1600×2848 参考图）', file=sys.stderr)
         return 5
     xyxy = np.round(sel[:4]).astype(int)
     rb, re, cb, ce = int(xyxy[1]), int(xyxy[3]), int(xyxy[0]), int(xyxy[2])
@@ -206,6 +224,15 @@ def main() -> int:
         return 7
     em_out = Path(cand[-1])
     print('EM_OUT: %s' % em_out.name, flush=True)
+
+    if is_portrait:
+        # 人像模式：EchoMimic 输出即成品（512² 头像卡+音轨），无需回贴
+        import shutil as _sh2
+        _sh2.copy2(str(em_out), str(out))
+        print('FINAL: %s %d' % (out, out.stat().st_size), flush=True)
+        print('ECHO_TALK: %s（EchoMimic 原生口型片 · 人像模式）' % out.name, flush=True)
+        print('DONE_ECHO_TALK', flush=True)
+        return 0
 
     # 回贴：渲染帧 512² -> 裁切方形 -> seamlessClone 回原帧；音轨=line.wav
     # （渲染帧数=音频帧数；源视频长于台词时逐帧对应，长出的部分保留原帧+克隆尾帧兜底）
