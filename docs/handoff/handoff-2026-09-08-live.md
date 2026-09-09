@@ -145,3 +145,13 @@ video_56/57（通用链/口型基础）、video_58（1080p 探测）、video_60�
 **③配音机械味**：初版 cosy 未传 speed（默认 1.0，节奏平直）；`tts_cosy_check.py` 增 `--speed 0.95`（默认）并传入 inference_zero_shot；lipsync_chain 子进程默认继承 cosy 参数（0.95）；**听感待用户复验**（仍机械→后续候选：换更长/更贴角色参考样本、增大 speed 档差、或不同声学模型）。
 
 **后续候选（用户可点）**：①v2 第 5 段（车窗对视）未接台词链（v2 为纯视效连贯版）；可对近景脸段接 lipsync_chain（音色=0.95 版）。②第 5 段近景观感重制（高清源）。③Qwen 长片演示轮（现在已教学完成，可让 agent 直接跑 film_series）。
+
+## 十七、用户新批评（内容莫名/物理逻辑/伪语音乱码/字幕乱码）→ v3 修复包+候选全部执行（2026-09-09 12:30-13:00）
+
+**定性**：①'不符合现实物理逻辑'=4 步快档+抽象动作（H3 低档通病）；②'说的话无法解析'=**H3 原生伪语音（乱码级，项目已知缺陷）**，v2 未剔除；③'字幕乱码'=**模型画面内自画文字**（提示词未零字化）。
+
+**v3 修复包（Windows 1c3a269，spark 已同步）**：①film_series 增 `--lora`（none=20 步全质=物理/细节最佳；v3 用 none）与提示词追加物理延续句（natural movement/believable weight/plausible camera）；②**零文字化**：8 段与延续句全部加 'NO written characters/signage text/readable letters/numbers anywhere'；③film_stitch 增 `--strip-audio`（剔除 H3 伪语音；真台词由语音段补）；④film_series 增 `--voice-segment N --line …`：句段生成后自动接 lipsync_chain（0.95 版 cosy）并替换段文件；⑤第 5 段 prompt 改为'绿衣父站台窗旁中近景（自然微动+现实）'作脸源。
+
+**v3 联产中（pwsh-160 后台）**：8 段 720p/20 步/同 seed/零文字 → 第5段真台词（路上小心。/yunxi/0.95）→ stitch --strip-audio → /tmp/station_lights_v3.mp4（预计 60-90min）；完成后交付 Windows video_85 + 抽帧+ASR。
+
+**候选③ agent 演示已备**：`config/demo_cat_night_prompts.json`（3 段《雨夜便利店前的猫》零文字版）——v3 完成后注入 agent：run_script(h3/film_series.py …demo… --stitch)，验证 Qwen 学会长片链（SYS+06 文档已教学）。
