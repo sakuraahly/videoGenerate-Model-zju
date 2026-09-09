@@ -39,7 +39,7 @@ _ALLOWED_WORKFLOW_DIRS = [
 ]
 
 _MAX_OUTPUT = 5000
-_SCRIPT_TIMEOUT = 600
+_SCRIPT_TIMEOUT = 1800  # 2026-09-09: 600→1800（多段电影系列 9 段×逐段生成 >600s 会被限时中断；单段任务仍 30s 内）
 
 # book-05：当前会话 id（由 ui_app 每轮设置；list_references 默认隔离到本会话）
 CURRENT_SESSION = ''
