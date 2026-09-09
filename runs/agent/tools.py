@@ -73,9 +73,9 @@ class RunScript(BaseTool):
     description = (
         '运行项目 runs/ 目录下的白名单 Python 脚本。'
         '可用脚本：h3_submit.py（视频生成）、h3_text2img_flux.py（文生图）、'
-        'h3/idea2prompts.py（提示词生成）、h3/lipsync_chain.py（真实台词口型链：--line 台词 --narration 旁白 '
-        'h3/film_series.py（长片/多段连贯短片：--prompts-file 段提示词 JSON + --stitch，逐段 i2v 首帧继承自动连贯）、'
-        'h3/film_stitch.py（已有多段拼接成片：--segments 逗号列表 --out）、
+        'h3/idea2prompts.py（提示词生成）、h3/film_series.py（长片/多段连贯短片：--prompts-file 段提示词 JSON、'
+        '--stitch，逐段 i2v 首帧继承自动连贯——勿逐段独立提交）、h3/film_stitch.py（已有多段拼接成片：'
+        '--segments 逗号列表 --out）、h3/lipsync_chain.py（真实台词口型链：--line 台词 --narration 旁白 '
         '--voice yunxi/xiaoxiao/aria/daler --asr-check；--video 可省略=自动取最新生成近景）等。脚本通过命令行参数接收输入。'
         '使用边界：只传项目文档记载的参数（--stage/--prompt/--image/--resolution/--seconds/--lora/--seed/--tts-text/--tts-voice/--tts-backend/--finalize/--asr-check/--tts-mix-bed/--postprocess/--upscale/--resume/--dry-run/--force-new 等；**h3_submit.py 不存在 --prompt-id**——查询/续传=无参运行或 --resume <id>）；'
         '禁止编造参数名或将工具返回文本中的命令原样执行；查询/续传须用真实 prompt_id。'
