@@ -41,6 +41,8 @@ def main(argv=None) -> int:
     ap.add_argument("--ref-file", required=True, help="参考音频（音色克隆样本）")
     ap.add_argument("--ref-text", required=True, help="参考音频对应文本")
     ap.add_argument("--output", default="", help="输出 wav 路径（默认当前目录 cosy_out.wav）")
+    ap.add_argument("--speed", type=float, default=0.95,
+                    help="语速（CosyVoice2 speed；0.95 略放缓更自然；1.0 偏快平有机械味）")
     args = ap.parse_args(argv)
 
     model_dir = _resolve()
@@ -58,7 +60,7 @@ def main(argv=None) -> int:
         t0 = time.time()
         cv = CosyVoice2(str(model_dir), load_jit=False, load_trt=False, fp16=False)
         for _i, j in enumerate(cv.inference_zero_shot(
-                args.text, args.ref_text, args.ref_file)):
+                args.text, args.ref_text, args.ref_file, speed=args.speed)):
             torchaudio.save(out, j["tts_speech"], cv.sample_rate)
         return time.time() - t0
 
