@@ -1,6 +1,7 @@
 {
   "title": "油价涨了",
   "source": "希区柯克短篇",
+  "setting": "1940s rural America, a snowbound remote cabin in the woods, Hitchcock noir; all characters are Caucasian American (Western faces), matching the era and the story",
   "style": "Hitchcock noir suspense, low-key lighting, cold blue winter night vs warm fireplace orange, realistic, cinematic, film grain, no written characters, no signage text, no readable letters, no numbers in frame, no text, no watermark, no cuts, no dialogue",
   "characters": {
     "DAK": "a 52-year-old Caucasian American man, grey-streaked blond hair, weathered lined face, brown cardigan over a white shirt, calm composed",
@@ -16,25 +17,26 @@
       "cast": [
         "DAK"
       ],
-      "prompt": "Interior. Warm wooden cabin by a crackling stone fireplace. DAK (52-year-old Caucasian American man, grey-streaked blond hair, brown cardigan over white shirt) sits alone reading an old magazine, calm and bored, warm firelight on his face, cold blue window behind showing the blizzard. Cozy yet eerie."
-    },
-    {
-      "cast": [
-        "DAK"
-      ],
-      "prompt": "Rapid urgent knocking. DAK opens the cabin door. LAKE (40-year-old Asian man, dark down jacket, snow boots, beanie, snow-dusted beard) bursts in pushing a swirl of snow, shivering hard, both men in the doorway, freezing wind, warm firelight meeting cold blue outside."
+      "prompt": "Interior. Warm wooden cabin by a crackling stone fireplace. DAK (52-year-old Caucasian American man, grey-streaked blond hair, brown cardigan over a white shirt) sits alone reading an old magazine, calm and bored, warm firelight on his face, cold blue window behind showing the blizzard. Cozy yet eerie."
     },
     {
       "cast": [
         "LAKE"
       ],
-      "prompt": "Close-up of LAKE by the fireplace, snow melting from his beanie and beard, pleading urgent expression, visible breath, firelight flickering on his face, DAK seated opposite in soft-focus background."
+      "prompt": "CLOSE-UP of LAKE (45-year-old Caucasian American man, dark heavy down jacket, knitted beanie, stubbled beard) warming himself by the fireplace just after entering, snow melting from his beanie, pleading urgent expression, visible breath, firelight flickering on his face, DAK seated far opposite in soft-focus background."
+    },
+    {
+      "cast": [
+        "DAK",
+        "LAKE"
+      ],
+      "prompt": "Wide shot of the cabin interior: DAK (brown cardigan) still seated by the fire, LAKE (down jacket, beanie) standing before him, snow dripping from his coat, both in the doorway light, freezing wind outside, warm fire inside. They talk; DAK raises one finger calmly."
     },
     {
       "cast": [
         "DAK"
       ],
-      "prompt": "Close-up of DAK calm and composed by the fire, one hand slightly raised, cold steady gaze, firelight on face. Behind him LAKE half in frame looking astounded, tense negotiation."
+      "prompt": "CLOSE-UP of DAK (52-year-old Caucasian American man, blond grey hair, brown cardigan over white shirt) calm and composed by the fire, one hand slightly raised, cold steady gaze, firelight on face, tense negotiation mood. Behind him LAKE blurred in background."
     },
     {
       "cast": [
@@ -47,20 +49,19 @@
         "LAKE",
         "HELEN"
       ],
-      "prompt": "Exterior snowstorm at the cabin door. A car pulls up and stops in front of the cabin, headlights sweeping snow. LAKE gets out from the driver side, opens the rear passenger door, gently helps HELEN (long dark hair, dark coat, grey scarf, frozen exhausted) step down from the car seat, wraps his arm around her, both walk toward the bright cabin door through deep snow."
+      "prompt": "Exterior snowstorm in front of the cabin. A car pulls up at the door and stops, headlights sweeping snow. LAKE gets out from the driver side, walks around, opens the rear passenger door, gently helps HELEN (long dark brown hair, dark coat, grey scarf, frozen exhausted) step down from the car seat and stands her up; he wraps his arm around her and both walk toward the bright cabin door through deep snow."
     },
     {
       "cast": [
         "HELEN"
       ],
-      "prompt": "Close-up of HELEN by the fireplace, long dark hair, grey scarf, pale shivering face, she opens a leather handbag and firmly tosses a thick bundle of paper money toward the camera, banknotes fluttering, determined cold expression, firelight on her face."
+      "prompt": "CLOSE-UP of HELEN (34-year-old Caucasian American woman, long dark brown hair, grey scarf, pale shivering face) by the fireplace, she opens a leather handbag and firmly tosses a thick bundle of paper money toward the camera, banknotes fluttering, determined cold expression, firelight on her face."
     },
     {
       "cast": [
-        "DAK",
-        "LAKE"
+        "DAK"
       ],
-      "prompt": "Close-up of DAK shocked and pale, pale green sweater, face fully visible front three-quarter view, terrified eyes fixed with dread, a black handgun barely in the bottom corner of frame slightly out of focus not covering his face, fire burning low behind him, dark oppressive suspense."
+      "prompt": "CLOSE-UP of DAK (52-year-old Caucasian American man, blond grey hair, brown cardigan) shocked and pale, face fully visible front three-quarter view, terrified eyes fixed with dread, a black handgun barely in the bottom corner of frame slightly out of focus not covering his face, fire burning low behind him, dark oppressive suspense."
     }
   ],
   "lines": {
@@ -82,12 +83,11 @@
     "8": {
       "text": "香柏银行……你们,是抢劫了香柏银行?",
       "voice": "yunxi",
-      "spoken": "香柏银行……你们,是抢劫了香柏银行?"
+      "spoken": ""
     }
   },
   "resolution": "480p",
   "seconds": 4,
   "lora": "fl2v_4step",
-  "seed": 20260911,
-  "setting": "1940s rural America, a snowbound remote cabin in the woods, Hitchcock noir; all characters are Caucasian American (Western faces), matching the era and the story"
+  "seed": 20260911
 }

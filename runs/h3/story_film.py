@@ -131,13 +131,37 @@ def save_state(work: Path, st: dict) -> None:
     p.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
+def prompt_hash(prompt: str) -> str:
+    """提示词指纹（md5 前 12 位）：story 文案变更→识别需重做。"""
+    import hashlib
+    return hashlib.md5(str(prompt).encode('utf-8')).hexdigest()[:12]
+
+
 def seg_done(st: dict, idx: int) -> bool:
     s = st.get('segments', {}).get(str(idx))
     return bool(s and s.get('file') and Path(s['file']).is_file())
 
 
+def seg_ready(st: dict, idx: int, prompt_ph: str, has_line: bool) -> bool:
+    """断点就绪判定 = 文件存在 + 提示词指纹一致 + 台词段台词已完成。
+
+    指纹不一致（剧本/形象/约束文案变更）→ 该段及**后续段**全部重做
+    （i2v 首帧继承链不可保留断裂点）。
+    """
+    s = (st.get('segments') or {}).get(str(idx)) or {}
+    if not (s.get('file') and Path(s['file']).is_file()):
+        return False
+    if s.get('ph') != prompt_ph:
+        return False
+    if has_line and not s.get('line'):
+        return False
+    return True
+
+
 def syn_seg(st: dict, idx: int, seg: dict) -> None:
-    st.setdefault('segments', {})[str(idx)] = seg
+    """增量更新段状态（保留 ph 等既有键；台词链更新时不清画面指纹）。"""
+    cur = st.setdefault('segments', {}).setdefault(str(idx), {})
+    cur.update(seg)
     if idx not in st.setdefault('done', []):
         st['done'].append(idx)
 
@@ -164,7 +188,7 @@ def run_segment(idx: int, prompt: str, prev_frame, args, work: Path, st: dict, s
         pass
     else:
         print('[warn] seg%d 末帧提取失败' % idx, file=sys.stderr)
-    syn_seg(st, idx, {'file': str(segp), 'prompt': prompt})
+    syn_seg(st, idx, {'file': str(segp), 'prompt': prompt, 'ph': prompt_hash(prompt)})
     save_state(work, st)
     print('seg%d OK: %s' % (idx, segp.name), flush=True)
     return str(segp)
@@ -222,28 +246,36 @@ def cmd_run(args) -> int:
     work = Path(args.work_dir)
     work.mkdir(parents=True, exist_ok=True)
     st = load_state(work, story)
+    prompts = [build_prompt(seg, story) for seg in story['segments']]
+    phs = [prompt_hash(p) for p in prompts]
+    lines = story.get('lines') or {}
+    # 断点=连续头部就绪（文件在+指纹一致+台词段台词完成）；首个不满足=重做起点（链失效传播）
+    first_redo = None
+    for idx in range(len(story['segments'])):
+        if not seg_ready(st, idx, phs[idx], bool(lines.get(str(idx)))):
+            first_redo = idx
+            break
+    if first_redo is not None:
+        print('RESUME: seg%d 起重做（前 %d 段保留；指纹/台词不一致或文件缺失）'
+              % (first_redo, first_redo), flush=True)
+    else:
+        print('RESUME: 全部段已就绪', flush=True)
     segs = {}
     prev_file = ''
     for idx, seg in enumerate(story['segments']):
-        if not seg_done(st, idx):
-            prev_frame = Path(prev_file) if prev_file and Path(prev_file).is_file() else None
-            prompt = build_prompt(seg, story)
-            file = run_segment(idx, prompt, prev_frame, args, work, st, story)
-        else:
+        redo = first_redo is None or idx >= first_redo
+        line = lines.get(str(idx))
+        if not redo:
             file = st['segments'][str(idx)]['file']
             print('seg%d 已存在（resume 跳过）: %s' % (idx, Path(file).name), flush=True)
-        segs[idx] = file
-        # 台词段（断点：该段已带 line_file 则跳过）
-        line = (story.get('lines') or {}).get(str(idx))
-        if line:
-            line_file = st['segments'].get(str(idx), {}).get('file')
-            is_line_done = st['segments'].get(str(idx), {}).get('line')
-            if not is_line_done or not (Path(line_file).is_file() if line_file else False) or args.fresh:
+            segs[idx] = file
+        else:
+            prev_frame = Path(prev_file) if prev_file and Path(prev_file).is_file() else None
+            file = run_segment(idx, prompts[idx], prev_frame, args, work, st, story)
+            segs[idx] = file
+            if line:
                 file = run_line(idx, file, line, args, work, st)
                 segs[idx] = file
-            else:
-                segs[idx] = line_file
-                print('seg%d 台词已完成（resume 跳过）' % idx, flush=True)
         prev_file = segs.get(idx, file)
         # 末帧优先：更新 prev_frame 用本段实际文件的末帧（若本段刚跑已提取 last_）
         lf = work / ('last_%d.png' % idx)
