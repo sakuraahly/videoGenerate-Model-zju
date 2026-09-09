@@ -25,6 +25,8 @@ import sys
 import time as _tm
 from pathlib import Path
 
+import numpy as np  # 模块级（select_face 使用；MTCNN 在 numpy2 下返回 object dtype）
+
 # EchoMimic 代码/权重根（spark 专用路径；Windows 主库只做代码/文档，不运行本链）
 EM_ROOT = Path(os.path.expanduser('~/ai/echomimic'))
 EM_CONF_TEMPLATE = {
@@ -67,6 +69,10 @@ exit 5；放低到 0.5 且取最大脸即可（EchoMimic 内部只需单一主�
     """
     if det_bboxes is None or probs is None:
         return None
+    # numpy2 + facenet_pytorch：detect 返回 object dtype（元素为 Python float），
+    # np.round 会崩（'float has no rint'）→ 显式转 float64（2026-09-09）。
+    det_bboxes = np.asarray(det_bboxes, dtype=float)
+    probs = np.asarray(probs, dtype=float)
     filtered = [b for i, b in enumerate(det_bboxes) if probs[i] > prob_min]
     if not filtered:
         return None
@@ -115,18 +121,25 @@ def main() -> int:
     ap.add_argument('--dry-run', action='store_true')
     args = ap.parse_args()
 
-    src = Path(args.video)
+    src = Path(args.video) if args.video else None
     wav = Path(args.audio)
     ref_img_arg = Path(args.ref_image) if args.ref_image else None
     if ref_img_arg is not None and not ref_img_arg.is_file():
         print('[错误] 参考图不存在: %s' % ref_img_arg, file=sys.stderr)
         return 3
-    if not src.is_file() or not wav.is_file():
-        print('[错误] 视频/音频不存在（视频可用 --ref-image 替代）', file=sys.stderr)
+    if src is not None and not src.is_file():
+        print('[错误] 视频不存在: %s' % src, file=sys.stderr)
+        return 3
+    if src is None and ref_img_arg is None:
+        print('[错误] 视频/参考图未指定（--video 与 --ref-image 至少其一）', file=sys.stderr)
+        return 3
+    if not wav.is_file():
+        print('[错误] 音频不存在: %s' % wav, file=sys.stderr)
         return 3
     if args.dry_run:
-        print('DRY_RUN: video=%s audio=%s W=%d H=%d steps=%d fps=%d' %
-              (src.name, wav.name, args.W, args.H, args.steps, args.fps))
+        print('DRY_RUN: video=%s ref_image=%s audio=%s W=%d H=%d steps=%d fps=%d' %
+              (src.name if src else '(none)', ref_img_arg.name if ref_img_arg else '(none)',
+               wav.name, args.W, args.H, args.steps, args.fps))
         print('DRY_RUN_OK')
         return 0
 
@@ -223,6 +236,9 @@ def main() -> int:
         print(r.stdout[-1500:], file=sys.stderr)
         return 7
     em_out = Path(cand[-1])
+    # 输出在 EM_ROOT 下运行产生 → 相对路径按 EM_ROOT 解析（2026-09-09 修复）
+    if not em_out.is_absolute():
+        em_out = EM_ROOT / em_out
     print('EM_OUT: %s' % em_out.name, flush=True)
 
     if is_portrait:

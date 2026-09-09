@@ -25,17 +25,6 @@
       "args": "--status"
     },
     {
-      "id": "sched-demo-minutely",
-      "name": "演示·每分钟自检（验证调度链，观测后移除）",
-      "kind": "engine",
-      "enabled": true,
-      "schedule": {
-        "min": "*"
-      },
-      "script": "agent/night_runner.py",
-      "args": "--status"
-    },
-    {
       "id": "sched-daily-report",
       "name": "每日 20:00 生产简报（agent 对话任务：汇总当日产物并汇报）",
       "kind": "agent",

@@ -170,7 +170,7 @@ def run_agent_task(task: dict) -> str:
     # 审计基线：记录最新 run log 的 mtime+行数
     import glob as _glob
     _logs = sorted(_glob.glob(str(ROOT / 'logs' / 'run_*.log')), key=os.path.getmtime, reverse=True)
-    base_log = _logs[0] if _logs else None
+    base_log = Path(_logs[0]) if _logs else None
     base_mtime = os.path.getmtime(base_log) if base_log else 0.0
     base_lines = len(base_log.open(encoding='utf-8', errors='replace').read().splitlines()) if base_log else 0
     try:
@@ -183,11 +183,12 @@ def run_agent_task(task: dict) -> str:
         _log('agent 任务注入 event=%s cid=%s hist=%d' % (ev[:12], cid or '(auto)', len(hist)))
     except Exception as e:  # noqa: BLE001
         return 'ERR 注入失败: ' + str(e)[:120]
-    # 审计：注入后 35s 内检查新 run 日志出现工具调用（submitted/run_script call/工具输出）
-    time.sleep(35)
+    # 审计：注入后 110s 内检查新 run 日志出现工具调用（submitted/run_script call/工具输出）
+    time.sleep(110)
     try:
         import glob as _g2
-        _new = sorted(_g2.glob(str(ROOT / 'logs' / 'run_*.log')), key=os.path.getmtime, reverse=True)[:3]
+        _new = [Path(p) for p in sorted(_g2.glob(str(ROOT / 'logs' / 'run_*.log')),
+                                        key=os.path.getmtime, reverse=True)[:3]]
         found = False
         for _lf in _new:
             if not _lf.is_file():
