@@ -1,5 +1,5 @@
 {
-  "_comment": "Agent 任务调度配置（定期/定点/服从安排）。schedule 五段 cron 式（分 时 日 月 周）；kind=engine 由调度器直接执行白名单脚本（可靠）；kind=agent 注入 7860 会话由 agent 执行。",
+  "_comment": "Agent 任务调度配置（定期/定点/服从安排）。schedule 五段 cron 式（分 时 日 月 周；**字段=机器本地时区=UTC**！北京 20:00=UTC 12、北京 22:00-08:00=UTC 14-23）；kind=engine 由调度器直接执行白名单脚本（可靠）；kind=agent 注入 7860 会话由 agent 执行。",
   "tasks": [
     {
       "id": "sched-watchdog",
@@ -19,7 +19,7 @@
       "enabled": true,
       "schedule": {
         "min": "*/20",
-        "hour": "22-23,0-6"
+        "hour": "14-23"
       },
       "script": "agent/night_runner.py",
       "args": "--status"
@@ -31,7 +31,7 @@
       "enabled": true,
       "schedule": {
         "min": "0",
-        "hour": "20"
+        "hour": "12"
       },
       "cid": "",
       "prompt": "【定时任务·每日生产简报】请执行 run_script(night_runner.py, --status) 与 run_script(h3_submit.py) 无参（检查队列/产物），然后给用户一条中文简报：今日完成/进行中/失败任务各一行（文件名用相对说法，不露路径）。"
