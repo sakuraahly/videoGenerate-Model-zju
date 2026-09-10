@@ -376,6 +376,56 @@ class AgentClient:
         return {'tool': 'answer', 'args': {'text': txt}, 'say': ''}
 
     # ---------- 决策(大脑) ----------
+    @staticmethod
+    def _parse_plan_text(txt: str) -> dict:
+        """容错解析大脑返回的 JSON（兼容 ```json 包裹 / 前后带解释文字）。
+
+        DeepSeek 等服务的推理模型（deepseek-reasoner）不一定严格遵守 JSON 模式，
+        实测会把计划包在解释文字里；这里统一抽第一个完整 JSON 对象。
+        """
+        t = (txt or '').strip()
+        if not t:
+            return {}
+        if t.startswith('```'):
+            t = t.strip('`')
+            t = t.split('\n', 1)[1] if '\n' in t else t
+            if t.rstrip().endswith('```'):
+                t = t.rstrip()[:-3]
+        try:
+            d = json.loads(t)
+            return d if isinstance(d, dict) else {}
+        except Exception:
+            pass
+        start = t.find('{')
+        while start >= 0:
+            depth, in_str, esc = 0, False, False
+            for i in range(start, len(t)):
+                ch = t[i]
+                if in_str:
+                    if esc:
+                        esc = False
+                    elif ch == chr(92):
+                        esc = True
+                    elif ch == '"':
+                        in_str = False
+                    continue
+                if ch == '"':
+                    in_str = True
+                elif ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            d = json.loads(t[start:i + 1])
+                            if isinstance(d, dict):
+                                return d
+                        except Exception:
+                            pass
+                        break
+            start = t.find('{', start + 1)
+        return {}
+
     def plan(self, user_msg: str, history: list) -> dict:
         if self.brain == 'agent-url':
             return self._plan_agent_url(user_msg, history)
@@ -391,13 +441,16 @@ class AgentClient:
         msgs.append({"role": "user", "content": user_msg})
         payload = {"model": self.llm_model, "messages": msgs, "temperature": 0.3,
                    "response_format": {"type": "json_object"}}
+        # 推理型模型（DeepSeek deepseek-reasoner）不支持 temperature —— 自动去掉，别让它直接报错
+        if 'reasoner' in str(self.llm_model or '').lower():
+            payload.pop('temperature', None)
         payload.update(self.llm_extra)          # 外置扩展:关思考/调 top_p/换模板,不改代码
         last_err = ''
         for attempt in range(3):        # 实测大脑偶发空响应/抖动:重试 3 次(间隔 1s)再降级
             try:
                 d = self._post_json(self.llm_base + '/chat/completions', payload, self.llm_key, timeout=90)
                 txt = ((d.get('choices') or [{}])[0].get('message') or {}).get('content') or ''
-                plan = json.loads(txt)
+                plan = self._parse_plan_text(txt)      # 容错：```json 包裹 / 散文包裹都能解
                 if isinstance(plan, dict) and plan.get('tool'):
                     plan['args'] = normalize_args(plan['tool'], plan.get('args') or {})
                     return plan
@@ -743,6 +796,52 @@ class AgentClient:
         return {'ok': True, 'task': new_id, 'payload': payload,
                 'text': '已从第 %d 段续跑（新任务 %s）。' % (int(done) + 1, new_id)}
 
+    def selftest(self, timeout: int = 30) -> dict:
+        """连接自测：验证「外置大脑」是否真的能用（给用户/答辩一键验证，也方便试新服务商）。
+
+        只发一条极小的对话请求（"回复两个字：可用"）；**不发送任何真实生成请求**。
+        生成接口只报告"是否已配置"——连通性要等真正提交任务才能验证，这里不假装测过。
+        """
+        out = {'channel': self.brain, 'model': self.llm_model, 'ok': False,
+               'reply': '', 'error': '', 'ms': None,
+               'engine_configured': bool(self.engine_url),
+               'engine_note': ('已配置（连通性在提交任务时验证；本自测不发送生成请求）' if self.engine_url
+                               else '未配置 ENGINE_BASE_URL：只能出方案预览')}
+        if self.brain == 'rule':
+            out['error'] = '未配置外置大脑（AGENT_URL 或 LLM_*），当前用内置规则规划器'
+            return out
+        t0 = time.time()
+        try:
+            if self.brain == 'agent-url':
+                txt = self._ask_agent_url([{'role': 'user', 'content': '回复两个字：可用'}])
+            else:
+                payload = {'model': self.llm_model, 'max_tokens': 24,
+                           'messages': [{'role': 'user', 'content': '回复两个字：可用'}]}
+                if 'reasoner' not in str(self.llm_model or '').lower():
+                    payload['temperature'] = 0
+                d = self._post_json(self.llm_base + '/chat/completions', payload, self.llm_key,
+                                    timeout=timeout)
+                txt = ((d.get('choices') or [{}])[0].get('message') or {}).get('content') or ''
+            out['ms'] = int((time.time() - t0) * 1000)
+            out['reply'] = (txt or '').strip()[:80]
+            out['ok'] = bool(out['reply'])
+            if not out['ok']:
+                out['error'] = '接口通了但返回空内容（可能被限流/额度用尽）'
+        except Exception as e:
+            out['ms'] = int((time.time() - t0) * 1000)
+            out['error'] = str(e)[:200]
+        return out
+
+    def selftest_text(self) -> str:
+        """自测结果转成给人看的一段话（页面按钮 / 命令行共用）。"""
+        r = self.selftest()
+        name = {'agent-url': '平台 Agent（AGENT_URL）', 'llm': '自建大脑（LLM_*）',
+                'rule': '内置规则规划器'}.get(r['channel'], r['channel'])
+        if r['ok']:
+            return '✅ 大脑可用：%s ｜ 模型 %s ｜ %d ms ｜ 回话：%s\n\n（%s）' % (
+                name, r['model'], r['ms'] or 0, r['reply'], r['engine_note'])
+        return '❌ 大脑不可用：%s\n原因：%s\n\n（%s）' % (name, r['error'] or '未知', r['engine_note'])
+
     def poll_job(self, job_id: str) -> dict:
         """任务面板用:查询外部接口的作业状态(未配置状态接口时返回 unknown,不报错)。"""
         if not (job_id and self.engine_status):
@@ -812,5 +911,30 @@ class AgentClient:
             return 'data:image/%s;base64,%s' % (mime, base64.b64encode(raw).decode())
         except Exception:  # noqa: BLE001
             return ''
+
+
+def _cli(argv=None) -> int:
+    """命令行入口：python3 agent_client.py --selftest —— 一键验证外置大脑/接口配置。"""
+    import argparse
+    ap = argparse.ArgumentParser('创空间 Agent 客户端')
+    ap.add_argument('--selftest', action='store_true', help='测试外置大脑连接（不触发真实生成）')
+    ap.add_argument('--status', action='store_true', help='打印配置状态与自检告警')
+    a = ap.parse_args(argv)
+    c = AgentClient()
+    if a.status or not a.selftest:
+        st = c.status()
+        print('模式: %s ｜ 大脑通道: %s ｜ 模型: %s' % (st['mode'], st['brain_channel'], st['model']))
+        print('工具: %s' % ', '.join(st['tools']))
+        for w in st.get('warnings') or []:
+            print('[!] ' + w)
+        if not a.selftest:
+            return 0
+        print('')
+    print(c.selftest_text())
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(_cli())
 
 

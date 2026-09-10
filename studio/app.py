@@ -384,19 +384,33 @@ def build_app(show: dict):
 |---|---|
 | `ENGINE_BASE_URL` / `ENGINE_API_KEY` | **视频生成模型接口**（预留口；旧名 `VIDEO_API_URL`/`VIDEO_API_KEY` 仍兼容） |
 | `ENGINE_STATUS_URL` | 可选，异步作业查询地址（旧名 `VIDEO_API_STATUS_URL`） |
-| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | **外置大脑**：OpenAI 兼容决策模型（不填=内置规则规划器） |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | **外置大脑**：OpenAI 兼容决策模型（不填=内置规则规划器）。例：DeepSeek 填 `https://api.deepseek.com` + `deepseek-chat`；平台 Agent 也可直接用 `AGENT_URL` |
+| `AGENT_URL` / `AGENT_TOKEN` | 可选：魔搭平台上「构建-发布」得到的 Agent 地址（**首选通道**，优先于 `LLM_*`） |
 | `TOOLSET` | 可选，暴露给大脑的工具子集（默认 all） |
 | `AGENT_SYSTEM_PROMPT`（或 `AGENT_SYSTEM_PROMPT_FILE`） | 可选，外置 system 提示：注入行业规则/铁律 |
 
-**Agent 的两半**：①**工具集** `generate_video` / `generate_talk` / `make_story_film` / `answer`（全部 HTTP，空间内无本机依赖）；
-②**外置大脑** `LLM_*`（决定用哪个工具、什么参数）。两半齐备即为完整 Agent，缺大脑时用内置规则规划器兜底演示。
+**Agent 的两半**：①**工具集** `generate_video` / `generate_talk` / `make_story_film` / `list_jobs` / `query_job` /
+`retry_job` / `resume_story` / `answer`（全部 HTTP，空间内无本机依赖）；②**外置大脑**（`AGENT_URL` 或 `LLM_*`，
+决定用哪个工具、什么参数）。两半齐备即为完整 Agent，缺大脑时用内置规则规划器兜底演示。
 
 **空间内等价实现的本地功能**：参考图上传与预览、请求体预览（演示模式）、任务面板与状态刷新、成片预览/下载、
 画布内字幕与拼接由引擎接口返回的成片直接承载（空间侧不做重编码，避免占用免费 CPU）。
 
 _{show['footer']}_""")
+                with gr.Row():
+                    _probe = gr.Button("🔌 测试外置大脑连接", size="sm")
+                _probe_out = gr.Markdown("_点上面的按钮验证「外置大脑」是否真的可用（只发一条极小请求，不触发生成）。_")
 
-        gr.Markdown(f"\n---\n_空间版本 v2.6（2026-09-10 · Agent=工具集+外置大脑；AGENT_URL 通道 + 任务查询/重试/续跑 + 配置自检）_")
+                def _probe_click():
+                    """一键自测：验证大脑通道（DeepSeek / 平台 AGENT_URL / 自建 LLM 通用）。"""
+                    try:
+                        return _shared_client().selftest_text()
+                    except Exception as e:  # noqa: BLE001
+                        return "❌ 自测失败：%s" % str(e)[:200]
+
+                _probe.click(_probe_click, [], [_probe_out])
+
+        gr.Markdown(f"\n---\n_空间版本 v2.7（2026-09-10 · Agent=工具集+外置大脑；AGENT_URL/DeepSeek 通道 + 任务查询/重试/续跑 + 连接自测 + 配置自检）_")
     return demo
 
 

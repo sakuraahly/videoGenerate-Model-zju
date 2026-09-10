@@ -18,9 +18,12 @@ from app import agent_step, jobs_table  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    for k in ("LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL", "ENGINE_BASE_URL", "ENGINE_API_KEY",
-              "ENGINE_STATUS_URL", "VIDEO_API_URL", "VIDEO_API_KEY", "VIDEO_API_STATUS_URL",
-              "TOOLSET", "AGENT_SYSTEM_PROMPT", "AGENT_SYSTEM_PROMPT_FILE"):
+    for k in ("LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL", "LLM_EXTRA_JSON", "ENGINE_BASE_URL", "ENGINE_API_KEY",
+              "ENGINE_STATUS_URL", "ENGINE_RESUME", "VIDEO_API_URL", "VIDEO_API_KEY", "VIDEO_API_STATUS_URL",
+              "TOOLSET", "AGENT_SYSTEM_PROMPT", "AGENT_SYSTEM_PROMPT_FILE",
+              # 2026-09-10 补：AGENT_URL/TOKEN 等新变量也要隔离，否则前一个用例的
+              # 平台 Agent 通道会串到后一个用例（实测导致 5 个用例连带失败）
+              "AGENT_URL", "AGENT_TOKEN", "AGENT_MODEL", "AGENT_TIMEOUT"):
         monkeypatch.delenv(k, raising=False)
 
 
@@ -458,6 +461,79 @@ def test_brain_priority_agent_url_over_llm_over_rule():
     finally:
         for k in ("AGENT_URL", "LLM_BASE_URL", "LLM_API_KEY"):
             os.environ.pop(k, None)
+
+
+# ---------- DeepSeek / 通用 OpenAI 兼容服务适配（2026-09-10） ----------
+
+def test_parse_plan_text_handles_fences_and_prose():
+    """推理型模型常把 JSON 包在解释文字/代码块里，解析必须容错。"""
+    raw = '{"tool":"answer","args":{"text":"hi"}}'
+    fenced = '```json\n' + raw + '\n```'
+    prose = '好的，计划如下：\n' + raw + '\n希望有帮助。'
+    nested = '{"tool":"answer","args":{"text":"他说 {不是 JSON} 也要能解"}}'
+    assert ac.AgentClient._parse_plan_text(raw)["tool"] == "answer"
+    assert ac.AgentClient._parse_plan_text(fenced)["tool"] == "answer"
+    assert ac.AgentClient._parse_plan_text(prose)["tool"] == "answer"
+    assert ac.AgentClient._parse_plan_text(nested)["args"]["text"].startswith("他说")
+    assert ac.AgentClient._parse_plan_text("完全不是 JSON") == {}
+    assert ac.AgentClient._parse_plan_text("") == {}
+
+
+def test_reasoner_model_drops_unsupported_temperature(monkeypatch):
+    """DeepSeek 推理模型不支持 temperature —— 自动去掉，别让它直接报错。"""
+    c = _client(LLM_BASE_URL="https://api.deepseek.com", LLM_API_KEY="k",
+                LLM_MODEL="deepseek-reasoner")
+    seen = {}
+
+    def fake_post(url, payload, key='', timeout=0):
+        seen.update(payload)
+        return {"choices": [{"message": {"content": '{"tool":"answer","args":{"text":"ok"}}'}}]}
+
+    monkeypatch.setattr(c, "_post_json", fake_post)
+    plan = c.plan("你好", [])
+    assert plan["tool"] == "answer"
+    assert "temperature" not in seen and seen["model"] == "deepseek-reasoner"
+    assert seen["response_format"] == {"type": "json_object"}   # JSON 模式仍保留
+
+
+def test_deepseek_chat_keeps_temperature(monkeypatch):
+    c = _client(LLM_BASE_URL="https://api.deepseek.com", LLM_API_KEY="k", LLM_MODEL="deepseek-chat")
+    seen = {}
+
+    def fake_post(url, payload, key='', timeout=0):
+        seen.update(payload)
+        return {"choices": [{"message": {"content": '{"tool":"answer","args":{"text":"ok"}}'}}]}
+
+    monkeypatch.setattr(c, "_post_json", fake_post)
+    c.plan("你好", [])
+    assert seen["temperature"] == 0.3 and "reasoner" not in seen["model"]
+
+
+def test_selftest_honest_when_no_brain():
+    r = _client().selftest()
+    assert r["ok"] is False and r["channel"] == "rule" and "未配置外置大脑" in r["error"]
+    assert r["engine_configured"] is False
+    assert _client().selftest_text().startswith("❌")
+
+
+def test_selftest_reports_ok_with_mocked_llm(monkeypatch):
+    c = _client(LLM_BASE_URL="https://api.deepseek.com", LLM_API_KEY="k", LLM_MODEL="deepseek-chat")
+    monkeypatch.setattr(c, '_post_json',
+                        lambda url, payload, key="", timeout=0: {"choices": [{"message": {"content": "可用"}}]})
+    r = c.selftest()
+    assert r["ok"] is True and r["reply"] == "可用" and r["ms"] is not None
+    assert "✅" in c.selftest_text()
+
+
+def test_selftest_reports_failure_not_success(monkeypatch):
+    c = _client(LLM_BASE_URL="https://api.deepseek.com", LLM_API_KEY="bad", LLM_MODEL="deepseek-chat")
+
+    def boom(url, payload, key='', timeout=0):
+        raise RuntimeError("401 Unauthorized")
+
+    monkeypatch.setattr(c, "_post_json", boom)
+    r = c.selftest()
+    assert r["ok"] is False and "401" in r["error"]
 
 
 def test_agent_text_extraction_all_shapes():
