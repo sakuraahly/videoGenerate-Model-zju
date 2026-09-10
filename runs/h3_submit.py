@@ -631,6 +631,12 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
                 _p_spec = _wreg2.inject_spec(_entry2)
         except Exception:  # noqa: BLE001
             pass
+        # 2026-09-10 契约容错：用户/AI 常把参考图从 <Picture 0> 开始编号 → 自动归一化为 1 基
+        _norm = h3prompts.normalize_picture_tags(prompt)
+        if _norm != prompt:
+            print("[提示] 检测到 0 基参考图 tag（<Picture 0>…）→ 已自动归一化为 1 基（<Picture 1>…）。",
+                  flush=True)
+            prompt = _norm
         changed = h3prompts.inject_local_prompts(wf, prompt, negative, spec=_p_spec)
         if changed:
             print(f"[提示] 已用本地提示词覆盖工作流内嵌字段（{changed} 处）。", flush=True)

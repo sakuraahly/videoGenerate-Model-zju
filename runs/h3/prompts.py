@@ -186,6 +186,23 @@ def reference_tag_set(prompt: str) -> set:
     return {int(m) for m in _REF_TAG_RE.findall(str(prompt or ""))}
 
 
+def normalize_picture_tags(prompt: str) -> str:
+    """把 0 基的 <Picture 0..N> 归一化为 1 基（用户/AI 常从 0 开始编号）。
+
+    2026-09-10：用户提示词以 <Picture 0> 起 → 契约校验（1 基）拒绝、agent 谎报提交。
+    规则：只要出现 <Picture 0> 即**整体 +1**（0→1、1→2…；降序替换避免自撞）。
+    （用户实际写法常是 "<Picture 0> 房间 / <Picture 1> 主角 / <Picture 2> 父亲 …"，必须整体平移。）
+    """
+    tags = reference_tag_set(prompt)
+    if not tags or 0 not in tags:
+        return prompt
+    out = str(prompt)
+    for n in sorted(tags, reverse=True):
+        out = re.sub(r'<\s*picture\s*%d\s*>' % n, '<Picture %d>' % (n + 1), out,
+                     flags=re.IGNORECASE)
+    return out
+
+
 def missing_reference_tags(prompt: str, n_refs: int) -> List[int]:
     """按连接顺序 1..n_refs 检查缺失的 tag 序号（空引用(0)返回空列表）。"""
     n = int(n_refs or 0)

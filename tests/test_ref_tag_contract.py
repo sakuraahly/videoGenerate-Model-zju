@@ -21,6 +21,32 @@ PERSIST_SENTENCE = ("The reference images (scene/character/props) are locked "
                     "keyframes; keep every frame consistent.")
 
 
+class TestRefTagNormalize(unittest.TestCase):
+    """2026-09-10：0 基编号归一化（用户/AI 常写 <Picture 0> 起）。"""
+
+    def test_zero_based_shifted(self):
+        p = ("<Picture 0> is the room. <Picture 1> is Sharon. "
+             "<Picture 2> is the father. <picture 3> is the glasses.")
+        out = h3prompts.normalize_picture_tags(p)
+        self.assertEqual(h3prompts.reference_tag_set(out), {1, 2, 3, 4})
+        self.assertIn('<Picture 4>', out)
+        self.assertNotIn('<Picture 0>', out)
+
+    def test_one_based_untouched(self):
+        p = "<Picture 1> a <Picture 2> b"
+        self.assertEqual(h3prompts.normalize_picture_tags(p), p)
+
+    def test_zero_with_one_also_shifted(self):
+        # 用户实际写法（0 起且含 1）：必须整体平移，否则契约仍会拒
+        p = "<Picture 0> room, <Picture 1> Sharon, <Picture 2> father"
+        out = h3prompts.normalize_picture_tags(p)
+        self.assertEqual(h3prompts.reference_tag_set(out), {1, 2, 3})
+
+    def test_no_tags_untouched(self):
+        p = "no tags here"
+        self.assertEqual(h3prompts.normalize_picture_tags(p), p)
+
+
 class TestRefTagParse(unittest.TestCase):
     def test_tag_extraction(self):
         p = "Use <Picture 1> for the character and <Picture 2> for the scene. Also <picture 3> and <Picture  4 >."

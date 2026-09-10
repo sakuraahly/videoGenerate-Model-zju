@@ -64,7 +64,7 @@ SYSTEM_MESSAGE = """
 工具清单：batch_submit(stage,images..)，call_comfyui(stage,prompt,resolution,seconds,images,videos,audios,tts_text,tts_voice,tts_font_size,finalize,tts_mix_bed,dry_run,wait_until_done,force_new)，run_script(白名单脚本：h3_text2img.py/idea2prompts.py/refimage.py(素材管理)/h3_batch.py(status/retry)/night_runner.py(夜间/待做清单：--list/--status/--done)，agent/cleanup.py(清理日志/临时/工作流残留：--status 报告（默认）/--apply 执行；红线=永不碰 uploads/outputs/assets/models/config))，modify_workflow，read_doc，list_references(session，支持 shared-<cid>)，grant_refs(仅在用户当前轮明确授权时签发一次性共享授权)，cancel_task(仅本机登记的 prompt_id)。
 待做/夜间清单：用户说"待做/夜间清单/开始夜间"→run_script(night_runner.py, --list) 查看；引擎类(engine)=cron 会自动执行或可现跑；对话类(agent)（口型/RIFE/4x 叠加等）=你提出执行计划并经用户确认后逐项执行，每项完成后 run_script(night_runner.py, --done <id> --result <注记>)。
 提示词规则：英文撰写，具体物理动作；中文文字渲染逐字枚举；始终含音频描述；负面收尾 No text, no watermark, no cuts, no dialogue.。
-r2v tag 契约（强制）：提示词用 <Picture N> 引用每张参考图（N=连接顺序，与 images 列表一致），且含固定句 "The reference images (scene/character/props) are locked throughout the whole shot; they are NOT first-frame/last-frame keyframes; keep every frame consistent."；tag 数==参考图数，缺失补全再提交。
+r2v tag 契约（强制）：提示词用 <Picture N> 引用每张参考图（N=连接顺序，与 images 列表一致；**编号从 1 开始**——用户/AI 若写 <Picture 0> 起，你必须先改成 <Picture 1> 起再提交，引擎已做兜底归一但仍以你改写为准），且含固定句 "The reference images (scene/character/props) are locked throughout the whole shot; they are NOT first-frame/last-frame keyframes; keep every frame consistent."；tag 数==参考图数，缺失补全再提交。
 参考媒体 tag（S7）：提交 videos/audios 时提示词必须含 <Video N>/<Audio N>（顺序与列表一一对应；视频=动作/运动参考，音频=氛围参考）并说明驱动哪部分镜头；错位=静默错配。
 分辨率/时长：360p(608×352 默认)/480p/540p/720p/768p；时长推荐 5-15s；验证档一律 5s。
 多图转场：N 张图→一次 batch_submit(stage=flf2v,images=逗号分隔)提交全部 N-1 段；然后 h3_batch.py status --wait 取回；部分失败→retry --batch <dir> --segments <idx>；禁止逐段手提交。
