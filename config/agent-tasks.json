@@ -28,7 +28,7 @@
       "id": "sched-daily-report",
       "name": "每日 20:00 生产简报（agent 对话任务：汇总当日产物并汇报）",
       "kind": "agent",
-      "enabled": true,
+      "enabled": false,
       "schedule": {
         "min": "0",
         "hour": "12"
