@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -80,6 +81,40 @@ def load_show() -> dict:
     return dict(DEFAULT_SHOW)
 
 
+def agent_step(user_text: str, history) -> dict:
+    """Agent 一步（模块级，便于单测）：返回 {'history', 'trace', 'video'}。
+
+    行为：调用 agent_client.AgentClient().answer()（LLM 决策或规则规划器），
+    把「工具选择 + 参数 + 轨迹」写进对话与轨迹区；异常兜底成人话，绝不抛给用户。
+    """
+    history = list(history or [])
+    if not (user_text or '').strip():
+        return {'history': history, 'trace': None, 'video': None}
+    try:
+        from agent_client import AgentClient
+        out = AgentClient().answer(user_text, history)
+    except Exception as e:  # noqa: BLE001
+        out = {'say': '（agent 层异常：%s）' % str(e)[:150], 'kind': 'error'}
+    reply = (out.get('say') or '') + "\n\n"
+    if out.get('kind') == 'answer':
+        reply += out.get('text') or ''
+    elif out.get('kind') == 'demo':
+        a = out.get('args') or {}
+        reply += ("**规划结果**：工具「%s」\n\n参数：\n\n%s\n\n"
+                  % (out.get('tool'), json.dumps(a, ensure_ascii=False, indent=2))
+                  + "> 当前为规划演示（未配置 LLM/VIDEO API）。配置环境变量后，本空间会真实调用外部生成服务。")
+    elif out.get('kind') == 'remote':
+        reply += "已提交外部生成服务（任务 %s）。" % out.get('task')
+    else:
+        reply += out.get('text') or ''
+    history = history + [{"role": "user", "content": user_text},
+                         {"role": "assistant", "content": reply}]
+    tr = ("**模式**：%s　**工具**：%s\n\n%s"
+          % (out.get('mode', '-'), (out.get('trace') or {}).get('tool'),
+             json.dumps((out.get('trace') or {}), ensure_ascii=False, indent=2)[:1200]))
+    return {'history': history, 'trace': tr, 'video': out.get('video') or None}
+
+
 def build_app(show: dict):
     import gradio as gr
 
@@ -95,14 +130,16 @@ def build_app(show: dict):
         return next((s for s in show["samples"] if s["file"].startswith(key)), show["samples"][0])
 
     # ---------------- 创作台 ----------------
-    def submit_job(kind, prompt, images, resolution, seconds, voice, subtitle, negative):
+    def submit_job(kind, prompt, images, resolution, seconds, voice_src, voice, subtitle, negative):
         sel = {"文生视频": "t2v", "图生视频": "i2v", "说话镜头": "talk", "剧本故事片": "story"}
         k = sel.get(kind, "t2v")
         if not (prompt or "").strip() and k != "i2v":
             return ("⚠️ 请先填写创意/提示词。", None, None,
                     _hist_md(), gr.update())
         imgs = [Path(f).name for f in (images or [])]
-        voice_key = dict(show["voices"]).get(voice, voice)
+        # 语音来源：默认=模型原生语音（自适应音色，不做 TTS 替换）；仅显式选择时才用本地 TTS 音色
+        native = str(voice_src or '').startswith('模型原生')
+        voice_key = 'h3（模型原生·自适应音色）' if native else dict(show["voices"]).get(voice, voice)
         task = {"kind": k, "prompt": prompt, "images": ", ".join(imgs) or None,
                 "resolution": resolution, "seconds": seconds, "voice": voice_key,
                 "subtitle": bool(subtitle), "negative": negative}
@@ -170,45 +207,23 @@ def build_app(show: dict):
                     ex3 = gr.Button("示例·故事片", size="sm")
                     clr = gr.Button("清空对话", size="sm")
 
-                def _agent_step(user_text, history):
-                    history = history or []
-                    if not (user_text or '').strip():
-                        return history, history, trace_md.value, None, ""
-                    try:
-                        from agent_client import AgentClient
-                        out = AgentClient().answer(user_text, history)
-                    except Exception as e:  # noqa: BLE001
-                        out = {'say': '（agent 层异常：%s）' % str(e)[:150], 'kind': 'error'}
-                    reply = (out.get('say') or '') + "\n\n"
-                    if out.get('kind') == 'answer':
-                        reply += out.get('text') or ''
-                    elif out.get('kind') == 'demo':
-                        a = out.get('args') or {}
-                        reply += ("**规划结果**：工具「%s」\n\n参数：\n\n%s\n\n"
-                                  % (out.get('tool'), json.dumps(a, ensure_ascii=False, indent=2))
-                                  + "> 当前为规划演示（未配置 LLM/VIDEO API）。"
-                                    "配置环境变量后，本空间会真实调用外部生成服务。")
-                    elif out.get('kind') == 'remote':
-                        reply += "已提交外部生成服务（任务 %s）。" % out.get('task')
-                    else:
-                        reply += out.get('text') or ''
-                    history = history + [{"role": "user", "content": user_text},
-                                         {"role": "assistant", "content": reply}]
-                    tr = ("**模式**：%s　**工具**：%s\n\n%s"
-                          % (out.get('mode', '-'), (out.get('trace') or {}).get('tool'),
-                             json.dumps((out.get('trace') or {}), ensure_ascii=False, indent=2)[:1200]))
-                    return history, history, tr, (out.get('video') or None), ""
+                TRACE_IDLE = "_（这里会显示 agent 的工具调用轨迹）_"
 
-                send.click(_agent_step, [msg, chatbot], [chatbot, chatbot, trace_md, agent_video, msg])
-                msg.submit(_agent_step, [msg, chatbot], [chatbot, chatbot, trace_md, agent_video, msg])
-                ex1.click(lambda h: _agent_step('让参考图里的老人说一句“天冷了，快进屋坐坐吧，外面风大。”', h),
-                          [chatbot], [chatbot, chatbot, trace_md, agent_video, msg])
-                ex2.click(lambda h: _agent_step('做一段雨夜老屋门口有猫望着门内暖光的 5 秒镜头', h),
-                          [chatbot], [chatbot, chatbot, trace_md, agent_video, msg])
-                ex3.click(lambda h: _agent_step('把“父子在病房道别”做成一段连贯的 3 段故事片', h),
-                          [chatbot], [chatbot, chatbot, trace_md, agent_video, msg])
-                clr.click(lambda: ([], [], "_（这里会显示 agent 的工具调用轨迹）_", None),
-                          None, [chatbot, chatbot, trace_md, agent_video])
+                def _step(user_text, history):
+                    """UI 包装：调用模块级 agent_step（可单测），输出 4 项（不重复组件）。"""
+                    r = agent_step(user_text, history)
+                    return (r['history'], r.get('trace') or TRACE_IDLE,
+                            r.get('video') or None, gr.update(value=""))
+
+                send.click(_step, [msg, chatbot], [chatbot, trace_md, agent_video, msg])
+                msg.submit(_step, [msg, chatbot], [chatbot, trace_md, agent_video, msg])
+                ex1.click(lambda h: _step('让参考图里的老人说一句“天冷了，快进屋坐坐吧，外面风大。”', h),
+                          [chatbot], [chatbot, trace_md, agent_video, msg])
+                ex2.click(lambda h: _step('做一段雨夜老屋门口有猫望着门内暖光的 5 秒镜头', h),
+                          [chatbot], [chatbot, trace_md, agent_video, msg])
+                ex3.click(lambda h: _step('把“父子在病房道别”做成一段连贯的 3 段故事片', h),
+                          [chatbot], [chatbot, trace_md, agent_video, msg])
+                clr.click(lambda: ([], TRACE_IDLE, None), None, [chatbot, trace_md, agent_video])
 
             with gr.Tab("🎛 创作台"):
                 with gr.Row():
@@ -225,9 +240,12 @@ def build_app(show: dict):
                                                      value="480p", label="分辨率")
                             seconds = gr.Slider(2, 15, value=5, step=1, label="时长（秒）")
                         with gr.Row():
-                            voice = gr.Dropdown(choices=[v[0] for v in show["voices"]],
-                                                value=show["voices"][0][0], label="音色")
+                            voice_src = gr.Radio(choices=["模型原生语音（推荐·自适应音色）", "指定本地 TTS 音色"],
+                                                 value="模型原生语音（推荐·自适应音色）", label="语音来源")
                             subtitle = gr.Checkbox(value=True, label="烧录字幕")
+                        with gr.Accordion("高级：本地 TTS 音色（仅当上面选择「指定本地 TTS 音色」时生效）", open=False):
+                            voice = gr.Dropdown(choices=[v[0] for v in show["voices"][1:]],
+                                                value=show["voices"][1][0], label="TTS 音色")
                         negative = gr.Textbox(label="负面词（可选）", lines=2,
                                               placeholder="no text, no watermark, no distortion …")
                         with gr.Row():
@@ -239,10 +257,11 @@ def build_app(show: dict):
                         out_files = gr.File(label="下载", file_count="multiple")
                         hist = gr.Markdown("_（暂无任务记录）_", label="最近任务")
                 submit.click(submit_job,
-                             [kind, prompt, images, resolution, seconds, voice, subtitle, negative],
+                             [kind, prompt, images, resolution, seconds, voice_src, voice, subtitle, negative],
                              [status, out_video, out_files, hist, prompt])
-                clear.click(lambda: ("", None, "480p", 5, show["voices"][0][0], True, ""),
-                            None, [prompt, images, resolution, seconds, voice, subtitle, negative])
+                clear.click(lambda: ("", None, "480p", 5, "模型原生语音（推荐·自适应音色）",
+                                     show["voices"][1][0], True, ""),
+                            None, [prompt, images, resolution, seconds, voice_src, voice, subtitle, negative])
 
             with gr.Tab("🎞 样片墙"):
                 gr.Markdown("### 本机生成样片（点击播放）")
