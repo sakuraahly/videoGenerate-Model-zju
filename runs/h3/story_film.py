@@ -90,9 +90,14 @@ def spoken_line_clause(line: dict, cast: list) -> str:
     if not spk and cast:
         spk = str(cast[0])
     who = spk or 'the character in frame'
-    return ('SPOKEN LINE — %s speaks Mandarin Chinese, slowly and clearly, every syllable articulated, '
-            'voice up-front and intelligible: "%s". The lip movement must match this speech exactly; '
-            'no other speech, no mumbling, no overlapping voices.' % (who, text))
+    # 2026-09-10 实测（用户要求「模型不要生成字幕，字幕我们后期加」）：
+    #   ① 把台词用引号包起来 → H3 会**自动把它画成画面字幕**（即使另写"no subtitles"也不听）；
+    #   ② 去掉引号 + 明确"audio only / never appear as written text" → **画面完全无字**，且台词照样说对
+    #      （实测 ASR 仍为 1.000）；给拼音代替汉字则无字但发音变糊 → 必须保留汉字原文。
+    return ('SPOKEN LINE — audio only, this sentence must never appear as written text, subtitle or '
+            'caption anywhere on screen. %s speaks Mandarin Chinese, slowly and clearly, every syllable '
+            'articulated, voice up-front and intelligible, saying aloud: %s. The lip movement must match '
+            'this speech exactly; no other speech, no mumbling, no overlapping voices.' % (who, text))
 
 
 def build_prompt(seg: dict, story: dict, line: dict = None, voice_mode: str = 'native') -> str:
@@ -261,6 +266,10 @@ def line_ph(line: dict) -> str:
 ASR_PY = str(Path.home() / 'ai' / 'asr-venv' / 'bin' / 'python3')
 
 
+# 后期字幕位置（2026-09-10 用户要求"位置尽量往下放"）：0.03×高 ≈ 480p 下 14px 安全边距
+SUBTITLE_MARGIN_V = 0.03
+
+
 def probe_duration(path) -> float:
     """ffprobe 读时长（原生模式只做验收、不动音轨，故自带一个轻量实现）。"""
     try:
@@ -370,7 +379,7 @@ def run_line_native(idx: int, seg_file: str, line: dict, out: Path, work: Path, 
             _tts.attach_speech_and_subtitle(
                 Path(seg_file), text, out=out, audio_mode='keep', subtitle_source='text',
                 burn_subtitle=True, subtitle_style='harmony', subtitle_font='auto',
-                subtitle_color='auto')
+                subtitle_color='auto', subtitle_margin_v=SUBTITLE_MARGIN_V)
             target = Path(out)
         except Exception as e:  # noqa: BLE001
             print('[错误] seg%d 后期字幕失败(保留原段): %s' % (idx, str(e)[:200]), file=sys.stderr)
@@ -383,8 +392,8 @@ def run_line_native(idx: int, seg_file: str, line: dict, out: Path, work: Path, 
     syn_seg(st, idx, {'file': str(target), 'line': text, 'mode': 'native',
                       'score': score, 'line_ph': line_ph(line)})
     save_state(work, st)
-    print('seg%d 原生台词 ASR=%.2f（H3 自己说 + 自带字幕；未做后期字幕/未替换音轨）' % (idx, score),
-          flush=True)
+    print('seg%d 原生台词 ASR=%.2f（H3 原声；%s）'
+          % (idx, score, '后期字幕已烧录(贴底)' if burn_subtitle else '未烧后期字幕'), flush=True)
     return str(target)
 
 
@@ -464,8 +473,9 @@ def cmd_run(args) -> int:
             if line:
                 out_seg = work / ('seg_%02d_v.mp4' % idx)
                 if str(getattr(args, 'voice_mode', 'native')) == 'native':
+                    # 用户定案：模型不画字幕 → 由后期烧录（默认烧；--no-subtitle 可关）
                     file = run_line_native(idx, file, line, out_seg, work, st,
-                                           burn_subtitle=bool(getattr(args, 'burn_subtitle', False)))
+                                           burn_subtitle=not bool(getattr(args, 'no_subtitle', False)))
                 else:
                     file = run_line(idx, file, line, args, work, st)
                 segs[idx] = file
@@ -521,8 +531,8 @@ def main(argv=None) -> int:
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--work-dir', default='/tmp/story_film')
     ap.add_argument('--stitch', action='store_true')
-    ap.add_argument('--burn-subtitle', action='store_true',
-                    help='原生模式下额外烧录后期字幕（默认关：H3 自带字幕，再烧会变成两条叠字）')
+    ap.add_argument('--no-subtitle', action='store_true',
+                    help='不烧后期字幕（默认烧：提示词已要求模型不要画字，字幕由我们在后期加，位置贴底）')
     ap.add_argument('--voice-mode', default='native', choices=['native', 'tts'],
                     help='native(默认)=台词写进提示词由 H3 自己说+字幕原文(不重新配音)；tts=旧行为(CosyVoice 配音替换原轨)')
     ap.add_argument('--ambience', default='room', choices=['room', 'rain', 'none'],

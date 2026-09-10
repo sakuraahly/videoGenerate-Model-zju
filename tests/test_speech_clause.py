@@ -24,18 +24,33 @@ def test_augment_speech_clause_injects_both_sides():
     pos, neg, added = P.augment_speech_clause("cinematic shot", "low quality", True)
     assert "clear articulate speech" in pos and "cinematic shot" in pos
     assert "mumbled speech" in neg and "low quality" in neg
-    assert added == ["positive:speech", "positive:text-clarity", "negative:audio", "negative:text"]
+    assert added == ["positive:speech", "positive:no-text", "negative:audio", "negative:no-text"]
 
 
-def test_text_clarity_clause_for_h3_own_subtitles():
-    """H3 会自己把台词画成画面字幕（2026-09-10 实测）→ 提示词侧要求大/锐/笔画对/不重影。"""
+def test_default_is_no_on_screen_text_for_dialogue():
+    """用户定案：字幕由后期烧录 → 台词段必须让模型**不要画任何字**。"""
     pos, neg, _ = P.augment_speech_clause("the father says: hello", "", True)
-    assert "any on-screen subtitle or sign text" in pos
-    assert "large, sharp, correctly spelled" in pos
-    assert "garbled characters" in neg and "doubled subtitles" in neg
-    # 无台词段不加文字条款（避免诱导模型画字）
+    assert "no subtitles, no captions" in pos
+    assert "burned-in captions" in neg and "on-screen subtitles" in neg
+    # 无台词段不加（避免反向诱导），但仍保留环境声条款
     pos2, _, _ = P.augment_speech_clause("empty street, rain", "", False)
-    assert "any on-screen subtitle" not in pos2 and "ambient sound only" in pos2
+    assert "ambient sound only" in pos2 and "no subtitles" not in pos2
+
+
+def test_four_dimension_text_spec_when_text_is_wanted():
+    """明确要画面内文字时（招牌/字样）：中文前缀 + 字体风格/字号层级/颜色对比/动态行为 四维 + 禁艺术化手写。"""
+    pos, neg, added = P.augment_speech_clause(
+        "a shop sign reads: 修表 in Chinese characters", "", True)
+    assert "超高清摄影，8K文字渲染，矢量级笔画锐度，无抗锯齿失真" in pos
+    for dim in ("(1) font style", "(2) size hierarchy", "(3) colour contrast", "(4) motion"):
+        assert dim in pos
+    assert "artistic lettering" in neg and "calligraphy" in neg
+    assert "positive:text-prefix" in added and "positive:text-4d" in added
+    assert P.detect_text_wanted('a shop sign reads: "修表"') is True
+    assert P.detect_text_wanted("招牌上写着“修表”两个字") is True
+    assert P.detect_text_wanted("the father speaks slowly") is False
+    # 反向句不能误判（"no signage text" / "no lettering on any surface" 都不得触发文字条款）
+    assert P.detect_text_wanted("no lettering on any surface, no signage text") is False
 
 
 def test_augment_no_speech_segment_gets_ambient_only():
@@ -50,6 +65,17 @@ def test_augment_is_idempotent_and_switchable():
     assert twice[2] == []
     off = P.augment_speech_clause("shot", "low quality", True, enabled=False)
     assert off == ("shot", "low quality", [])
+
+
+def test_spoken_line_clause_avoids_quotes_to_suppress_h3_subtitles():
+    """实测：引号会让 H3 把台词画成画面字幕；条款必须"无引号 + audio only"（2026-09-10）。"""
+    from runs.h3 import story_film as sf
+
+    clause = sf.spoken_line_clause({"text": "这台收音机，我修了三个晚上。", "speaker": "父亲"}, ["父亲"])
+    assert "这台收音机，我修了三个晚上。" in clause          # 汉字原文必须保留（保发音）
+    assert '"' not in clause and "“" not in clause            # 不能有引号（否则模型会画字幕）
+    assert "audio only" in clause and "never appear as written text" in clause
+    assert "父亲 speaks Mandarin Chinese" in clause
 
 
 def test_mix_filtergraph_loudnorm_comes_after_amix():

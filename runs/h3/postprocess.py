@@ -173,7 +173,7 @@ SUBTITLE_STYLES = {
 def _subtitle_style(srt: Path, src: Path, fontsize: int = 0,
                     style_name: str = "Noto Sans CJK SC",
                     preset: str = "harmony", font: str = "auto",
-                    color: str = "auto") -> tuple:
+                    color: str = "auto", margin_v_ratio: float = 0.0) -> tuple:
     """字幕 vf 片段与样式（2026-09-07 定稿）：preset=harmony/kai/song/black/minimal/classic；
     font=auto/kai/song/sans；color=auto/white/black。fontsize>0 时覆盖字号（px）。
     字号自适应 = ratio×高（下限/上限）；位置底部居中+安全区；描边/阴影极轻→不抢戏。
@@ -200,7 +200,9 @@ def _subtitle_style(srt: Path, src: Path, fontsize: int = 0,
     else:
         fs = max(int(cfg["min"]), int(round(h * cfg["ratio"])))
         fs = min(fs, int(cfg["cap"]))
-    margin_v = max(14, int(round(h * cfg.get("margin_v", 0.10))))
+    # 2026-09-10 用户要求：字幕"位置尽量往下放" → 可用 margin_v_ratio 覆盖预设（默认 0=用预设）
+    _mv = float(margin_v_ratio or 0.0) or float(cfg.get("margin_v", 0.10))
+    margin_v = max(10, int(round(h * _mv)))
     shadow = f",Shadow={cfg['sh']}" + (f",ShadowColour={cfg['shadow']}" if cfg.get("shadow") else "")
     force_style = (f"FontName={cfg['font']},FontSize={fs},PrimaryColour={cfg['text']},"
                    f"OutlineColour={cfg['outline']},BorderStyle=1,Outline={cfg['o']},"
@@ -212,11 +214,12 @@ def _subtitle_style(srt: Path, src: Path, fontsize: int = 0,
 def render_subtitle(input_path: Path, out: Path, srt: Path, fontsize: int = 0,
                     style_name: str = "Noto Sans CJK SC",
                     preset: str = "harmony", font: str = "auto",
-                    color: str = "auto") -> dict:
+                    color: str = "auto", margin_v_ratio: float = 0.0) -> dict:
     """用 libass 烧录 SRT 到视频（中文字体；失败抛 ValueError）。
     2026-09-07 定稿：preset=harmony(默认浑然天成)/kai楷体/song宋体/black黑字亮底/minimal/classic，
     font/color 可再覆盖；fontsize=0 → 随分辨率等比自适应（0.05H 起，下限/上限）。"""
-    _vf, _ = _subtitle_style(srt, input_path, fontsize, style_name, preset, font, color)
+    _vf, _ = _subtitle_style(srt, input_path, fontsize, style_name, preset, font, color,
+                             margin_v_ratio=margin_v_ratio)
     vf = _vf
     cmd = ["ffmpeg", "-y", "-i", str(input_path), "-vf", vf,
            "-c:v", "libx264", "-preset", "fast", "-crf", "18",

@@ -337,7 +337,8 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
                                narration: str = "",
                                speech_speed: float = 0.95,
                                instruct: str = "",
-                               burn_subtitle: bool = True) -> dict:
+                               burn_subtitle: bool = True,
+                               subtitle_margin_v: float = 0.0) -> dict:
     """成品链：字幕烧录 + 音轨策略（2026-09-08 语义升级——角色原声优先）。
 
     audio_mode（2026-09-09 修正：默认 replace）:
@@ -381,7 +382,8 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
             srt.write_text(f"1\n00:00:00,000 --> {_srt_time(dur or 1.0)}\n{line_text}\n", encoding="utf-8")
             if burn_subtitle:
                 render_subtitle(input_video, with_sub, srt, fontsize=fontsize,
-                                preset=subtitle_style, font=subtitle_font, color=subtitle_color)
+                                preset=subtitle_style, font=subtitle_font, color=subtitle_color,
+                                margin_v_ratio=subtitle_margin_v)
             else:
                 # 字幕可选（2026-09-09 用户要求）：不烧字幕，仅保留/替换音轨
                 import shutil as _sh0
@@ -415,7 +417,8 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
         srt.write_text(f"1\n00:00:00,000 --> {_srt_time(spd)}\n{text}\n", encoding="utf-8")
         if burn_subtitle:
             render_subtitle(input_video, with_sub, srt, fontsize=fontsize,
-                            preset=subtitle_style, font=subtitle_font, color=subtitle_color)
+                            preset=subtitle_style, font=subtitle_font, color=subtitle_color,
+                            margin_v_ratio=subtitle_margin_v)
         else:
             import shutil as _sh1
             _sh1.copy2(str(input_video), str(with_sub))

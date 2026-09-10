@@ -143,12 +143,23 @@ NO_SPEECH_POS = 'ambient sound only, no spoken words, no human speech'
 # H3 原生字幕/画面文字的清晰度条款（2026-09-10 用户要求"增加 H3 原生生成的文字的清晰度"）：
 # 实测 H3 会把提示词里的台词**自己画成画面字幕**（白字黑边、笔画正确）；但分辨率越低越糊，
 # 且背景招牌容易变乱码。这里从提示词侧把"大、锐、笔画对、高对比、不重影"写死。
-TEXT_CLARITY_POS = ('any on-screen subtitle or sign text is rendered as large, sharp, correctly spelled '
-                    'simplified Chinese characters with accurate strokes and clean edges, high contrast '
-                    'against the background, steady and perfectly legible, sitting in the lower third, '
-                    'never doubled or overlapping')
-TEXT_NEG = ('blurry text, garbled characters, wrong or missing strokes, ghosted or doubled subtitles, '
-            'jittering letters, overlapping captions, mirrored text, tiny illegible lettering')
+# 用户给的四维描述法（2026-09-10）：字体风格 / 字号层级 / 颜色对比 / 动态行为 + 前缀
+TEXT_PREFIX_CN = '超高清摄影，8K文字渲染，矢量级笔画锐度，无抗锯齿失真'
+TEXT_RENDER_POS = (TEXT_PREFIX_CN + '; on-screen lettering is rendered as clean professional type: '
+                   '(1) font style: modern sans-serif (Heiti) with uniform stroke width and straight terminals, '
+                   'no decorative or calligraphic flourishes; (2) size hierarchy: the primary line is the largest '
+                   'and clearly dominant, any secondary text is at most 60% of that size and sits on the same '
+                   'straight baseline; (3) colour contrast: pure white glyphs with a thin dark outline over a '
+                   'subtly darkened panel, high contrast, no glow, no gradient; (4) motion: static and rock-steady '
+                   'in every frame, no flicker, no jitter, no warping, no stroke morphing, no re-drawn letters')
+TEXT_BAN_NEG = ('artistic lettering, handwritten script, calligraphy, brush strokes, graffiti, decorative '
+                'flourishes, warped or morphing glyphs, melting strokes, letters that redraw themselves')
+# 默认策略（用户定案）：**画面里不要任何文字/字幕** —— 字幕由后期烧录，模型画的会与后期叠字
+NO_TEXT_POS = ('the character speaks on camera with the mouth clearly moving, but the spoken words are NOT '
+               'written anywhere in the picture: absolutely no subtitles, no captions, no lyrics, no floating '
+               'text, no lettering on any surface')
+NO_TEXT_NEG = ('on-screen subtitles, burned-in captions, karaoke text, floating text overlay, letters over the '
+               'image, foreground sign lettering, text rendered on screen')
 
 _SPEECH_HINTS = ('says', 'say:', 'speaks', 'speaking', 'dialogue', 'monologue', 'narrator',
                  '\u8bf4\u8bdd', '\u53f0\u8bcd', '\u5bf9\u8bdd', '\u72ec\u767d', '\u8bf4\u9053', '\u558a', '\u4f4e\u8bed')
@@ -164,19 +175,43 @@ def detect_speech_wanted(prompt: str, tts_text: str = '', stage_id: str = '') ->
     return any(h in t for h in _SPEECH_HINTS)
 
 
-def augment_speech_clause(positive: str, negative: str, want_speech: bool, enabled: bool = True):
+# 提示词里明确要"画面内文字"（招牌/标语/门牌/字样）时才走文字渲染条款
+# 只认"明确要求出现文字内容"的短语（不能只看 sign/label —— "no signage text" 这类反向句也会命中，
+# 会导致条款自相矛盾且不幂等；2026-09-10 单测抓到）
+_TEXT_HINTS = ('sign reads', 'sign that reads', 'sign saying', 'signage reads', 'label reads',
+               'label that reads', 'billboard reads', 'banner reads', 'text reads', 'reads "',
+               '\u62db\u724c\u4e0a\u5199\u7740', '\u62db\u724c\u5199\u7740', '\u6807\u8bed\u5199\u7740',
+               '\u724c\u533e\u4e0a\u5199\u7740', '\u95e8\u724c\u4e0a\u5199\u7740', '\u6a2a\u5e45\u4e0a\u5199\u7740',
+               '\u5b57\u6837\u662f', '\u5b57\u6837\u4e3a')
+
+
+def detect_text_wanted(prompt: str) -> bool:
+    t = (prompt or '').lower()
+    return any(h in t for h in _TEXT_HINTS)
+
+
+def augment_speech_clause(positive: str, negative: str, want_speech: bool,
+                          enabled: bool = True, want_text: bool = None):
     """把语音条款注入正/负提示词。幂等（已含则不重复）。返回 (positive, negative, added)。"""
     pos, neg = (positive or '').strip(), (negative or '').strip()
     if not enabled:
         return pos, neg, []
     added = []
-    if want_speech:
-        if 'clear articulate speech' not in pos.lower():
-            pos = (pos + ', ' + SPEECH_POS).strip(', ')
-            added.append('positive:speech')
-        if 'any on-screen subtitle or sign text' not in pos.lower():
-            pos = (pos + ', ' + TEXT_CLARITY_POS).strip(', ')
-            added.append('positive:text-clarity')
+    want_text = detect_text_wanted(pos) if want_text is None else bool(want_text)
+    if want_speech and 'clear articulate speech' not in pos.lower():
+        pos = (pos + ', ' + SPEECH_POS).strip(', ')
+        added.append('positive:speech')
+    if want_text:                      # 明确要字：四维描述法 + 前缀 + 禁"艺术化/手写感"
+        if TEXT_PREFIX_CN not in pos:
+            pos = (TEXT_PREFIX_CN + ', ' + pos).strip(', ')
+            added.append('positive:text-prefix')
+        if '(1) font style' not in pos:
+            pos = (pos + ', ' + TEXT_RENDER_POS).strip(', ')
+            added.append('positive:text-4d')
+    elif want_speech:                  # 默认：说话镜头不要任何画面文字（字幕我们后期加）
+        if 'no subtitles, no captions' not in pos.lower():
+            pos = (pos + ', ' + NO_TEXT_POS).strip(', ')
+            added.append('positive:no-text')
     else:
         if 'ambient sound only' not in pos.lower():
             pos = (pos + ', ' + NO_SPEECH_POS).strip(', ')
@@ -184,9 +219,12 @@ def augment_speech_clause(positive: str, negative: str, want_speech: bool, enabl
     if 'mumbled speech' not in neg.lower():
         neg = (neg + ', ' + SPEECH_NEG).strip(', ')
         added.append('negative:audio')
-    if want_speech and 'garbled characters' not in neg.lower():
-        neg = (neg + ', ' + TEXT_NEG).strip(', ')
-        added.append('negative:text')
+    if want_text and 'artistic lettering' not in neg.lower():
+        neg = (neg + ', ' + TEXT_BAN_NEG).strip(', ')
+        added.append('negative:text-artistic')
+    elif want_speech and 'burned-in captions' not in neg.lower():
+        neg = (neg + ', ' + NO_TEXT_NEG).strip(', ')
+        added.append('negative:no-text')
     return pos, neg, added
 
 
