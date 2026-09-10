@@ -549,6 +549,76 @@ def test_agent_text_extraction_all_shapes():
     assert ac.AgentClient._extract_agent_text("纯文本回复") == "纯文本回复"
     assert ac.AgentClient._extract_agent_text('{"foo":1}') == ""
 
+# ---------- 安全加固（2026-09-10）：任务号校验 / SSRF 防护 / 内存与限流 ----------
+
+def test_safe_job_id_blocks_traversal():
+    """任务号来自外部接口，直接拼进 URL 会路径穿越 —— 必须白名单校验。"""
+    assert ac.AgentClient._safe_job_id("abc-123_DEF:9") == "abc-123_DEF:9"
+    assert ac.AgentClient._safe_job_id("../../admin") == ""
+    assert ac.AgentClient._safe_job_id("a b") == ""
+    assert ac.AgentClient._safe_job_id("x" * 65) == ""
+    assert ac.AgentClient._safe_job_id("") == ""
+
+
+def test_poll_job_rejects_bad_id_without_http(monkeypatch):
+    c = _client(ENGINE_STATUS_URL="https://engine.example/v1/status")
+    called = []
+    monkeypatch.setattr(c, "_get_json", lambda *a, **k: called.append(a) or {})
+    out = c.poll_job("../../etc/passwd")
+    assert out["status"] == "unknown" and called == []
+
+
+def test_safe_filename_strips_separators():
+    assert ac.AgentClient._safe_filename("../../etc/passwd") == "etc_passwd"
+    assert ac.AgentClient._safe_filename("a/b\\c.mp4") == "a_b_c.mp4"
+    assert ac.AgentClient._safe_filename("") == "result.mp4"
+    assert ac.AgentClient._safe_filename("....") == "result.mp4"
+
+
+def test_download_refuses_cloud_metadata(monkeypatch):
+    """SSRF 防护：外部接口返回云元数据地址时必须拒绝，且不发请求。"""
+    fetched = []
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: fetched.append(a))
+    for bad in ("http://169.254.169.254/latest/meta-data/", "http://100.100.100.200/latest/meta-data/",
+                "http://metadata.google.internal/computeMetadata/v1/"):
+        assert ac.AgentClient.download(bad) == ""
+    assert fetched == []
+
+
+def test_file_to_b64_respects_size_cap(tmp_path, monkeypatch):
+    monkeypatch.setenv("MAX_UPLOAD_MB", "1")
+    big = tmp_path / "big.png"
+    big.write_bytes(b"x" * (2 * 1024 * 1024))
+    assert ac.AgentClient.file_to_b64(str(big)) == ""
+    small = tmp_path / "small.png"
+    small.write_bytes(b"x" * 1024)
+    assert ac.AgentClient.file_to_b64(str(small)).startswith("data:image/png;base64,")
+
+
+def test_record_job_drops_oversized_image(monkeypatch):
+    """台账里的大图要裁剪，否则 20 条就能把免费档内存吃满；重试时如实告知。"""
+    monkeypatch.setenv("MAX_JOB_IMAGE_MB", "1")
+    c = _client(ENGINE_BASE_URL="https://engine.example/v1/jobs")
+    rec = c.record_job("generate_talk", {"text": "hi"},
+                       {"text": "hi", "image_b64": "A" * (2 * 1024 * 1024)}, "j1")
+    assert rec["image_dropped"] is True and "image_b64" not in rec["payload"]
+    monkeypatch.setattr(c, "_post_json", lambda *a, **k: {"job_id": "j2"})
+    out = c.retry_job("j1")
+    assert out["ok"] and "参考图" in out["text"]
+
+
+def test_poll_wait_zero_returns_pending(monkeypatch):
+    """ENGINE_SYNC_WAIT=0：不阻塞，直接返回任务号（免费档不能长占工作线程）。"""
+    monkeypatch.setenv("ENGINE_SYNC_WAIT", "0")
+    c = _client(ENGINE_BASE_URL="https://engine.example/v1/jobs",
+                ENGINE_STATUS_URL="https://engine.example/v1/status")
+    monkeypatch.setattr(c, "_post_json", lambda *a, **k: {"job_id": "job-9"})
+    probed = []
+    monkeypatch.setattr(c, "_get_json", lambda *a, **k: probed.append(a) or {})
+    out = c.run_tool({"tool": "generate_video", "args": {"prompt": "p"}})
+    assert out["ok"] and out.get("pending") is True and probed == []
+    assert "还在生成中" in out["text"]
+
 
 def test_plan_agent_url_uses_json_plan(monkeypatch):
     os.environ["AGENT_URL"] = "https://agent.example.com/api/agent"

@@ -74,12 +74,8 @@ def _shared_client():
     客户端的工具调用全部走 HTTP，无本地依赖；共享实例只用于记住本会话提交过的任务。
     """
     if 'c' not in _SHARED:
-        try:
-            from agent_client import AgentClient
-            _SHARED['c'] = AgentClient()
-        except Exception:  # noqa: BLE001
-            from agent_client import AgentClient
-            _SHARED['c'] = AgentClient()
+        from agent_client import AgentClient
+        _SHARED['c'] = AgentClient()
     return _SHARED['c']
 
 
@@ -151,8 +147,13 @@ def jobs_table(jobs, client=None, refresh: bool = False) -> str:
     if not jobs:
         return "_（本会话还没有任务：在下面说一句需求即可）_"
     if refresh and client is not None:
+        # 一次刷新最多查 5 个在跑的任务：每次查询都是一次 HTTP 往返，任务多了会把页面拖死
+        probed = 0
         for j in jobs:
+            if probed >= 5:
+                break
             if j.get('status') in ('running', 'queued', 'unknown'):
+                probed += 1
                 st = client.poll_job(j['id'])
                 j['status'] = st.get('status') or j['status']
                 if st.get('video_url'):
@@ -410,7 +411,7 @@ _{show['footer']}_""")
 
                 _probe.click(_probe_click, [], [_probe_out])
 
-        gr.Markdown(f"\n---\n_空间版本 v2.7（2026-09-10 · Agent=工具集+外置大脑；AGENT_URL/DeepSeek 通道 + 任务查询/重试/续跑 + 连接自测 + 配置自检）_")
+        gr.Markdown(f"\n---\n_空间版本 v2.8（2026-09-10 · Agent=工具集+外置大脑；安全加固：SSRF/任务号/文件名/内存与限流 + 可配置等待 + 连接自测）_")
     return demo
 
 

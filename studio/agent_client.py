@@ -155,6 +155,8 @@ class AgentClient:
         # 断点续跑能力声明：只有引擎显式声明支持 resume_from 时才真续跑（否则如实拒绝，不假装）
         self.engine_resume = bool(_env('ENGINE_RESUME'))
         self.job_log = []                # 本会话作业台账（供 查/重试/续跑 工具使用）
+        import threading as _threading
+        self._lock = _threading.Lock()   # 台账并发保护（Gradio 可能并发处理请求）
         # 断点续跑能力声明：只有引擎显式声明支持 resume_from 时才真续跑（否则如实拒绝，不假装）
         self.engine_resume = bool(_env('ENGINE_RESUME'))
         self.job_log: list = []          # 本会话作业台账（供查/重试/续跑工具使用）
@@ -212,6 +214,9 @@ class AgentClient:
         for cand in cands:
             try:
                 if cand.is_file():
+                    # 大小上限：避免一个超大提示文件把上下文/内存打爆（免费档尤其敏感）
+                    if cand.stat().st_size > 64 * 1024:
+                        continue
                     return cand.read_text(encoding='utf-8')
             except Exception:  # noqa: BLE001
                 pass
@@ -616,21 +621,34 @@ class AgentClient:
             trace['response'] = self._brief(d)
             job_id = d.get('job_id') or d.get('task_id') or d.get('id')
             video = d.get('video_url') or d.get('url')
-            if job_id and not video and self.engine_status:
+            pending = False
+            jid = self._safe_job_id(job_id)
+            if jid and not video and self.engine_status:
+                # 等待时长可配（免费 CPU 档不宜长占工作线程；默认 120s，0=不等待直接返回任务号）
+                try:
+                    wait_s = int(float(_env('ENGINE_SYNC_WAIT', default='120') or 120))
+                except Exception:  # noqa: BLE001
+                    wait_s = 120
                 t0 = time.time()
                 trace['polls'] = []
-                while time.time() - t0 < 600:
+                while wait_s > 0 and time.time() - t0 < wait_s:
                     time.sleep(10)
-                    sd = self._get_json(self.engine_status.rstrip('/') + '/' + str(job_id), self.engine_key)
+                    sd = self._get_json(self.engine_status.rstrip('/') + '/' + jid, self.engine_key)
                     trace['polls'].append(sd.get('status'))
                     if sd.get('video_url') or sd.get('url'):
                         video = sd.get('video_url') or sd.get('url')
                         break
                     if sd.get('status') in ('failed', 'error'):
                         raise RuntimeError(sd.get('error') or '外部服务返回失败')
+                pending = not video
             self.record_job(tool, args, payload, job_id, video=video or '')
-            return {'ok': True, 'kind': 'remote', 'task': job_id, 'video': video,
-                    'payload': payload, 'trace': trace}
+            out = {'ok': True, 'kind': 'remote', 'task': job_id, 'video': video,
+                   'payload': payload, 'trace': trace}
+            if pending:
+                out['pending'] = True
+                out['text'] = ('任务已提交（%s），还在生成中。可以问我「那个任务好了吗」，'
+                               '或在右侧任务面板点刷新看结果。' % (jid or job_id))
+            return out
         except Exception as e:  # noqa: BLE001
             trace['result'] = 'ERR ' + str(e)[:160]
             return {'ok': False, 'kind': 'error', 'trace': trace,
@@ -669,14 +687,30 @@ class AgentClient:
     MAX_JOBS = 20
 
     def record_job(self, tool, args, payload, job_id, status='running', video='', error=''):
-        '''登记一次真实提交（重试/续跑要靠它拿到原始参数）。'''
+        '''登记一次真实提交（重试/续跑要靠它拿到原始参数）。
+
+        内存保护：payload 里的 image_b64 可能是几 MB，存 20 条会吃满免费档内存 ——
+        超过上限就丢弃并打标记（重试时如实告知「参考图不会重放」，不假装参数齐全）。
+        '''
+        p = dict(payload or {})
+        img = p.get('image_b64')
+        try:
+            cap = int(float(_env('MAX_JOB_IMAGE_MB', default='4') or 4)) * (1 << 20)
+        except Exception:  # noqa: BLE001
+            cap = 4 * (1 << 20)
+        dropped = False
+        if isinstance(img, str) and len(img) > cap:
+            p.pop('image_b64', None)
+            dropped = True
         rec = {'job_id': str(job_id or ''), 'tool': tool, 'args': self._brief(args or {}),
-               'payload': payload or {}, 'status': status, 'video': video or '',
-               'error': error or '', 'ts': time.strftime('%H:%M:%S'),
+               'payload': p, 'status': status, 'video': video or '',
+               'error': error or '', 'image_dropped': dropped,
+               'ts': time.strftime('%H:%M:%S'),
                'time': time.strftime('%Y-%m-%d %H:%M:%S')}
-        self.job_log = [j for j in self.job_log if j.get('job_id') != rec['job_id']]
-        self.job_log.append(rec)
-        del self.job_log[:-self.MAX_JOBS]
+        with self._lock:
+            self.job_log = [j for j in self.job_log if j.get('job_id') != rec['job_id']]
+            self.job_log.append(rec)
+            del self.job_log[:-self.MAX_JOBS]
         return rec
 
     def _find_job(self, job_id=''):
@@ -691,13 +725,20 @@ class AgentClient:
                 return r
         return {}
 
-    def list_jobs(self, limit=8, refresh=True):
-        '''列本会话任务；配了状态接口就顺手刷新（查不到保持原状态，不谎报）。'''
+    def list_jobs(self, limit=8, refresh=True, refresh_limit=5):
+        '''列本会话任务；配了状态接口就顺手刷新（查不到保持原状态，不谎报）。
+
+        refresh_limit：最多刷新几个「在跑」的任务——每次刷新都是一次 HTTP 请求，
+        任务多了会把页面拖死（免费档尤其明显）。
+        '''
         rows = self.job_log[-max(1, min(int(limit or 8), self.MAX_JOBS)):]
         out = []
+        refreshed = 0
         for r in rows:
             st = dict(r)
-            if refresh and self.engine_status and r.get('status') in ('running', 'queued', 'unknown', ''):
+            if (refresh and self.engine_status and refreshed < max(0, int(refresh_limit or 0))
+                    and r.get('status') in ('running', 'queued', 'unknown', '')):
+                refreshed += 1
                 p = self.poll_job(r.get('job_id'))
                 if p.get('status') and p.get('status') != 'unknown':
                     st['status'] = p['status']
@@ -769,6 +810,8 @@ class AgentClient:
         video = d.get('video_url') or d.get('url') or ''
         self.record_job(rec.get('tool') or '-', {}, payload, new_id, video=video)
         tail = ('，覆盖：' + json.dumps(over, ensure_ascii=False)) if over else ''
+        if rec.get('image_dropped'):
+            tail += '（注意：原任务的参考图太大未保存，重试**不带参考图**；需要带图请在对话里重新上传）'
         return {'ok': True, 'task': new_id, 'video': video, 'payload': payload,
                 'text': '已用原参数重新提交（新任务 %s）%s。' % (new_id, tail)}
 
@@ -844,15 +887,77 @@ class AgentClient:
 
     def poll_job(self, job_id: str) -> dict:
         """任务面板用:查询外部接口的作业状态(未配置状态接口时返回 unknown,不报错)。"""
-        if not (job_id and self.engine_status):
+        jid = self._safe_job_id(job_id)          # 只允许白名单字符，防路径穿越
+        if not (jid and self.engine_status):
             return {'status': 'unknown', 'video_url': None}
         try:
-            d = self._get_json(self.engine_status.rstrip('/') + '/' + str(job_id), self.engine_key)
+            d = self._get_json(self.engine_status.rstrip('/') + '/' + jid, self.engine_key)
             return {'status': d.get('status') or 'running',
                     'video_url': d.get('video_url') or d.get('url'),
                     'error': d.get('error')}
         except Exception as e:  # noqa: BLE001
             return {'status': 'unknown', 'video_url': None, 'error': str(e)[:120]}
+
+    # ---------- 安全工具（2026-09-10 加固） ----------
+    _JOB_ID_RE = None          # 懒编译
+
+    @staticmethod
+    def _safe_job_id(job_id) -> str:
+        """任务号白名单校验：只允许 [A-Za-z0-9._:-]，长度 ≤64。
+
+        任务号来自外部接口，直接拼进查询 URL 会有路径穿越/注入风险（如 ../../admin）。
+        """
+        import re as _re
+        s = str(job_id or '').strip()
+        if not s or len(s) > 64:
+            return ''
+        return s if _re.fullmatch(r'[A-Za-z0-9._:-]+', s) else ''
+
+    # 元数据/链路本地地址：从外部接口拿到的 URL 若指向这里，属于 SSRF 探云元数据，一律拒绝
+    _METADATA_HOSTS = ('169.254.169.254', '100.100.100.200', '100.100.100.201',
+                       'metadata.google.internal', 'metadata.aliyun.com')
+    _METADATA_PREFIXES = ('169.254.', 'fd00:ec2::')
+
+    @classmethod
+    def _is_metadata_url(cls, url: str) -> bool:
+        """判断 URL 是否指向云元数据/链路本地地址（含域名解析后的结果）。"""
+        try:
+            import ipaddress
+            from urllib.parse import urlparse
+            import socket
+            host = (urlparse(str(url)).hostname or '').strip().lower()
+            if not host:
+                return True                      # 解析不出主机名：按不安全处理
+            if host in cls._METADATA_HOSTS or host.startswith(cls._METADATA_PREFIXES):
+                return True
+            try:
+                ips = {ai[4][0] for ai in socket.getaddrinfo(host, None)}
+            except Exception:
+                return False                     # 解析不了就先放行，交给下载失败分支
+            for ip in ips:
+                try:
+                    a = ipaddress.ip_address(ip)
+                except ValueError:
+                    continue
+                if a.is_link_local or str(a) in cls._METADATA_HOSTS:
+                    return True
+            return False
+        except Exception:
+            return False
+
+    @staticmethod
+    def _safe_filename(name: str, default: str = 'result.mp4') -> str:
+        """把 URL 派生出的文件名洗成安全文件名（去掉分隔符/上跳/控制字符）。"""
+        import re as _re
+        s = str(name or '').strip()
+        s = s.split('?')[0].split('#')[0]
+        s = _re.sub(r'[^A-Za-z0-9._-]', '_', s).strip('._') or default
+        if '.' in s:                      # 只保留最后一个小数点作扩展名，其余点变下划线（杜绝 ..）
+            stem, _, ext = s.rpartition('.')
+            stem = (stem.replace('.', '_').strip('._') or 'result')[:60]
+            ext = _re.sub(r'[^A-Za-z0-9]', '', ext)[:8] or 'mp4'
+            s = '%s.%s' % (stem, ext)
+        return s[-80:]
 
     # ---------- 空间内等价实现:把外部成片取回本地,供页面预览/下载 ----------
     OUTPUT_DIR = Path(__file__).resolve().parent / 'outputs'
@@ -866,11 +971,13 @@ class AgentClient:
         """
         if not url or not str(url).startswith(('http://', 'https://')):
             return ''
+        if cls._is_metadata_url(url):       # SSRF 防护：拒绝云元数据/链路本地地址
+            return ''
         import urllib.request
         out_dir = Path(dest_dir) if dest_dir else cls.OUTPUT_DIR
         try:
             out_dir.mkdir(parents=True, exist_ok=True)
-            name = (str(url).split('?')[0].rstrip('/').split('/')[-1] or 'result.mp4')[-80:]
+            name = cls._safe_filename(str(url).split('?')[0].rstrip('/').split('/')[-1])
             if not name.lower().endswith(('.mp4', '.webm', '.mov', '.mkv')):
                 name += '.mp4'
             dest = out_dir / ('%d_%s' % (int(time.time()), name))
@@ -903,8 +1010,15 @@ class AgentClient:
     # ---------- 便捷:上传文件 -> data URL ----------
     @staticmethod
     def file_to_b64(path: str) -> str:
+        """上传图 -> data URL。带大小上限，避免用户传超大文件把免费档内存打爆。"""
         try:
             p = Path(path)
+            try:
+                limit = int(float(_env('MAX_UPLOAD_MB', default='12') or 12)) * (1 << 20)
+            except Exception:  # noqa: BLE001
+                limit = 12 * (1 << 20)
+            if p.stat().st_size > limit:
+                return ''
             raw = p.read_bytes()
             ext = p.suffix.lower().lstrip('.') or 'png'
             mime = {'jpg': 'jpeg', 'jpeg': 'jpeg', 'png': 'png', 'webp': 'webp'}.get(ext, 'png')
