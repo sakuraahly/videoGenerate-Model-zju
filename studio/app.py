@@ -138,10 +138,68 @@ def build_app(show: dict):
             return "_（暂无任务记录）_"
         return "\n".join("| %s | %s | %s |" % (h["ts"], h["kind"], h["state"]) for h in job_history[-10:])
 
-    with gr.Blocks(title=show["title"], theme=gr.themes.Soft()) as demo:
+    # Gradio 6.x：theme 从 Blocks 移到 launch()
+    with gr.Blocks(title=show["title"]) as demo:
         gr.Markdown(f"## 🎬 {show['title']}\n\n{show['tagline']}")
 
         with gr.Tabs():
+            with gr.Tab("🤖 Agent 对话"):
+                gr.Markdown("### 直接说需求，agent 自己选工具、定参数、调外部生成接口")
+                gr.Markdown("_本空间不部署模型：LLM 负责决策 + 外部视频 API 负责出片；未配置 key 时为规划演示。_")
+                chatbot = gr.Chatbot(label="对话", height=340)  # Gradio 6.x 默认 messages 格式
+                with gr.Row():
+                    msg = gr.Textbox(label="说点什么", scale=4,
+                                     placeholder="例：让参考图里的老人说一句“天冷了，快进屋坐坐吧。”"
+                                                 "／做一段雨夜老屋门口有猫的 5 秒镜头")
+                    send = gr.Button("发送", variant="primary", scale=1)
+                trace_md = gr.Markdown("_（这里会显示 agent 的工具调用轨迹）_")
+                agent_video = gr.Video(label="本轮产物（若有）", interactive=False)
+                with gr.Row():
+                    ex1 = gr.Button("示例·说话镜头", size="sm")
+                    ex2 = gr.Button("示例·5 秒镜头", size="sm")
+                    ex3 = gr.Button("示例·故事片", size="sm")
+                    clr = gr.Button("清空对话", size="sm")
+
+                def _agent_step(user_text, history):
+                    history = history or []
+                    if not (user_text or '').strip():
+                        return history, history, trace_md.value, None, ""
+                    try:
+                        from agent_client import AgentClient
+                        out = AgentClient().answer(user_text, history)
+                    except Exception as e:  # noqa: BLE001
+                        out = {'say': '（agent 层异常：%s）' % str(e)[:150], 'kind': 'error'}
+                    reply = (out.get('say') or '') + "\n\n"
+                    if out.get('kind') == 'answer':
+                        reply += out.get('text') or ''
+                    elif out.get('kind') == 'demo':
+                        a = out.get('args') or {}
+                        reply += ("**规划结果**：工具「%s」\n\n参数：\n\n%s\n\n"
+                                  % (out.get('tool'), json.dumps(a, ensure_ascii=False, indent=2))
+                                  + "> 当前为规划演示（未配置 LLM/VIDEO API）。"
+                                    "配置环境变量后，本空间会真实调用外部生成服务。")
+                    elif out.get('kind') == 'remote':
+                        reply += "已提交外部生成服务（任务 %s）。" % out.get('task')
+                    else:
+                        reply += out.get('text') or ''
+                    history = history + [{"role": "user", "content": user_text},
+                                         {"role": "assistant", "content": reply}]
+                    tr = ("**模式**：%s　**工具**：%s\n\n%s"
+                          % (out.get('mode', '-'), (out.get('trace') or {}).get('tool'),
+                             json.dumps((out.get('trace') or {}), ensure_ascii=False, indent=2)[:1200]))
+                    return history, history, tr, (out.get('video') or None), ""
+
+                send.click(_agent_step, [msg, chatbot], [chatbot, chatbot, trace_md, agent_video, msg])
+                msg.submit(_agent_step, [msg, chatbot], [chatbot, chatbot, trace_md, agent_video, msg])
+                ex1.click(lambda h: _agent_step('让参考图里的老人说一句“天冷了，快进屋坐坐吧，外面风大。”', h),
+                          [chatbot], [chatbot, chatbot, trace_md, agent_video, msg])
+                ex2.click(lambda h: _agent_step('做一段雨夜老屋门口有猫望着门内暖光的 5 秒镜头', h),
+                          [chatbot], [chatbot, chatbot, trace_md, agent_video, msg])
+                ex3.click(lambda h: _agent_step('把“父子在病房道别”做成一段连贯的 3 段故事片', h),
+                          [chatbot], [chatbot, chatbot, trace_md, agent_video, msg])
+                clr.click(lambda: ([], [], "_（这里会显示 agent 的工具调用轨迹）_", None),
+                          None, [chatbot, chatbot, trace_md, agent_video])
+
             with gr.Tab("🎛 创作台"):
                 with gr.Row():
                     with gr.Column(scale=3):
@@ -220,8 +278,13 @@ def main() -> int:
     show = load_show()
     app = build_app(show)
     app.queue()
+    try:
+        _theme = __import__('gradio').themes.Soft()
+    except Exception:  # noqa: BLE001
+        _theme = None
     app.launch(server_name=args.host, server_port=args.port, share=args.share,
-               show_error=True, quiet=True, allowed_paths=[str(ASSETS)])
+               show_error=True, quiet=True, allowed_paths=[str(ASSETS)],
+               **(dict(theme=_theme) if _theme is not None else {}))
     return 0
 
 

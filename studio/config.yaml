@@ -1,7 +1,7 @@
 # 魔搭创空间配置 + 展示元数据（创作台 v2.0，2026-09-10）
 sdk: gradio
 app_file: app.py
-sdk_version: "4.44.0"
+sdk_version: "6.17.3"  # 与平台实际运行时一致（Gradio 6.x）
 
 # ---- 以下为展示元数据（app.py 读取；也可不写，用内建默认）----
 showcase:
