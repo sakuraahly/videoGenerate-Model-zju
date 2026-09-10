@@ -92,9 +92,17 @@ def _emit(kind: str, key: str, result: dict) -> dict:
     return result
 
 
+# 2026-09-10 修复"长任务被误报失败"：ComfyUI 在长任务/模型切换时 /queue 会瞬时超时，
+# 旧逻辑一旦查不到就判 failed（实测 18s 大任务在跑时反复 failed↔running 抖动）。
+# 新逻辑：①队列查询失败/异常 → 视为"仍在跑"，绝不当失败；②连续 _MISS_LIMIT 次
+# 既不在队列也不在历史，才判"不存在或已过期"。
+_MISS_LIMIT = 3
+_miss_counts: dict = {}
+
+
 def poll_single(prompt_id: str) -> dict:
     """轮询单个任务的当前状态。
-    
+
     Returns:
         {'status': 'queued'|'running'|'completed'|'failed', 'progress': str}
     """
@@ -105,29 +113,42 @@ def poll_single(prompt_id: str) -> dict:
             result = history[prompt_id]
             status_obj = result.get('status', {})
             if status_obj.get('completed', False):
+                _miss_counts.pop(prompt_id, None)
                 clear_breakpoint_on_done(prompt_id)
                 return _emit('single', prompt_id, {'status': 'completed', 'progress': '✅ 已完成'})
             elif status_obj.get('status_str') == 'error':
                 error_msg = result.get('outputs', {}).get('error', '未知错误')
+                _miss_counts.pop(prompt_id, None)
                 clear_breakpoint_on_done(prompt_id)
                 return _emit('single', prompt_id, {'status': 'failed', 'progress': f'❌ 失败: {error_msg}'})
-        
-        # 再查队列队
+
+        # 再查队列
         queue_info = get_queue()
-        if queue_info:
-            for item in queue_info.get('queue_running', []):
-                if len(item) > 1 and item[1] == prompt_id:
-                    return _emit('single', prompt_id, {'status': 'running', 'progress': '🔄 生成中...'})
-            
-            for item in queue_info.get('queue_pending', []):
-                if len(item) > 1 and item[1] == prompt_id:
-                    return _emit('single', prompt_id, {'status': 'queued', 'progress': '⏳ 排队中...'})
-        
-        # 未找到任务，可能已失效
+        if queue_info is None:
+            # 队列查询失败（超时/连接问题）→ 不能断言任务失败
+            return _emit('single', prompt_id,
+                         {'status': 'running', 'progress': '🔄 生成中...（队列查询超时，稍后重试）'})
+        for item in queue_info.get('queue_running', []):
+            if len(item) > 1 and item[1] == prompt_id:
+                _miss_counts.pop(prompt_id, None)
+                return _emit('single', prompt_id, {'status': 'running', 'progress': '🔄 生成中...'})
+        for item in queue_info.get('queue_pending', []):
+            if len(item) > 1 and item[1] == prompt_id:
+                _miss_counts.pop(prompt_id, None)
+                return _emit('single', prompt_id, {'status': 'queued', 'progress': '⏳ 排队中...'})
+
+        # 不在队列历史为空：可能刚好完成落 history 的间隙 → 连续多次才判失效
+        n = _miss_counts.get(prompt_id, 0) + 1
+        _miss_counts[prompt_id] = n
+        if n < _MISS_LIMIT:
+            return _emit('single', prompt_id,
+                         {'status': 'running', 'progress': f'🔄 状态确认中...（第 {n}/{_MISS_LIMIT} 次）'})
         return _emit('single', prompt_id, {'status': 'failed', 'progress': '❌ 任务不存在或已过期'})
-        
+
     except Exception as e:
-        return _emit('single', prompt_id, {'status': 'failed', 'progress': f'❌ 查询失败: {str(e)}'})
+        # 任何查询异常都不当作任务失败（保守）
+        return _emit('single', prompt_id,
+                     {'status': 'running', 'progress': f'🔄 查询异常，稍后重试: {str(e)[:60]}'})
 
 
 def poll_batch(manifest_path: str) -> dict:
