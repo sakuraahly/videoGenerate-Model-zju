@@ -70,8 +70,11 @@ def stitch(segments: list, out: Path, width: int = 864, height: int = 480,
         lst = work / 'list.txt'
         lst.write_text(chr(10).join(f"file '{p}'" for p in norm_paths) + chr(10), encoding='utf-8')
         out.parent.mkdir(parents=True, exist_ok=True)
+        # concat 一律重编码（2026-09-09 用户'拼接错乱'根因：-c copy 对参数/时间戳
+        # 不一致的段流（ComfyUI 直出 vs 台词链重编）会花屏/跳帧/重影；重编码保证单一致流）
         _run([FFMPEG, '-y', '-v', 'error', '-f', 'concat', '-safe', '0',
-              '-i', str(lst), '-c', 'copy', str(out)])
+              '-i', str(lst), '-c:v', 'libx264', '-crf', '21', '-preset', 'fast',
+              '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', str(out)])
         return out
     finally:
         if keep_norm:

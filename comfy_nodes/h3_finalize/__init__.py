@@ -94,6 +94,7 @@ class H3Finalize:
                 "audio_mode": (["keep", "replace"], {"default": "keep"}),   # keep=角色原声+台词字幕(ASR/文本)；replace=台词合成替换
                 "subtitle_source": (["asr", "text"], {"default": "asr"}),     # keep 模式下台词字幕来源
                 "narration": ("STRING", {"multiline": True, "default": ""}),  # keep 模式下可选旁白（-15dB 垫轨，不影响角色话语）
+                "burn_subtitle": (["on", "off"], {"default": "on"}),  # 字幕可选（2026-09-09 用户要求）
             }}
 
     RETURN_TYPES = ("STRING",)
@@ -104,7 +105,7 @@ class H3Finalize:
 
     def run(self, video, text, voice="xiaoxiao", video_in=None, bed_audio="", font_size=0,
             subtitle_style="harmony", subtitle_font="auto", subtitle_color="auto", backend="cosy",
-            audio_mode="keep", subtitle_source="asr", narration=""):
+            audio_mode="keep", subtitle_source="asr", narration="", burn_subtitle="on"):
         # 2026-09-07 实证：ComfyUI 执行上下文中，子进程 TTS 若尝试初始化 CUDA 会与主进程 GPU 上下文
         # 争抢→任务长时间挂起（30min+）。强制子进程 CPU 执行（F5/Cosy 本就 CPU 主跑）。
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -126,11 +127,29 @@ class H3Finalize:
             raise RuntimeError(f"视频不存在: {video}")
         out = src.with_name(src.stem + "_final.mp4")
         voice_full = _voice_full(voice)
+        text_s = str(text or "").strip()
+        if not text_s:
+            # 无台词（2026-09-09）：不合成语音、不烧字幕 —— 只做成品转码直出
+            import shutil as _shx
+            _shx.copy2(str(src), str(out))
+            final = out
+            try:
+                from folder_paths import get_output_directory  # type: ignore
+                outdir = os.path.join(get_output_directory(), "video")
+                os.makedirs(outdir, exist_ok=True)
+                dest = Path(outdir) / final.name
+                _shx.copy2(str(final), str(dest))
+                final = dest
+            except Exception:  # noqa: BLE001
+                pass
+            print("[H3Finalize] 空台词：跳过 TTS/字幕，成品直出 %s" % final, flush=True)
+            return (str(final),)
         res = _tts.attach_speech_and_subtitle(
-            src, text.strip(), out=out, voice=voice_full,
+            src, text_s, out=out, voice=voice_full,
             fontsize=int(font_size or 0), backend=backend,
             audio_mode=audio_mode, subtitle_source=subtitle_source,
-            narration=str(narration or "").strip())
+            narration=str(narration or "").strip(),
+            burn_subtitle=(str(burn_subtitle).lower() != "off"))
         final = Path(res["path"])
         if bed_audio and Path(bed_audio).is_file():
             from h3 import postprocess as _pp

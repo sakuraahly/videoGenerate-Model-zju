@@ -302,9 +302,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    choices=sorted(h3workflow.RESOLUTION_PRESETS),
                    help="Use a resolution preset (overrides file value)")
     p.add_argument("--tts-voice", type=str, default="zh-CN-XiaoxiaoNeural",
-                choices=["xiaoxiao", "yunxi", "aria", "daler", "en-aria",
+                choices=["xiaoxiao", "yunxi", "aria", "daler", "en-aria", "yunjian", "yunyang", "xiaoyi",
                          "zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural", "en-US-AriaNeural", "en-US-ChristopherNeural"],
-                help="七审（S6）：TTS 音色——显式语言×性别：xiaoxiao=中文女(默认)/yunxi=中文男/aria=英文女/daler=英文男(真人样本)；音色库见 assets/tts_voices/manifest.json")
+                help="七审（S6）：TTS 音色——显式语言×性别：xiaoxiao=中文女(默认)/yunxi=中文男/aria=英文女/daler=英文男(真人样本)；yunjian=沉稳男/yunyang=青年男/xiaoyi=冷静女（人物个性音色 2026-09-09）；音色库见 assets/tts_voices/manifest.json")
     p.add_argument("--tts-text", type=str, default="",
                 help="中文台词/旁白文本：完成后将该文本合成中文语音并替换视频音轨（T2b）")
     p.add_argument("--tts-backend", type=str, default="cosy", choices=["cosy", "local", "edge"],

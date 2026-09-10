@@ -177,13 +177,13 @@ def eff_seconds(audio_dur: float, base: int) -> int:
 
 
 def instruct_text(line: dict) -> str:
-    """台词个性=指令语气（CosyVoice2 instruct2）：line['tone'] 中文语气 → 指令文本。"""
-    tone = str(line.get('tone') or '').strip()
-    if not tone:
-        return ''
-    if not tone.endswith('地说'):
-        tone = tone + '地说'
-    return '用' + tone
+    """台词个性=指令语气（CosyVoice2 instruct2）：line['tone'] 中文语气 → 指令文本。
+
+    ⚠️ 2026-09-09 实测弃用：该 0.5B 的 inference_instruct2 会把参考文本一并读入合成
+    （ASR 出现'我们一起去公园散步吧…'尾巴）→ 调用层返回空（zero-shot）；待换 2B/模型
+    升级后重新启用。音色+语速已能表达人物个性差异。
+    """
+    return ''
 
 
 def run_segment(idx: int, prompt: str, prev_frame, args, work: Path, st: dict,

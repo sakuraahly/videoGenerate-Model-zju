@@ -318,7 +318,8 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
                                subtitle_source: str = "text",
                                narration: str = "",
                                speech_speed: float = 0.95,
-                               instruct: str = "") -> dict:
+                               instruct: str = "",
+                               burn_subtitle: bool = True) -> dict:
     """成品链：字幕烧录 + 音轨策略（2026-09-08 语义升级——角色原声优先）。
 
     audio_mode（2026-09-09 修正：默认 replace）:
@@ -360,8 +361,13 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
                 line_text = asr_text or (text or "").strip()
             spd = dur or len(line_text)
             srt.write_text(f"1\n00:00:00,000 --> {_srt_time(dur or 1.0)}\n{line_text}\n", encoding="utf-8")
-            render_subtitle(input_video, with_sub, srt, fontsize=fontsize,
-                            preset=subtitle_style, font=subtitle_font, color=subtitle_color)
+            if burn_subtitle:
+                render_subtitle(input_video, with_sub, srt, fontsize=fontsize,
+                                preset=subtitle_style, font=subtitle_font, color=subtitle_color)
+            else:
+                # 字幕可选（2026-09-09 用户要求）：不烧字幕，仅保留/替换音轨
+                import shutil as _sh0
+                _sh0.copy2(str(input_video), str(with_sub))
             # 原音轨保留（with_sub 已含原音轨，直接拷贝）+ 旁白可选垫轨
             if narration and str(narration).strip():
                 spd2 = synthesize(str(narration).strip(), speech, voice=voice, backend=backend)
@@ -389,8 +395,12 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
         spd = synthesize(text, speech, voice=voice, backend=backend, speed=speech_speed,
                         instruct=instruct)
         srt.write_text(f"1\n00:00:00,000 --> {_srt_time(spd)}\n{text}\n", encoding="utf-8")
-        render_subtitle(input_video, with_sub, srt, fontsize=fontsize,
-                        preset=subtitle_style, font=subtitle_font, color=subtitle_color)
+        if burn_subtitle:
+            render_subtitle(input_video, with_sub, srt, fontsize=fontsize,
+                            preset=subtitle_style, font=subtitle_font, color=subtitle_color)
+        else:
+            import shutil as _sh1
+            _sh1.copy2(str(input_video), str(with_sub))
         cmd = _ffmpeg_cmd(["ffmpeg", "-y", "-i", str(with_sub), "-i", str(speech),
                "-map", "0:v", "-map", "1:a", "-c:v", "copy",
                "-filter:a", "apad,afftdn=nf=-25,loudnorm=I=-14:TP=-1.0:LRA=11", "-c:a", "aac", "-b:a", "192k"])
