@@ -1,4 +1,14 @@
-# H3 视频生成工坊 · 魔搭创空间（创作台 v2.0）
+# H3 视频生成工坊 · 魔搭创空间（Agent v2.4）
+
+> **v2.4（2026-09-10）交付形态定案：空间里放的就是一个完整的 Agent = 工具集 + 外置大脑。**
+> ① **工具集**（Agent 的手脚，全部 HTTP，空间内零本机依赖）：`generate_video` / `generate_talk` / `make_story_film` / `answer`，
+> 可用 `TOOLSET` 收窄开放范围；
+> ② **外置大脑**（决策，`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL` 接口控制）：system 提示与工具 schema 一起送进模型，
+> 模型只回一个 `{tool,args,say}`；提示本身可外置注入（`AGENT_SYSTEM_PROMPT` / `AGENT_SYSTEM_PROMPT_FILE`）；
+> ③ **出片走预留的视频生成模型接口**：`ENGINE_BASE_URL` / `ENGINE_API_KEY` / `ENGINE_STATUS_URL`（旧名 `VIDEO_API_*` 兼容）；
+> ④ **本机功能在空间内等价实现**：参考图上传即时预览（转 `image_b64` 入参）、请求体预览（演示模式）、
+> 任务面板（时间/任务号/工具/状态/成片 + 一键刷新）、成片取回 `studio/outputs/` 后内嵌播放 + 原链接下载、决策轨迹可见。
+> 本空间**不含任何某台本机的适配代码**：换机器/换模型服务只改环境变量。接口契约见 `studio/接口说明.md`。
 
 > **v2.0（2026-09-10）前端重构**：从"展示页"升级为**专业创作台**——
 > **Tab1 创作台**（任务类型：文生视频/图生视频/说话镜头/剧本故事片 · 提示词 · 参考图上传 · 分辨率/时长/音色/字幕 · 提交 · 状态/成片预览/下载/最近任务），
@@ -88,6 +98,11 @@ python app.py --port 7860
 | 想换样片 | 替换 assets/0X_*.mp4 与封面,同步更新 config.yaml 的 showcase.samples(保持 style 键:电影感/真实/纪录片) |
 
 ## 七、更新记录
+
+- **v2.4（2026-09-10）**:**Agent 解耦交付**——`agent_client.py` 重写为「工具集 + 外置大脑 + 统一引擎变量（ENGINE_*，兼容 VIDEO_API_*）+
+  TOOLSET 白名单 + system 提示外置注入」；Agent Tab 增加参考图上传/预览、任务面板与状态刷新、成片自动取回本地预览；
+  新增 `tests/mock_engine.py`（假引擎+假大脑，一条命令即可端到端自测接口契约）与 `tests/test_studio_agent_client.py`（21 例）；
+  全量测试 210 passed；文档 `studio/接口说明.md`、`studio/创作手记.md` 同步改写。
 
 - **v2.0（2026-09-10）**:**创作台前端重构**——Tabs（创作台/样片墙/能力与部署）、任务类型选择、参考图上传、
   参数面板（分辨率/时长/音色/字幕/负面词）、任务区（结果卡+成片预览+下载+最近任务）、后端抽象层

@@ -1,190 +1,347 @@
-"""studio agent_client — 创空间内的「对话式 agent」前端（不部署模型，只调外部 API）。
+"""studio agent_client - 创空间内可交付的 Agent:**工具集 + 外置大脑(接口控制)**。
 
-老师的架构要求（2026-09-10）：创空间部署的是 **agent**，不必把模型一起部署——
-留 **API 接口调用外部 API** 即可。本模块即这层接口：
+设计原则(定案):
+  1. 交付物就是一个 Agent:①工具集(本文具定义,全部走接口) ②外置大脑(LLM 由 LLM_* 接口控制,
+     system 提示可外置注入)。二者齐备才算 Agent。
+  2. 不依赖任何本机环境:不调用本机 ComfyUI / 脚本 / 本地文件;所有能力 = HTTP 接口。
+  3. 通过预留的视频生成模型接口工作:ENGINE_BASE_URL(兼容旧名 VIDEO_API_URL),
+     协议见 studio/接口说明.md(异步 job 轮询 / 同步直返两种)。
+  4. 无 key 也能演:内置规则规划器产出同样的 {tool,args,say},前端照常展示决策轨迹。
 
-  1) LLM（OpenAI 兼容 /chat/completions）：负责 **决策** —— 读用户自然语言 → 选工具 → 组参数；
-  2) 视频生成 API（可配置）：真正出片的**外部算力**；
-  3) TTS API（可选）：台词语音；
-  未配置任何 key → **demo 模式**：用规则化的"规划器"演示 agent 的决策轨迹 + 匹配样片（比赛演示可用）。
-
-环境变量（在创空间「设置 → 变量/密钥」里配置即可，代码不含任何密钥）：
-  LLM_BASE_URL / LLM_API_KEY / LLM_MODEL   决策用大模型（OpenAI 兼容 /chat/completions；缺省走内置规则规划器）
-  VIDEO_API_URL / VIDEO_API_KEY            外部视频生成服务（协议见 studio/接口说明.md）
-  VIDEO_API_STATUS_URL                     可选：异步作业查询地址（缺省视为同步直返 {video_url}）
-  STUDIO_BACKEND=agent|demo|form           默认 agent：配了 key 走真实调用，没配就是规划演示
+环境变量(全部外置,代码不含密钥):
+  LLM_BASE_URL / LLM_API_KEY / LLM_MODEL                       外置大脑(OpenAI 兼容 /chat/completions)
+  AGENT_SYSTEM_PROMPT 或 AGENT_SYSTEM_PROMPT_FILE              自定义 system 提示
+  ENGINE_BASE_URL / ENGINE_API_KEY (旧名 VIDEO_API_URL / VIDEO_API_KEY)
+  ENGINE_STATUS_URL (旧名 VIDEO_API_STATUS_URL)                异步作业查询地址
+  TOOLSET=all|generate_video,generate_talk,...                 暴露给大脑的工具子集
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import time
-import uuid
 from pathlib import Path
 
+# ---------------- 工具集(Agent 的手脚;全部接口化,无本机依赖) ----------------
 TOOLS = [
     {"name": "generate_video",
-     "description": "根据一段创意生成视频（文生视频；若有参考图则图生视频）",
-     "params": {"prompt": "英文或中文创意描述", "resolution": "360p|480p|720p|768p",
-                "seconds": "时长秒数 2-15", "image": "参考图路径（可选）"}},
+     "description": "根据一段创意生成视频(文生视频;给了参考图则按参考图生成)",
+     "params": {"prompt": "创意/分镜描述(英文更稳)",
+                "resolution": "360p|480p|540p|720p|768p",
+                "seconds": "时长秒数 2-15",
+                "image_b64": "参考图(可选,data URL 或纯 base64)"}},
     {"name": "generate_talk",
-     "description": "让参考图里的人物说一句台词（说话镜头：口型+音色+时长自动匹配）",
-     "params": {"text": "台词原文", "image": "人物参考图路径", "voice": "h3(自适应)|yunxi|xiaoxiao|aria|daler"}},
+     "description": "说话镜头:让参考图里的人物亲口说出一句台词(口型/音色/时长由模型处理)",
+     "params": {"text": "台词原文(照抄,不要改写)",
+                "image_b64": "人物参考图(建议必填)",
+                "voice": "native(默认,模型原生音色)|或指定音色名",
+                "resolution": "480p|720p"}},
     {"name": "make_story_film",
-     "description": "把一个剧本/多段剧情做成连贯故事片（多段+台词+字幕）",
-     "params": {"script": "剧情或剧本", "segments": "段数（默认自动）"}},
+     "description": "把剧本/多段剧情做成连贯短片(可分段提交,逐段返回结果)",
+     "params": {"script": "剧情或剧本",
+                "segments": "段数(默认 3)",
+                "resolution": "480p|720p", "seconds": "每段秒数"}},
     {"name": "answer",
-     "description": "不需要生成，只需要解释/建议/答疑",
+     "description": "不生成,只解释/建议/答疑(架构、参数、怎么用)",
      "params": {"text": "回答内容"}},
 ]
 
-SYSTEM_PROMPT = """你是"H3 视频生成工坊"的创作 agent，部署在魔搭创空间（免费 CPU，本地不跑模型）。
-你的职责：理解用户创意 → 选择合适工具 → 给出**可直接执行**的参数方案 → 交由外部视频 API 执行。
-规则：
-1) 用户要"说话镜头/台词/口型"→ generate_talk（台词原文照抄，不要改写）。
-2) 用户要"故事/短剧/多段"→ make_story_film。
-3) 其他创意 → generate_video；只问不生成 → answer。
-4) 参数：默认 resolution=480p、seconds=5（说话镜头按时长自动匹配）；台词语言与音色要匹配。
-5) 只输出一个 JSON：{"tool":"<工具名>","args":{...},"say":"给用户的一句中文说明"}，不要输出多余文本。
+DEFAULT_SYSTEM = """你是 H3 视频生成工坊的创作 Agent,部署在魔搭创空间(免费 CPU,本地不跑模型)。
+你的职责:理解用户创意 -> 从工具集里选一个工具 -> 给出可直接执行的参数 -> 交由外部生成接口执行。
+规则:
+1) 用户要"说话镜头/台词/口型/配音" -> generate_talk;台词原文照抄,不要改写、不要加旁白。
+2) 用户要"故事/短剧/多段/连贯" -> make_story_film。
+3) 其他创意 -> generate_video;只问不生成 -> answer。
+4) 默认 resolution=480p、seconds=5;说话镜头时长由接口按语音自动匹配。
+5) 只输出一个 JSON:{"tool":"<工具名>","args":{...},"say":"给用户的一句中文说明"},不要输出多余文本。
 """
 
 
-def _env(name: str, default: str = '') -> str:
-    return (os.environ.get(name) or default).strip()
+def _env(*names, default: str = '') -> str:
+    for n in names:
+        v = (os.environ.get(n) or '').strip()
+        if v:
+            return v
+    return default
 
 
 class AgentClient:
+    """Agent = 外置大脑(LLM 接口) + 工具集(HTTP 接口执行)。"""
+
     def __init__(self):
         self.llm_base = _env('LLM_BASE_URL').rstrip('/')
         self.llm_key = _env('LLM_API_KEY')
-        self.llm_model = _env('LLM_MODEL', 'deepseek-chat')
-        self.video_url = _env('VIDEO_API_URL')
-        self.video_key = _env('VIDEO_API_KEY')
-        self.video_status = _env('VIDEO_API_STATUS_URL')
+        self.llm_model = _env('LLM_MODEL', default='qwen-plus')
+        self.engine_url = _env('ENGINE_BASE_URL', 'VIDEO_API_URL').rstrip('/')
+        self.engine_key = _env('ENGINE_API_KEY', 'VIDEO_API_KEY')
+        self.engine_status = _env('ENGINE_STATUS_URL', 'VIDEO_API_STATUS_URL').rstrip('/')
+        self.toolset = [t.strip() for t in _env('TOOLSET', default='all').split(',') if t.strip()]
+        self.system_prompt = self._load_system_prompt()
+
+    # ---------- 外置大脑:system 提示可注入 ----------
+    @staticmethod
+    def _load_system_prompt() -> str:
+        inline = _env('AGENT_SYSTEM_PROMPT')
+        if inline:
+            return inline
+        path = _env('AGENT_SYSTEM_PROMPT_FILE')
+        cands = [Path(path)] if path else []
+        cands.append(Path(__file__).resolve().parent / 'agent_prompt.md')
+        for cand in cands:
+            try:
+                if cand.is_file():
+                    return cand.read_text(encoding='utf-8')
+            except Exception:  # noqa: BLE001
+                pass
+        return DEFAULT_SYSTEM
 
     @property
     def mode(self) -> str:
-        if self.llm_key or self.video_url:
+        if self.llm_key or self.engine_url:
             return 'agent-api'
         return 'demo-planner'
 
-    # ---------- LLM 决策 ----------
+    def tools(self) -> list:
+        if not self.toolset or 'all' in self.toolset:
+            return TOOLS
+        return [t for t in TOOLS if t['name'] in self.toolset]
+
+    def status(self) -> dict:
+        """给 UI 用的自检信息(不泄露密钥,只表明是否已配置)。"""
+        return {'mode': self.mode, 'brain': bool(self.llm_key), 'model': self.llm_model,
+                'engine': bool(self.engine_url), 'status_api': bool(self.engine_status),
+                'tools': [t['name'] for t in self.tools()],
+                'system_prompt': 'custom' if self.system_prompt != DEFAULT_SYSTEM else 'default'}
+
+    # ---------- 决策(大脑) ----------
     def plan(self, user_msg: str, history: list) -> dict:
         if not self.llm_key:
             return self._rule_plan(user_msg)
-        msgs = [{"role": "system", "content": SYSTEM_PROMPT}]
+        msgs = [{"role": "system", "content": self.system_prompt
+                 + "\n可用工具(JSON 列表):" + json.dumps(self.tools(), ensure_ascii=False)}]
         for h in (history or [])[-6:]:
-            msgs.append({"role": h.get('role', 'user'), "content": h.get('content', '')[:800]})
+            c = h.get('content')
+            if isinstance(c, list):  # gradio Chatbot messages 形态
+                c = ' '.join(x.get('text', '') for x in c if isinstance(x, dict))
+            msgs.append({"role": h.get('role', 'user'), "content": str(c or '')[:800]})
         msgs.append({"role": "user", "content": user_msg})
         payload = {"model": self.llm_model, "messages": msgs, "temperature": 0.3,
                    "response_format": {"type": "json_object"}}
         try:
-            import urllib.request
-            req = urllib.request.Request(self.llm_base + '/chat/completions',
-                                         data=json.dumps(payload).encode(),
-                                         headers={'Authorization': 'Bearer ' + self.llm_key,
-                                                  'Content-Type': 'application/json'})
-            with urllib.request.urlopen(req, timeout=60) as r:
-                d = json.loads(r.read().decode('utf-8', 'replace'))
+            d = self._post_json(self.llm_base + '/chat/completions', payload, self.llm_key, timeout=90)
             txt = (d.get('choices') or [{}])[0].get('message', {}).get('content', '{}')
             plan = json.loads(txt)
-            if plan.get('tool'):
+            if isinstance(plan, dict) and plan.get('tool'):
                 return plan
         except Exception as e:  # noqa: BLE001
-            return {'tool': 'answer', 'args': {'text': '（模型接口暂不可用：%s）' % str(e)[:120]},
-                    'say': '我先按规则给你方案。'}
+            return {'tool': 'answer',
+                    'args': {'text': '(大脑接口暂不可用:%s)' % str(e)[:120]},
+                    'say': '我先按内置规则给你方案。'}
         return self._rule_plan(user_msg)
 
     @staticmethod
     def _rule_plan(user_msg: str) -> dict:
-        """无 LLM key 时的规则规划器（演示 agent 的决策轨迹）。"""
+        """无外置大脑时的规则规划器:输出结构与 LLM 完全一致,保证演示不断档。"""
         t = user_msg or ''
         quoted = ''
-        for q in ('"', '“', '『'):
+        for q in ('"', '\u201c', '\u300e', '\u300c'):
             if q in t:
                 parts = t.split(q)
                 if len(parts) >= 2:
-                    quoted = parts[1].strip()
+                    quoted = parts[1].strip().strip('\u201d\u300d\u300f"')
                 break
-        if any(k in t for k in ('台词', '说话', '口型', '说一句', '独白', '配音')):
-            text = quoted or '你好，很高兴见到你。'
-            return {'tool': 'generate_talk', 'args': {'text': text, 'voice': 'h3'},
-                    'say': '明白，做一个说话镜头：让人物亲口说出"…"，时长按语音自动匹配。'}
-        if any(k in t for k in ('故事', '短剧', '剧本', '多段', '连贯')):
+        if any(k in t for k in ('\u53f0\u8bcd', '\u8bf4\u8bdd', '\u8bf4\u4e00\u53e5', '\u53e3\u578b', '\u914d\u97f3', '\u72ec\u767d')):
+            return {'tool': 'generate_talk',
+                    'args': {'text': quoted or '\u4f60\u597d,\u5f88\u9ad8\u5174\u89c1\u5230\u4f60\u3002',
+                             'voice': 'native'},
+                    'say': '明白,做一个说话镜头:让人物亲口说出台词,时长由接口按语音自动匹配。'}
+        if any(k in t for k in ('\u6545\u4e8b', '\u77ed\u5267', '\u5267\u672c', '\u591a\u6bb5', '\u8fde\u8d2f')):
             return {'tool': 'make_story_film', 'args': {'script': t[:200], 'segments': 3},
-                    'say': '这是一个多段故事片需求：先出分镜，再逐段生成并拼接。'}
-        if any(k in t for k in ('怎么', '如何', '为什么', '建议', '说明')):
+                    'say': '这是多段故事需求:我按段提交,逐段出片并给你汇总。'}
+        if any(k in t for k in ('\u600e\u4e48', '\u5982\u4f55', '\u4e3a\u4ec0\u4e48', '\u5efa\u8bae', '\u8bf4\u660e', '\u67b6\u6784')):
             return {'tool': 'answer',
-                    'args': {'text': '本空间=agent 前端（免费 CPU）：我负责理解需求、定参数、调外部生成 API；'
-                                     '真实出片由外部视频服务完成。配置 LLM/VIDEO 接口后即可端到端生成。'},
-                    'say': '这是做法说明。'}
+                    'args': {'text': '本空间只部署 Agent(工具集 + 外置大脑),不跑模型:'
+                                     '大脑(LLM 接口)决定用哪个工具与参数,工具再调外部视频生成接口出片。'},
+                    'say': '这是架构说明。'}
         return {'tool': 'generate_video',
-                'args': {'prompt': t[:400] or 'cinematic shot', 'resolution': '480p', 'seconds': 5},
-                'say': '收到创意，我按文生视频出片（480p/5s 起步）。'}
+                'args': {'prompt': t[:400] or 'a cinematic shot', 'resolution': '480p', 'seconds': 5},
+                'say': '收到创意,我按文生视频出片(480p/5s 起步)。'}
 
-    # ---------- 工具执行 ----------
+    # ---------- 工具集执行(HTTP,无本机依赖) ----------
+    def _post_json(self, url: str, payload: dict, key: str = '', timeout: int = 120) -> dict:
+        import urllib.request
+        headers = {'Content-Type': 'application/json'}
+        if key:
+            headers['Authorization'] = 'Bearer ' + key
+        req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode('utf-8', 'replace') or '{}')
+
+    def _get_json(self, url: str, key: str = '', timeout: int = 60) -> dict:
+        import urllib.request
+        headers = {'Authorization': 'Bearer ' + key} if key else {}
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode('utf-8', 'replace') or '{}')
+
+    def build_payload(self, tool: str, args: dict) -> dict:
+        """把工具参数翻译成视频生成接口的请求体(协议见 studio/接口说明.md)。"""
+        kind = {'generate_video': 't2v', 'generate_talk': 'talk',
+                'make_story_film': 'story'}.get(tool, 't2v')
+        payload = {'kind': kind,
+                   'resolution': args.get('resolution', '480p'),
+                   'seconds': int(float(args.get('seconds') or 5))}
+        if kind == 't2v':
+            payload['prompt'] = args.get('prompt') or ''
+            if args.get('image_b64'):
+                payload['image_b64'] = args['image_b64']
+                payload['kind'] = 'i2v'
+        elif kind == 'talk':
+            payload['text'] = args.get('text') or ''
+            payload['voice'] = args.get('voice') or 'native'
+            if args.get('image_b64'):
+                payload['image_b64'] = args['image_b64']
+        elif kind == 'story':
+            payload['script'] = args.get('script') or ''
+            payload['segments'] = int(float(args.get('segments') or 3))
+        return payload
+
+    @staticmethod
+    def _brief(args: dict) -> dict:
+        out = {}
+        for k, v in (args or {}).items():
+            out[k] = (str(v)[:48] + '...') if isinstance(v, str) and len(v) > 48 else v
+        return out
+
     def run_tool(self, plan: dict) -> dict:
         tool = plan.get('tool')
         args = plan.get('args') or {}
-        trace = {'tool': tool, 'args': args}
+        allowed = {t['name'] for t in self.tools()}
+        trace = {'tool': tool, 'args': self._brief(args)}
+        if tool not in allowed:
+            trace['result'] = 'tool-not-in-toolset'
+            return {'ok': False, 'kind': 'error', 'trace': trace,
+                    'text': '工具 %s 未在本空间开放(受 TOOLSET 限制)。' % tool}
         if tool == 'answer':
             trace['result'] = 'answer'
             return {'ok': True, 'kind': 'answer', 'text': args.get('text', ''), 'trace': trace}
-        if not self.video_url:
-            trace['result'] = 'demo（未配置 VIDEO_API_URL）'
-            return {'ok': True, 'kind': 'demo', 'tool': tool, 'args': args, 'trace': trace}
-        # 调外部视频 API（两种协议，见 studio/接口说明.md）
-        #   A 异步作业：POST {VIDEO_API_URL} → {job_id}；GET {VIDEO_API_STATUS_URL} 或 <URL>/<job_id> → {status,video_url}
-        #   B 同步直返：POST {VIDEO_API_URL} → {video_url}
+        if not self.engine_url:
+            trace['result'] = 'demo(未配置 ENGINE_BASE_URL)'
+            payload = self.build_payload(tool, args)
+            trace['request'] = self._brief(payload)
+            return {'ok': True, 'kind': 'demo', 'tool': tool, 'args': args,
+                    'payload': payload, 'trace': trace,
+                    'text': '演示模式:未接入视频生成接口,以下是把交给接口的请求体。'}
         try:
-            import urllib.request
-            payload = {'prompt': args.get('prompt') or args.get('text') or args.get('script') or '',
-                       'resolution': args.get('resolution', '480p'),
-                       'seconds': int(args.get('seconds') or 5),
-                       'kind': 'talk' if tool == 'generate_talk' else ('story' if tool == 'make_story_film' else 't2v')}
-            if tool == 'generate_talk':
-                payload['text'] = args.get('text')
-                payload['voice'] = args.get('voice', 'h3')
-            if tool == 'make_story_film':
-                payload['script'] = args.get('script')
-                payload['segments'] = args.get('segments')
-            req = urllib.request.Request(self.video_url,
-                                         data=json.dumps(payload).encode(),
-                                         headers={'Authorization': 'Bearer ' + self.video_key,
-                                                  'Content-Type': 'application/json'})
-            with urllib.request.urlopen(req, timeout=180) as r:
-                d = json.loads(r.read().decode('utf-8', 'replace') or '{}')
-            trace['result'] = d
+            payload = self.build_payload(tool, args)
+            trace['request'] = self._brief(payload) if 'image_b64' not in payload else \
+                {**self._brief(payload), 'image_b64': '<base64 已省略>'}
+            d = self._post_json(self.engine_url, payload, self.engine_key, timeout=180)
+            trace['response'] = self._brief(d)
             job_id = d.get('job_id') or d.get('task_id') or d.get('id')
             video = d.get('video_url') or d.get('url')
-            # 异步协议：轮询状态直到出现 video_url（最多 ~10 分钟）
-            if job_id and not video and self.video_status:
-                import time as _t
-                t0 = _t.time()
-                while _t.time() - t0 < 600:
-                    _t.sleep(10)
-                    st_url = (self.video_status.rstrip('/') + '/' + str(job_id)
-                              if self.video_status.endswith(('jobs', 'job'))
-                              else self.video_status.rstrip('/') + '/' + str(job_id))
-                    with urllib.request.urlopen(
-                            urllib.request.Request(st_url, headers={'Authorization': 'Bearer ' + self.video_key}),
-                            timeout=60) as sr:
-                        sd = json.loads(sr.read().decode('utf-8', 'replace') or '{}')
-                    trace.setdefault('polls', []).append(sd.get('status'))
+            if job_id and not video and self.engine_status:
+                t0 = time.time()
+                trace['polls'] = []
+                while time.time() - t0 < 600:
+                    time.sleep(10)
+                    sd = self._get_json(self.engine_status.rstrip('/') + '/' + str(job_id), self.engine_key)
+                    trace['polls'].append(sd.get('status'))
                     if sd.get('video_url') or sd.get('url'):
                         video = sd.get('video_url') or sd.get('url')
                         break
                     if sd.get('status') in ('failed', 'error'):
                         raise RuntimeError(sd.get('error') or '外部服务返回失败')
-            return {'ok': True, 'kind': 'remote', 'task': job_id, 'video': video, 'trace': trace}
+            return {'ok': True, 'kind': 'remote', 'task': job_id, 'video': video,
+                    'payload': payload, 'trace': trace}
         except Exception as e:  # noqa: BLE001
             trace['result'] = 'ERR ' + str(e)[:160]
-            return {'ok': False, 'kind': 'error', 'text': '外部生成接口调用失败：%s' % str(e)[:200],
-                    'trace': trace}
+            return {'ok': False, 'kind': 'error', 'trace': trace,
+                    'text': '外部生成接口调用失败:%s' % str(e)[:200]}
 
-    def answer(self, user_msg: str, history: list) -> dict:
+    def answer(self, user_msg: str, history: list, image_path: str = '', image_b64: str = '') -> dict:
         plan = self.plan(user_msg, history)
+        img = image_b64 or (self.file_to_b64(image_path) if image_path else '')
+        if img and plan.get('tool') in ('generate_video', 'generate_talk', 'make_story_film'):
+            args = dict(plan.get('args') or {})
+            args.setdefault('image_b64', img)
+            plan['args'] = args
         out = self.run_tool(plan)
+        if out.get('video'):
+            out['video_local'] = self.download(out['video'])
         out['say'] = plan.get('say') or ''
         out['mode'] = self.mode
         return out
+
+    def poll_job(self, job_id: str) -> dict:
+        """任务面板用:查询外部接口的作业状态(未配置状态接口时返回 unknown,不报错)。"""
+        if not (job_id and self.engine_status):
+            return {'status': 'unknown', 'video_url': None}
+        try:
+            d = self._get_json(self.engine_status.rstrip('/') + '/' + str(job_id), self.engine_key)
+            return {'status': d.get('status') or 'running',
+                    'video_url': d.get('video_url') or d.get('url'),
+                    'error': d.get('error')}
+        except Exception as e:  # noqa: BLE001
+            return {'status': 'unknown', 'video_url': None, 'error': str(e)[:120]}
+
+    # ---------- 空间内等价实现:把外部成片取回本地,供页面预览/下载 ----------
+    OUTPUT_DIR = Path(__file__).resolve().parent / 'outputs'
+
+    @classmethod
+    def download(cls, url: str, dest_dir=None, max_mb: int = 300, timeout: int = 180) -> str:
+        """把接口返回的成片下载到空间本地(页面才能内嵌预览/下载)。
+
+        说明:免费 CPU 档不做转码(耗时且无必要);只做「取回 + 落盘 + 顺手清理旧文件」。
+        失败一律返回空串,由界面退化为「打开链接」,绝不让下载问题挡住 Agent 主流程。
+        """
+        if not url or not str(url).startswith(('http://', 'https://')):
+            return ''
+        import urllib.request
+        out_dir = Path(dest_dir) if dest_dir else cls.OUTPUT_DIR
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            name = (str(url).split('?')[0].rstrip('/').split('/')[-1] or 'result.mp4')[-80:]
+            if not name.lower().endswith(('.mp4', '.webm', '.mov', '.mkv')):
+                name += '.mp4'
+            dest = out_dir / ('%d_%s' % (int(time.time()), name))
+            with urllib.request.urlopen(url, timeout=timeout) as r, open(dest, 'wb') as f:
+                total = 0
+                while True:
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > max_mb * (1 << 20):
+                        raise RuntimeError('超过 %dMB 上限' % max_mb)
+                    f.write(chunk)
+            cls.prune_outputs(out_dir)
+            return str(dest)
+        except Exception:  # noqa: BLE001
+            return ''
+
+    @staticmethod
+    def prune_outputs(out_dir=None, keep: int = 12):
+        """只留最近 keep 个成片(免费档磁盘有限)。"""
+        d = Path(out_dir) if out_dir else AgentClient.OUTPUT_DIR
+        try:
+            files = sorted(d.glob('*'), key=lambda p: p.stat().st_mtime, reverse=True)
+            for p in files[keep:]:
+                p.unlink()
+        except Exception:  # noqa: BLE001
+            pass
+
+    # ---------- 便捷:上传文件 -> data URL ----------
+    @staticmethod
+    def file_to_b64(path: str) -> str:
+        try:
+            p = Path(path)
+            raw = p.read_bytes()
+            ext = p.suffix.lower().lstrip('.') or 'png'
+            mime = {'jpg': 'jpeg', 'jpeg': 'jpeg', 'png': 'png', 'webp': 'webp'}.get(ext, 'png')
+            return 'data:image/%s;base64,%s' % (mime, base64.b64encode(raw).decode())
+        except Exception:  # noqa: BLE001
+            return ''
+
+

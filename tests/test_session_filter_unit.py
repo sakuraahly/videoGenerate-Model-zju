@@ -58,5 +58,11 @@ kept, notes = refimage._dedupe_by_prefix(DUPE)
 check("dedupe 保留 2", len(kept), 2)
 check("dedupe 镜像注释 1 条", len(notes), 1)
 check("dedupe 保留的是 up 首发", kept[0]["pool"], "up")
-print("UNIT_OK" if ok else "UNIT_FAIL")
-sys.exit(0 if ok else 1)
+if __name__ == "__main__":
+    print("UNIT_OK" if ok else "UNIT_FAIL")
+    sys.exit(0 if ok else 1)
+
+
+def test_session_filter_unit():
+    """脚本式自检改为可被 pytest 收集（避免 sys.exit 打断整个测试会话）。"""
+    assert ok, "session filter unit checks failed"

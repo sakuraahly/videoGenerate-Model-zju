@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""H3 视频生成工坊 — 魔搭创空间应用（v2.0 创作台前端）。
+"""H3 视频生成工坊 — 魔搭创空间应用（v2.4：Agent = 工具集 + 外置大脑）。
 
 结构（2026-09-10 重构：v1.x 的展示页 → 专业创作台）：
   Tab1 创作台：任务类型 / 提示词 / 参考图上传 / 参数（分辨率·时长·音色·字幕）→ 提交 → 任务区（状态·预览·下载·历史）
@@ -81,38 +81,71 @@ def load_show() -> dict:
     return dict(DEFAULT_SHOW)
 
 
-def agent_step(user_text: str, history) -> dict:
-    """Agent 一步（模块级，便于单测）：返回 {'history', 'trace', 'video'}。
+def agent_step(user_text: str, history, image_path=None, client=None) -> dict:
+    """Agent 一步（模块级，便于单测）：返回 {'history','trace','video','job','payload'}。
 
-    行为：调用 agent_client.AgentClient().answer()（LLM 决策或规则规划器），
-    把「工具选择 + 参数 + 轨迹」写进对话与轨迹区；异常兜底成人话，绝不抛给用户。
+    行为：调用 agent_client.AgentClient().answer()（= 外置大脑决策 + 工具集执行），
+    把「工具选择 + 参数 + 将要发出的请求体 + 调用轨迹」写进对话与轨迹区；
+    异常兜底成人话，绝不抛给用户。参考图（image_path）会自动转 data URL 注入工具参数。
     """
     history = list(history or [])
     if not (user_text or '').strip():
-        return {'history': history, 'trace': None, 'video': None}
+        return {'history': history, 'trace': None, 'video': None, 'job': None}
     try:
         from agent_client import AgentClient
-        out = AgentClient().answer(user_text, history)
+        out = (client or AgentClient()).answer(user_text, history, image_path=image_path or '')
     except Exception as e:  # noqa: BLE001
         out = {'say': '（agent 层异常：%s）' % str(e)[:150], 'kind': 'error'}
-    reply = (out.get('say') or '') + "\n\n"
-    if out.get('kind') == 'answer':
-        reply += out.get('text') or ''
-    elif out.get('kind') == 'demo':
-        a = out.get('args') or {}
-        reply += ("**规划结果**：工具「%s」\n\n参数：\n\n%s\n\n"
-                  % (out.get('tool'), json.dumps(a, ensure_ascii=False, indent=2))
-                  + "> 当前为规划演示（未配置 LLM/VIDEO API）。配置环境变量后，本空间会真实调用外部生成服务。")
-    elif out.get('kind') == 'remote':
-        reply += "已提交外部生成服务（任务 %s）。" % out.get('task')
+    kind = out.get('kind')
+    reply = out.get('say') or ''
+    if kind == 'answer':
+        reply += "\n\n" + (out.get('text') or '')
+    elif kind == 'demo':
+        reply += ("\n\n**工具** `%s` → 即将发给视频生成接口的请求体（预览）：\n\n```json\n%s\n```\n\n"
+                  "> 演示模式：尚未接入外部生成接口。到「设置 → 变量 / 密钥」填 "
+                  "`ENGINE_BASE_URL`（可选 `LLM_*`）后，这里会真实出片。"
+                  % (out.get('tool'), json.dumps(out.get('payload') or {}, ensure_ascii=False, indent=2)))
+    elif kind == 'remote':
+        reply += "\n\n已提交外部生成服务（任务 `%s`）。" % out.get('task')
+        if out.get('video'):
+            reply += "\n\n成片：%s" % out['video']
     else:
-        reply += out.get('text') or ''
+        reply += "\n\n" + (out.get('text') or '')
     history = history + [{"role": "user", "content": user_text},
                          {"role": "assistant", "content": reply}]
-    tr = ("**模式**：%s　**工具**：%s\n\n%s"
-          % (out.get('mode', '-'), (out.get('trace') or {}).get('tool'),
-             json.dumps((out.get('trace') or {}), ensure_ascii=False, indent=2)[:1200]))
-    return {'history': history, 'trace': tr, 'video': out.get('video') or None}
+    tr = out.get('trace') or {}
+    trace_md = ("**模式**：%s　**工具**：%s\n\n```json\n%s\n```"
+                % (out.get('mode', '-'), tr.get('tool') or '-',
+                   json.dumps(tr, ensure_ascii=False, indent=2)[:1500]))
+    job = None
+    if kind == 'remote' and out.get('task'):
+        job = {"id": str(out['task']), "tool": tr.get('tool') or '-', "status": "running",
+               "ts": time.strftime("%H:%M:%S"), "video": out.get('video') or None}
+    # 预览优先用空间本地文件(外部 CDN 域名可能被前端校验拦掉)；没有则退回原链接
+    preview = out.get('video_local') or out.get('video') or None
+    return {'history': history, 'trace': trace_md, 'video': preview,
+            'job': job, 'payload': out.get('payload')}
+
+
+def jobs_table(jobs, client=None, refresh: bool = False) -> str:
+    """任务面板渲染（会话内任务 + 可选向外部接口刷新状态）。"""
+    jobs = list(jobs or [])
+    if not jobs:
+        return "_（本会话还没有任务：在下面说一句需求即可）_"
+    if refresh and client is not None:
+        for j in jobs:
+            if j.get('status') in ('running', 'queued', 'unknown'):
+                st = client.poll_job(j['id'])
+                j['status'] = st.get('status') or j['status']
+                if st.get('video_url'):
+                    j['video'] = st['video_url']
+    rows = ["| 时间 | 任务号 | 工具 | 状态 | 成片 |", "|---|---|---|---|---|"]
+    for j in jobs[-12:]:
+        v = j.get('video')
+        rows.append("| %s | `%s` | %s | %s | %s |"
+                    % (j.get('ts', '-'), j.get('id', '-'), j.get('tool', '-'),
+                       j.get('status', '-'), ("[打开](%s)" % v) if v else '-'))
+    return "\n".join(rows)
 
 
 def build_app(show: dict):
@@ -181,49 +214,77 @@ def build_app(show: dict):
 
         with gr.Tabs():
             with gr.Tab("🤖 Agent 对话"):
-                gr.Markdown("### 直接说需求，agent 自己选工具、定参数、调外部生成接口")
+                gr.Markdown("### 直接说需求：agent 自己选工具、定参数、调外部生成接口")
                 try:
                     from agent_client import AgentClient as _AC
-                    _ac = _AC()
-                    _mode_txt = ("✅ 已接入外部生成接口（可真实出片）" if _ac.mode == 'agent-api'
-                                 else "🧪 规划演示模式（未配置外部 API：仍会展示决策与参数；"
-                                      "配置 LLM_*/VIDEO_API_* 后自动切真实调用）")
+                    _st = _AC().status()
                 except Exception:  # noqa: BLE001
-                    _mode_txt = "🧪 规划演示模式"
-                gr.Markdown("**当前模式**：%s" % _mode_txt)
-                gr.Markdown("_本空间不部署模型：LLM 负责决策 + 外部视频 API 负责出片；接口清单见「能力与部署」页与仓库 "
-                            "studio/接口说明.md。_")
-                chatbot = gr.Chatbot(label="对话", height=340)  # Gradio 6.x 默认 messages 格式
+                    _st = {"mode": "demo-planner", "tools": [], "brain": False, "engine": False,
+                           "model": "-", "system_prompt": "default"}
+                _mode_txt = ("✅ 已接入外部接口（可真实出片）" if (_st.get('brain') or _st.get('engine'))
+                             else "🧪 规划演示模式（未配置外部接口：仍完整展示工具决策 + 请求体预览）")
+                gr.Markdown("**当前模式**：%s　|　**外置大脑**：%s　|　**视频生成接口**：%s"
+                            % (_mode_txt,
+                               ("已配置（%s）" % _st.get('model')) if _st.get('brain')
+                               else "未配置（自动用内置规则规划器）",
+                               "已配置" if _st.get('engine') else "未配置"))
+                gr.Markdown("**工具集**（agent 的手脚，全部走接口）：%s\n\n"
+                            "_本空间不部署模型：大脑由 `LLM_*` 接口控制，出片由 `ENGINE_*` 接口控制；"
+                            "接口清单见「能力与部署」页与仓库 studio/接口说明.md。_"
+                            % "、".join("`%s`" % t for t in (_st.get('tools') or [])))
                 with gr.Row():
-                    msg = gr.Textbox(label="说点什么", scale=4,
-                                     placeholder="例：让参考图里的老人说一句“天冷了，快进屋坐坐吧。”"
-                                                 "／做一段雨夜老屋门口有猫的 5 秒镜头")
-                    send = gr.Button("发送", variant="primary", scale=1)
-                trace_md = gr.Markdown("_（这里会显示 agent 的工具调用轨迹）_")
-                agent_video = gr.Video(label="本轮产物（若有）", interactive=False)
-                with gr.Row():
-                    ex1 = gr.Button("示例·说话镜头", size="sm")
-                    ex2 = gr.Button("示例·5 秒镜头", size="sm")
-                    ex3 = gr.Button("示例·故事片", size="sm")
-                    clr = gr.Button("清空对话", size="sm")
+                    with gr.Column(scale=3):
+                        chatbot = gr.Chatbot(label="对话", height=330)  # Gradio 6.x 默认 messages 格式
+                        with gr.Row():
+                            msg = gr.Textbox(label="说点什么", scale=4,
+                                             placeholder="例：让参考图里的老人说一句“天冷了，快进屋坐坐吧。”"
+                                                         "／做一段雨夜老屋门口有猫的 5 秒镜头")
+                            send = gr.Button("发送", variant="primary", scale=1)
+                        with gr.Row():
+                            ex1 = gr.Button("示例·说话镜头", size="sm")
+                            ex2 = gr.Button("示例·5 秒镜头", size="sm")
+                            ex3 = gr.Button("示例·故事片", size="sm")
+                            clr = gr.Button("清空对话", size="sm")
+                    with gr.Column(scale=2):
+                        ref_img = gr.Image(label="参考图（说话镜头建议上传：人物形象）", type="filepath",
+                                           height=200)
+                        jobs_state = gr.State([])
+                        agent_video = gr.Video(label="本轮产物（若有）", interactive=False)
+                        jobs_md = gr.Markdown("_（本会话还没有任务：在下面说一句需求即可）_")
+                        refresh = gr.Button("🔄 刷新任务状态", size="sm")
+                        trace_md = gr.Markdown("_（这里会显示 agent 的工具调用轨迹）_")
 
                 TRACE_IDLE = "_（这里会显示 agent 的工具调用轨迹）_"
+                JOBS_IDLE = "_（本会话还没有任务：在下面说一句需求即可）_"
+                STEP_OUT = [chatbot, trace_md, agent_video, msg, jobs_state, jobs_md]
 
-                def _step(user_text, history):
-                    """UI 包装：调用模块级 agent_step（可单测），输出 4 项（不重复组件）。"""
-                    r = agent_step(user_text, history)
-                    return (r['history'], r.get('trace') or TRACE_IDLE,
-                            r.get('video') or None, gr.update(value=""))
+                def _step(user_text, history, ref, jobs):
+                    """UI 包装：调用模块级 agent_step（可单测）；输出 6 项，组件不重复。"""
+                    r = agent_step(user_text, history, image_path=ref)
+                    jobs = list(jobs or [])
+                    if r.get('job'):
+                        jobs.append(r['job'])
+                    return (r['history'], r.get('trace') or TRACE_IDLE, r.get('video') or None,
+                            gr.update(value=""), jobs, jobs_table(jobs))
 
-                send.click(_step, [msg, chatbot], [chatbot, trace_md, agent_video, msg])
-                msg.submit(_step, [msg, chatbot], [chatbot, trace_md, agent_video, msg])
-                ex1.click(lambda h: _step('让参考图里的老人说一句“天冷了，快进屋坐坐吧，外面风大。”', h),
-                          [chatbot], [chatbot, trace_md, agent_video, msg])
-                ex2.click(lambda h: _step('做一段雨夜老屋门口有猫望着门内暖光的 5 秒镜头', h),
-                          [chatbot], [chatbot, trace_md, agent_video, msg])
-                ex3.click(lambda h: _step('把“父子在病房道别”做成一段连贯的 3 段故事片', h),
-                          [chatbot], [chatbot, trace_md, agent_video, msg])
-                clr.click(lambda: ([], TRACE_IDLE, None), None, [chatbot, trace_md, agent_video])
+                def _refresh(jobs):
+                    try:
+                        from agent_client import AgentClient as _AC2
+                        return jobs_table(jobs, _AC2(), refresh=True), jobs
+                    except Exception:  # noqa: BLE001
+                        return jobs_table(jobs), jobs
+
+                send.click(_step, [msg, chatbot, ref_img, jobs_state], STEP_OUT)
+                msg.submit(_step, [msg, chatbot, ref_img, jobs_state], STEP_OUT)
+                ex1.click(lambda h, r, j: _step('让参考图里的老人说一句“天冷了，快进屋坐坐吧，外面风大。”', h, r, j),
+                          [chatbot, ref_img, jobs_state], STEP_OUT)
+                ex2.click(lambda h, r, j: _step('做一段雨夜老屋门口有猫望着门内暖光的 5 秒镜头', h, r, j),
+                          [chatbot, ref_img, jobs_state], STEP_OUT)
+                ex3.click(lambda h, r, j: _step('把“父子在病房道别”做成一段连贯的 3 段故事片', h, r, j),
+                          [chatbot, ref_img, jobs_state], STEP_OUT)
+                refresh.click(_refresh, [jobs_state], [jobs_md, jobs_state])
+                clr.click(lambda: ([], TRACE_IDLE, None, JOBS_IDLE, []), None,
+                          [chatbot, trace_md, agent_video, jobs_md, jobs_state])
 
             with gr.Tab("🎛 创作台"):
                 with gr.Row():
@@ -293,14 +354,21 @@ def build_app(show: dict):
 在空间「设置 → 变量 / 密钥」里填这几项即可真实出片（不填=规划演示）：
 | 变量 | 说明 |
 |---|---|
-| `VIDEO_API_URL` / `VIDEO_API_KEY` | 外部视频生成服务（协议：POST → job_id 或 video_url） |
-| `VIDEO_API_STATUS_URL` | 可选，异步作业查询地址 |
-| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | 可选，OpenAI 兼容决策模型（不填用内置规则规划器） |
-> 备选：切 GPU 硬件档可在空间内跑轻量模型；或启用 `runs/bridge/queue_worker.py` 任务队列桥接本机 H3 引擎（当前未启用）。
+| `ENGINE_BASE_URL` / `ENGINE_API_KEY` | **视频生成模型接口**（预留口；旧名 `VIDEO_API_URL`/`VIDEO_API_KEY` 仍兼容） |
+| `ENGINE_STATUS_URL` | 可选，异步作业查询地址（旧名 `VIDEO_API_STATUS_URL`） |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | **外置大脑**：OpenAI 兼容决策模型（不填=内置规则规划器） |
+| `TOOLSET` | 可选，暴露给大脑的工具子集（默认 all） |
+| `AGENT_SYSTEM_PROMPT`（或 `AGENT_SYSTEM_PROMPT_FILE`） | 可选，外置 system 提示：注入行业规则/铁律 |
+
+**Agent 的两半**：①**工具集** `generate_video` / `generate_talk` / `make_story_film` / `answer`（全部 HTTP，空间内无本机依赖）；
+②**外置大脑** `LLM_*`（决定用哪个工具、什么参数）。两半齐备即为完整 Agent，缺大脑时用内置规则规划器兜底演示。
+
+**空间内等价实现的本地功能**：参考图上传与预览、请求体预览（演示模式）、任务面板与状态刷新、成片预览/下载、
+画布内字幕与拼接由引擎接口返回的成片直接承载（空间侧不做重编码，避免占用免费 CPU）。
 
 _{show['footer']}_""")
 
-        gr.Markdown(f"\n---\n_空间版本 v2.0（2026-09-10 · 创作台前端重构）_")
+        gr.Markdown(f"\n---\n_空间版本 v2.4（2026-09-10 · Agent=工具集+外置大脑；接口全外置·无本机依赖）_")
     return demo
 
 
@@ -318,7 +386,8 @@ def main() -> int:
     except Exception:  # noqa: BLE001
         _theme = None
     app.launch(server_name=args.host, server_port=args.port, share=args.share,
-               show_error=True, quiet=True, allowed_paths=[str(ASSETS)],
+               show_error=True, quiet=True,
+               allowed_paths=[str(ASSETS), str(HERE / "outputs")],
                **(dict(theme=_theme) if _theme is not None else {}))
     return 0
 
