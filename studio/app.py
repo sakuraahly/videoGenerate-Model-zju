@@ -285,6 +285,9 @@ def build_app(show: dict):
                             % "、".join("`%s`" % t for t in (_st.get('tools') or [])))
                 with gr.Accordion("🔑 我的密钥（自带 API Key · 只在本会话·不上传不保存）", open=False):
                     gr.Markdown(
+                        "🔒 **不想把 Key 交给本空间？** 用「零信任单页版」：Agent 跑在你的浏览器里，"
+                        "直接调用你填的服务，Key 不经过任何服务器 → "
+                        "<https://sakuraahly.github.io/videoGenerate-Model-zju/web/agent.html>\n\n"
                         "填你自己的模型服务凭据即可用本工具；**本空间不代付、不共享任何密钥**。"
                         " 密钥只随本次请求发到本进程内存里用于调用你指定的服务，"
                         "**不写盘、不进日志**；换会话/刷新页面后请重填。留空则使用空间默认（若有）。")
@@ -464,7 +467,7 @@ _{show['footer']}_""")
 
                 _probe.click(_probe_click, [sess_client] + BYOK_IN, [_probe_out])
 
-        gr.Markdown(f"\n---\n_空间版本 v3.0（2026-09-10 · Agent=工具集+外置大脑；**BYOK 用户自带密钥（按会话隔离）** + 安全加固 + 连接自测）_")
+        gr.Markdown(f"\n---\n_空间版本 v3.1（2026-09-10 · Agent=工具集+外置大脑；BYOK 自带密钥 + **零信任单页版入口** + 安全加固 + 连接自测）_")
     return demo
 
 
