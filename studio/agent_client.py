@@ -960,7 +960,31 @@ class AgentClient:
         return s[-80:]
 
     # ---------- 空间内等价实现:把外部成片取回本地,供页面预览/下载 ----------
+    # 进程级随机子目录（2026-09-10 加固）：Gradio 的 allowed_paths 会把这个目录整片暴露给
+    # /gradio_api/file= 服务；若固定目录 + 可猜文件名（时间戳+原名），公开空间里别人猜链接就能
+    # 拿到他人的成片。改成每次启动一个不可猜的子目录，并在启动时清掉上一轮的目录。
     OUTPUT_DIR = Path(__file__).resolve().parent / 'outputs'
+    _RUN_DIR = None
+
+    @classmethod
+    def run_dir(cls, clean_old: bool = False) -> Path:
+        """返回本次进程的产物目录（首次调用时创建随机子目录）。"""
+        import secrets
+        if cls._RUN_DIR is None:
+            base = cls.OUTPUT_DIR
+            base.mkdir(parents=True, exist_ok=True)
+            if clean_old:
+                for old in base.glob('run_*'):
+                    try:
+                        for f in old.glob('*'):
+                            f.unlink()
+                        old.rmdir()
+                    except Exception:  # noqa: BLE001
+                        pass
+            d = base / ('run_' + secrets.token_hex(6))
+            d.mkdir(parents=True, exist_ok=True)
+            cls._RUN_DIR = d
+        return cls._RUN_DIR
 
     @classmethod
     def download(cls, url: str, dest_dir=None, max_mb: int = 300, timeout: int = 180) -> str:
@@ -973,14 +997,15 @@ class AgentClient:
             return ''
         if cls._is_metadata_url(url):       # SSRF 防护：拒绝云元数据/链路本地地址
             return ''
-        import urllib.request
-        out_dir = Path(dest_dir) if dest_dir else cls.OUTPUT_DIR
+        import urllib.request, secrets
+        out_dir = Path(dest_dir) if dest_dir else cls.run_dir()
         try:
             out_dir.mkdir(parents=True, exist_ok=True)
             name = cls._safe_filename(str(url).split('?')[0].rstrip('/').split('/')[-1])
             if not name.lower().endswith(('.mp4', '.webm', '.mov', '.mkv')):
                 name += '.mp4'
-            dest = out_dir / ('%d_%s' % (int(time.time()), name))
+            # 文件名再带一段随机串：即使目录被列出/链接被转发，也无法猜出下一个文件名
+            dest = out_dir / ('%d_%s_%s' % (int(time.time()), secrets.token_hex(4), name))
             with urllib.request.urlopen(url, timeout=timeout) as r, open(dest, 'wb') as f:
                 total = 0
                 while True:
@@ -997,9 +1022,9 @@ class AgentClient:
             return ''
 
     @staticmethod
-    def prune_outputs(out_dir=None, keep: int = 12):
-        """只留最近 keep 个成片(免费档磁盘有限)。"""
-        d = Path(out_dir) if out_dir else AgentClient.OUTPUT_DIR
+    def prune_outputs(out_dir=None, keep: int = 8):
+        """只留最近 keep 个成片(免费档磁盘有限；也缩小可被枚举的窗口)。"""
+        d = Path(out_dir) if out_dir else AgentClient.run_dir()
         try:
             files = sorted(d.glob('*'), key=lambda p: p.stat().st_mtime, reverse=True)
             for p in files[keep:]:

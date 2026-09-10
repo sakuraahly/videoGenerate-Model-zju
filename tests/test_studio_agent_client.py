@@ -643,6 +643,42 @@ def test_plan_agent_url_falls_back_to_plain_answer(monkeypatch):
     finally:
         os.environ.pop("AGENT_URL", None)
 
+def test_download_uses_random_run_dir_and_unguessable_name(monkeypatch, tmp_path):
+    """公开空间加固：产物落在进程级随机子目录，文件名带随机串（不可枚举/不可猜）。"""
+    import io as _io
+    from agent_client import AgentClient as _AC
+
+    monkeypatch.setattr(_AC, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(_AC, "_RUN_DIR", None)
+    class _Resp(_io.BytesIO):
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: _Resp(b"x" * 16))
+    path = _AC.download("https://engine.example/out/final.mp4")
+    assert path
+    p = Path(path)
+    assert p.parent.name.startswith("run_")          # 落在随机子目录里
+    assert p.parent.parent == tmp_path.resolve()
+    import re as _re
+    assert _re.search(r"\d+_[0-9a-f]{8}_final\.mp4$", p.name), p.name
+    # 两次下载得到不同随机串
+    p2 = Path(_AC.download("https://engine.example/out/final.mp4"))
+    assert p2.name != p.name
+
+
+def test_run_dir_clean_old_removes_previous_runs(monkeypatch, tmp_path):
+    from agent_client import AgentClient as _AC
+
+    monkeypatch.setattr(_AC, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(_AC, "_RUN_DIR", None)
+    old = tmp_path / "run_deadbeef"
+    old.mkdir()
+    (old / "a.mp4").write_bytes(b"x")
+    d = _AC.run_dir(clean_old=True)
+    assert d.is_dir() and not old.exists()
+
 
 def test_plan_agent_url_failure_degrades_honestly(monkeypatch):
     os.environ["AGENT_URL"] = "https://agent.example.com/api/agent"

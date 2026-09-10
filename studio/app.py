@@ -411,7 +411,7 @@ _{show['footer']}_""")
 
                 _probe.click(_probe_click, [], [_probe_out])
 
-        gr.Markdown(f"\n---\n_空间版本 v2.8（2026-09-10 · Agent=工具集+外置大脑；安全加固：SSRF/任务号/文件名/内存与限流 + 可配置等待 + 连接自测）_")
+        gr.Markdown(f"\n---\n_空间版本 v2.9（2026-09-10 · Agent=工具集+外置大脑；安全：SSRF/任务号/文件名/内存限流/产物目录随机化 + 可配置等待 + 连接自测）_")
     return demo
 
 
@@ -440,9 +440,16 @@ def main() -> int:
     show = load_show()
     app = build_app(show)
     app.queue()
+    # allowed_paths 只放「本次进程的随机产物目录」（不再是整个 outputs/）——
+    # 公开空间里固定目录 + 可猜文件名会让别人拿到他人的成片（2026-09-10 加固）。
+    try:
+        from agent_client import AgentClient as _ACD
+        _out_dir = _ACD.run_dir(clean_old=True)
+    except Exception:  # noqa: BLE001
+        _out_dir = HERE / "outputs"
     app.launch(server_name=args.host, server_port=args.port, share=args.share,
                show_error=True, quiet=True,
-               allowed_paths=[str(ASSETS), str(HERE / "outputs")],
+               allowed_paths=[str(ASSETS), str(_out_dir)],
                **launch_kwargs(app))
     return 0
 
