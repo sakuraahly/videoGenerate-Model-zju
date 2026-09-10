@@ -165,6 +165,29 @@ def write_registry_doc(project_dir: Path) -> Path:
     lines.append("")
     lines.append(workflow_registry.digest_entries(cap))
     lines.append("")
+    lines.append("## 未注册模板（引擎不会自动用）")
+    lines.append("")
+    lines.append("> 同目录下但没有任何 stage/注册表条目引用的工作流：只有 GUI 手动打开或 `--template <路径>` 显式指定才会跑。")
+    lines.append("")
+    try:
+        _tdir = project_dir / "workflows" / "remote_workflows"
+        _used = {str(e.get("template") or "").split("/")[-1] for e in entries}
+        _extra = [f for f in sorted(_tdir.glob("*.json")) if f.name not in _used]
+        if _extra:
+            for f in _extra:
+                lines.append("- `%s`（%d B）" % (f.name, f.stat().st_size))
+        else:
+            lines.append("- （无）")
+    except Exception:
+        lines.append("- （读取目录失败）")
+    lines.append("")
+    lines.append("## 权威与自检")
+    lines.append("")
+    lines.append("- 引擎实际读取的模板目录由 `config/pipeline.json` 的 `templates_dir` 决定（当前 `workflows/remote_workflows/`）；")
+    lines.append("  `config/templates/` 为历史副本树，**引擎不读**。")
+    lines.append("- 一条命令自检当前在用哪份：`python runs/h3/workflow_audit.py`（只读；模板缺失时退出码 1）。")
+    lines.append("- 详见 `docs/guides/workflow-single-source.md`。")
+    lines.append("")
     dst = project_dir / "docs" / "agent-reading" / "05-workflows-registry.md"
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_text("\n".join(lines), encoding="utf-8")

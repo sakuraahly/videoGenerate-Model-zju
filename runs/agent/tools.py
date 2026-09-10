@@ -3,7 +3,7 @@
 
 工具：
   run_script       运行 runs/ 下白名单脚本
-  modify_workflow  修改 workflows/remote_workflows/ 或 config/templates/ 下的工作流 JSON
+  modify_workflow  修改 workflows/remote_workflows/ 下的工作流 JSON（唯一权威；config/templates/ 已废弃）
   call_comfyui     经 h3_submit.py 引擎提交生成任务（不裸 POST）
 
 安全：
@@ -33,9 +33,11 @@ _ALLOWED_SCRIPT_DIRS = [
     os.path.join(PROJECT_ROOT, 'runs'),
 ]
 
+# 唯一权威 = workflows/remote_workflows（引擎实际读取）。
+# config/templates 已于 2026-09-10 废弃（引擎不读、与镜像内容已分叉），这里**不再**允许写入，
+# 免得 agent 把改动写到不生效的地方（该目录保留 README 说明）。
 _ALLOWED_WORKFLOW_DIRS = [
     os.path.join(PROJECT_ROOT, 'workflows', 'remote_workflows'),
-    os.path.join(PROJECT_ROOT, 'config', 'templates'),
 ]
 
 _MAX_OUTPUT = 5000
@@ -201,7 +203,9 @@ class RunScript(BaseTool):
 class ModifyWorkflow(BaseTool):
     description = (
         '修改工作流 JSON 文件中指定节点的字段。'
-        '仅允许修改本地镜像模板（workflows/remote_workflows/ 与 config/templates/；spark 同事模板与远端只读）。'
+        '仅允许修改本地镜像模板（workflows/remote_workflows/，引擎实际读取的唯一权威目录；spark 同事模板与远端只读；'
+        'config/templates/ 已废弃、引擎不读，不可写）。改完记得推送：bats/workflow/sync_to_spark.bat；'
+        '不确定当前在用哪份可以跑 run_script(h3/workflow_audit.py) 自检。'
         '用于调整参考图路径（LoadImage 的 widgets_values）、分辨率等结构性参数。'
     )
     parameters = {

@@ -53,7 +53,7 @@
 ## 红线速查（再次强调）
 - **ComfyUI = tmux `comfy`(8188)**（2026-09-07 起；systemd 已停用/勿用 systemctl），重启=授权项；只 `POST /free` 腾内存。
 - **通道**：spark 模型下载=魔搭；GitHub 源码=codeload/raw（git clone 不通）；HF 文件=Windows 侧 hf-mirror 再 scp。
-- spark 同事模板只读，永不修改；只改 `workflows/remote_workflows/`、`config/templates/`。
+- spark 同事模板只读，永不修改；只改 `workflows/remote_workflows/`（唯一权威，引擎实际读取）。`config/templates/` **已废弃**、引擎不读。自检：`python runs/h3/workflow_audit.py`。
 - `api_*` 云模板不提及不调用；本地用 `video_*`。
 - 禁 `Z:/` 路径；一律 `~/...` 或 Windows 主库。
 - Agent 无 shell/任意文件/服务管理；越权即拒并转人工。

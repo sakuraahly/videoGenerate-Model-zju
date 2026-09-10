@@ -49,5 +49,5 @@ ComfyUI 占用约 32GB，与 SGLang 共存时需降低 mem-fraction-static 到 0
 
 - 全部本地推理，无需任何云登录。
 - 云端 `api_minimax_h3_*`（Comfy 登录）**不在使用范围**，不提、不调用。
-- 只改动本地镜像（`workflows/remote_workflows/`）；spark 平台
+- 只改动本地镜像（`workflows/remote_workflows/`，唯一权威；`config/templates/` 已废弃、引擎不读）；spark 平台
   `~/ai/ComfyUI/user/default/workflows/` 中的同事工作流**永不修改**。

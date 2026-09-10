@@ -23,9 +23,11 @@ from .params import LAYOUT, ParamError, read_prompt_file
 PIPELINE_FILE = "pipeline.json"
 
 # pipeline.json 缺失/损坏时的极简回退：保证旧版（内置 H3 T2V）永远可用
+# 2026-09-10 统一：回退模板目录 = workflows/remote_workflows（与 pipeline.json 实际配置一致）。
+# 历史上这里是 config/templates，而引擎真正读的是镜像目录 —— 两处不同步会让人改错文件（已踩坑）。
 _DEFAULT_CONFIG = {
     "default_stage": "t2v",
-    "templates_dir": "config/templates",
+    "templates_dir": "workflows/remote_workflows",
     "stages": {
         "t2v": {
             "description": "内置 H3 文生视频（T2V，回退模式）",
@@ -97,7 +99,7 @@ def default_stage_id(config: dict) -> str:
 
 
 def templates_dir(config: dict, project_dir: Path) -> Path:
-    rel = str(config.get("templates_dir") or "config/templates")
+    rel = str(config.get("templates_dir") or "workflows/remote_workflows")
     return Path(project_dir) / rel
 
 
@@ -292,7 +294,7 @@ def require_api_template_file(tpath: Path) -> None:
     """
     if not tpath or not tpath.exists():
         raise ParamError(
-            f"模板不存在: {tpath}\n请把 API(扁平) 模板放入 config/templates 目录，"
+            f"模板不存在: {tpath}\n请把 API(扁平) 模板放入 {templates_dir(config, project_dir)} 目录，"
             f"或在 config/pipeline.json 中修改 template 字段。"
         )
     try:
@@ -501,6 +503,6 @@ def build_builtin_workflow(stage: dict, gp: Any, images: List[Path]) -> dict:
         )
     raise ParamError(
         f"阶段 '{stage.get('_id', '?')}' 的 API 模板缺失且无内置生成器"
-        f"（builtin='{builtin}'）。请把扁平 API 模板放入 config/templates 目录，"
+        f"（builtin='{builtin}'）。请把扁平 API 模板放入 workflows/remote_workflows 目录，"
         f"或在 config/pipeline.json 中调整 template / builtin 字段。"
     )

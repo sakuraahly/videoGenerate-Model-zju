@@ -41,7 +41,7 @@
 | spark ComfyUI | `~/ai/ComfyUI` | `input/`（含 user_uploads 镜像）、`output/`（产物）、`user/default/workflows/`（**同事模板只读**） |
 | spark Qwen venv（agent） | `/home/Developer/qwen-agent-venv` | `bin/python` 为调度器运行时解释器 |
 | spark LLM 模型 | `~/Qwen3.8-27B/models/NVFP4` | 扩散模型等；入口 `start_qwen_agent.py`（薄壳→ `runs.agent.scheduler.main`） |
-| 工作流模板镜像 | `workflows/remote_workflows/` + `config/templates/` | 只改镜像；spark 同事模板永不修改 |
+| 工作流模板（唯一权威） | `workflows/remote_workflows/` | 引擎实际读取；spark 同事模板永不修改。`config/templates/` **已废弃**（引擎不读，仅历史对照）；自检 `python runs/h3/workflow_audit.py` |
 | 输出 | `outputs/`（spark-local 直存）/ scp 下载（win-remote） | 产物 `video_N.mp4` |
 | 运行日志 | `logs/run_<ts>_<ms>.log` 等 | 见 `docs/planbook/book-11`（日志体系） |
 | 会话存档 | `logs/agent_chats/<cid>.jsonl`（spark） | user/assistant 轮次 |

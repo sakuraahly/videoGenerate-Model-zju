@@ -99,7 +99,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 ### 3.4 红线速查（详见对应文档/skill）
 
 1. ComfyUI = systemd 服务，**勿重启/勿改配置**；临时腾内存只用 `POST /free`（sudo 需人工）。
-2. spark 同事工作流 `~/ai/ComfyUI/user/default/workflows/` **永不修改**；只改本地镜像 `workflows/remote_workflows/` 与 `config/templates/`。
+2. spark 同事工作流 `~/ai/ComfyUI/user/default/workflows/` **永不修改**；只改本地镜像 `workflows/remote_workflows/`（**唯一权威**）。`config/templates/` 已废弃、引擎不读（见该目录 `README.md`）。改完用 `bats/workflow/sync_to_spark.bat` 推送；随时用 `python runs/h3/workflow_audit.py` 自检当前到底在用哪份（只读）。
 3. `api_*`（Comfy 云）模板**不提及、不调用**（能力面已剔除）；本地语义用 `video_*`。
 4. Qwen 本地模型带护栏：不执行服务器控制/任意文件/shell；越权请求拒绝并转人工。
 5. ctx=8192：单轮回复精炼（≤600 字）、长内容分轮 + “继续”；不塞超长历史。

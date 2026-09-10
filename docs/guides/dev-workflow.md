@@ -41,7 +41,7 @@
 - 低耦合：前端/文案改动不碰后端；资源隔离不依赖模型风格调整；改动之间靠稳定契约衔接。
 - 红线（不可触碰，`START-HERE.md §3.4` / planbook book-00 §P6）：
   - ComfyUI = systemd 服务，勿重启/勿改 systemd；临时腾内存只用 `POST /free`（sudo 需人工）。
-  - spark 平台同事模板 `~/ai/ComfyUI/user/default/workflows/` **永不修改**；只改本地镜像 `workflows/remote_workflows/` 与 `config/templates/`。
+  - spark 平台同事模板 `~/ai/ComfyUI/user/default/workflows/` **永不修改**；只改本地镜像 `workflows/remote_workflows/`（唯一权威）。`config/templates/` 已废弃（引擎不读），详见 `docs/guides/workflow-single-source.md`。
   - `api_*`（Comfy 云）模板不提及、不调用；本地语义用 `video_*`。
   - 禁写 `Z:/...` 路径；一律 spark 真实 `~/...` 或 Windows 主库路径。
   - Agent 只做白名单内动作（无 shell/任意文件/服务管理）；越权请求拒绝并转人工。

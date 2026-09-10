@@ -40,3 +40,23 @@
 - video_i2v (stage=i2v): images=first_framex1 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=negative_support
 - video_r2v (stage=r2v): images=referencex8 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=reference_videos,audio,negative_support,ref_tag_required
 - video_flf2v (stage=flf2v): images=first_framex1, last_framex1 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=negative_support
+
+## 未注册模板（引擎不会自动用）
+
+> 同目录下但没有任何 stage/注册表条目引用的工作流：只有 GUI 手动打开或 `--template <路径>` 显式指定才会跑。
+
+- `api_minimax_h3_flf2v.json`（3723 B）
+- `api_minimax_h3_r2v.json`（4246 B）
+- `api_minimax_h3_t2v.json`（4280 B）
+- `h3_finalize_chain.json`（1533 B）
+- `sd_inpaint_fix.json`（7752 B）
+- `video_minimax_h3_r2v_finalize.json`（28322 B）
+- `video_minimax_h3_r2v_restore_finalize.json`（22240 B）
+- `video_minimax_h3_r2v_rife_finalize.json`（21737 B）
+
+## 权威与自检
+
+- 引擎实际读取的模板目录由 `config/pipeline.json` 的 `templates_dir` 决定（当前 `workflows/remote_workflows/`）；
+  `config/templates/` 为历史副本树，**引擎不读**。
+- 一条命令自检当前在用哪份：`python runs/h3/workflow_audit.py`（只读；模板缺失时退出码 1）。
+- 详见 `docs/guides/workflow-single-source.md`。

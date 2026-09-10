@@ -5,7 +5,8 @@
 > 6 份工作流各跑一次。
 >
 > 6 份文件位于 spark：`/home/<用户名>/ai/ComfyUI/user/default/workflows/`
-> （本工具已把同内容副本放本地 `config/templates/` 与镜像 `workflows/remote_workflows/`）。
+> （本地镜像在 `workflows/remote_workflows/`——**引擎实际读取的就是这里**；`config/templates/` 是历史副本树，
+> 与镜像内容**已经不一致**且引擎不读，勿在那里修改。）
 >
 > **用途速记（团队实际语义）**：`video_*`=文生/图生/多参考/首尾帧的本地 H3 模板；
 > `api_*`=同一能力的 **API 格式**（扁平、无 subgraph 坑、命令行用更稳），走 Comfy 云
