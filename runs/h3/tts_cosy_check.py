@@ -94,7 +94,7 @@ def main(argv=None) -> int:
             env["CUDA_VISIBLE_DEVICES"] = ""
             argv = [_os.path.abspath(__file__), "--force-cpu"]
             argv += sys.argv[1:]
-            p = _sp.run([_sys.executable] + argv, env=env, text=True, timeout=3600)
+            p = _sp.run([sys.executable] + argv, env=env, text=True, timeout=3600)
             if p.returncode != 0 or not Path(out).is_file():
                 raise
             print("FALLBACK_CPU_OK", flush=True)

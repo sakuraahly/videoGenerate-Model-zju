@@ -91,9 +91,17 @@ def main():
     check(sf.eff_seconds(5.3, 4) == 7, 'eff_seconds 音长+0.8 上取整(5.3→7)')
     check(sf.eff_seconds(2.1, 4) == 4, 'eff_seconds 短台词保底 4s')
     check(sf.eff_seconds(0, 4) == 4, 'eff_seconds 无时长保底')
-    check(sf.instruct_text({'tone': '急切地喘着气恳求'}) == '用急切地喘着气恳求地说',
-          'tone→指令语气文本')
+    # 2026-09-10 事故：instruct2 路径在本机卡死(子进程 100% CPU 空转 11 分钟无产物;
+    # 同句不带 --instruct 时 13.4s 正常出音) → 默认关闭,需显式开 STORY_TTS_INSTRUCT=1
+    import os as _os
+    _os.environ.pop('STORY_TTS_INSTRUCT', None)
+    check(sf.instruct_text({'tone': '急切地喘着气恳求'}) == '',
+          '默认不发指令语气(instruct2 实测卡死)')
     check(sf.instruct_text({}) == '', '无 tone=零样本自然语气')
+    _os.environ['STORY_TTS_INSTRUCT'] = '1'
+    check(sf.instruct_text({'tone': '急切地喘着气恳求'}) == '用急切地喘着气恳求地说',
+          'STORY_TTS_INSTRUCT=1 时 tone→指令语气文本')
+    _os.environ.pop('STORY_TTS_INSTRUCT', None)
     check(sf.line_ph({'text': '台词', 'voice': 'yunxi', 'speed': 0.9})
           != sf.line_ph({'text': '台词', 'voice': 'yunjian', 'speed': 0.9}), 'line_ph 含音色')
 

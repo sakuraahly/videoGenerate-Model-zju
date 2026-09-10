@@ -1,0 +1,65 @@
+{
+  "title": "修好的收音机",
+  "source": "原创（本次由 agent 撰写）",
+  "setting": "当代南方老城区的一间旧居民楼客厅，傍晚雨后；窗外是湿漉漉的旧街与零星霓虹反光，室内一盏暖色台灯",
+  "style": "photorealistic cinematic realism, soft overcast window light mixed with a warm desk lamp, shallow depth of field, natural skin texture, subtle film grain, one continuous take per shot, no cuts inside a shot, no on-screen text, no subtitles, no watermark, no signage letters; dialogue must be clearly audible with natural lip movement matching the speech",
+  "characters": {
+    "父亲": "a Chinese man in his early 60s, short grey-streaked hair, faded dark-grey work jacket over an old knit sweater, deep smile lines, calm gentle eyes, weathered hands",
+    "小林": "a Chinese young man around 22, short black hair, navy pullover hoodie, slim build, quiet guarded expression that slowly softens"
+  },
+  "segments": [
+    {
+      "cast": [
+        "父亲"
+      ],
+      "prompt": "Interior, medium shot: the father sits at an old wooden desk by the window, a small vintage wooden-cased radio open in front of him with tools, screws and a soldering iron laid out on a cloth. Rain streaks on the window glass behind him, warm desk lamp lighting his hands. He turns the radio's tuning knob slowly; the dial lamp flickers to life and the tuning needle glows amber. Quiet atmosphere, only rain and faint electrical hum, he does not speak."
+    },
+    {
+      "cast": [
+        "父亲",
+        "小林"
+      ],
+      "prompt": "Interior, medium close-up two-shot: the son walks in and stands beside the desk, hands in his hoodie pocket, looking down at the radio. The father looks up at him, then pushes the radio gently across the desk toward his son and begins to speak, mouth clearly moving, warm proud expression; the son listens without speaking, eyes on the radio. Window rain behind them, lamp light on both faces."
+    },
+    {
+      "cast": [
+        "小林"
+      ],
+      "prompt": "Interior, close-up of the son: he lifts the old radio and holds it close to his ear, the small speaker crackling faintly, his guarded expression slowly softening into quiet wonder, eyes glistening in the lamp light. Then he lowers it slightly and speaks softly, lips clearly moving, looking slightly off-camera toward his father. Shallow focus, rain-blurred window in the background."
+    }
+  ],
+  "lines": {
+    "1": {
+      "text": "这台收音机，我修了三个晚上。",
+      "voice": "yunjian",
+      "speed": 0.95,
+      "tone": "沉稳温和、带一点自豪",
+      "spoken": ""
+    },
+    "2": {
+      "text": "真的……还能听见，当年的声音吗？",
+      "voice": "yunyang",
+      "speed": 1,
+      "tone": "轻声、迟疑、期待",
+      "spoken": ""
+    }
+  },
+  "persona_voices": {
+    "父亲": {
+      "voice": "yunjian",
+      "speed": 0.95,
+      "tone": "沉稳温和",
+      "reason": "老年男声·低缓"
+    },
+    "小林": {
+      "voice": "yunyang",
+      "speed": 1,
+      "tone": "青年轻声迟疑",
+      "reason": "青年男声·与父亲明显区分"
+    }
+  },
+  "resolution": "480p",
+  "seconds": 4,
+  "lora": "fl2v_4step",
+  "seed": 20260910
+}
