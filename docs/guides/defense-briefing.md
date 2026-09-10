@@ -101,6 +101,79 @@
 9. **工作量多大？** → 空间 Agent（工具/大脑/前端/安全）+ 本机成品链（生成/插帧/修复/配音/字幕/验收）+ 剧本主控 + 测试与文档。
 10. **最大的技术难点？** → ①**字幕双份**（模型自绘 + 我们烧录）②**音画同时长** ③**跨段连贯**——三个都定位到根因并加了自动闸门。
 
+
+## 十、创空间部分详解：工具是怎么用的？工作流上传了吗？
+
+### 10.1 结论：**本地工作流一个字都没上传到空间**
+
+空间仓库里只有这些（`git ls-files` 实测，共 26 个文件）：
+
+```
+app.py  agent_client.py  backend.py  config.yaml  requirements.txt
+README.md  接口说明.md  builder_config.example.json  assets/（8 部样片+封面）
+```
+
+**没有任何 `.json` 工作流**。工作流（ComfyUI 图）只存在于本机 GPU 机器的 `workflows/remote_workflows/`，
+由 `runs/h3_submit.py` 在**本机**注入提示词与参数后提交给 ComfyUI 执行。空间**执行不了**它们：
+免费档无 GPU、工作流里引用的是本机模型/LoRA/路径。
+
+### 10.2 那空间里的「工具」到底是什么
+
+工具 = **一份 schema（告诉大脑能用什么）+ 一段拼 HTTP 请求的逻辑**，不是本机脚本、不是工作流。
+空间里的 8 个工具：
+
+| 工具 | 用途 | 落到接口 |
+|---|---|---|
+| `generate_video` | 文生视频；带参考图则图生视频 | `kind=t2v` / `i2v` |
+| `generate_talk` | 说话镜头（人物亲口说台词） | `kind=talk` |
+| `make_story_film` | 剧本 → 多段连贯短片 | `kind=story` |
+| `list_jobs` / `query_job` | 列任务 / 查状态（本会话台账 + 状态接口） | `GET ENGINE_STATUS_URL/{id}` |
+| `retry_job` | 用**原请求体**重提（可覆盖 seed/时长/分辨率） | 同原 kind |
+| `resume_story` | 断点续跑（引擎声明支持才做，否则如实拒绝） | 同 story |
+| `answer` | 只答疑，不出网 | — |
+
+### 10.3 工具被使用的完整过程（四步）
+
+```
+① 大脑决策：把 8 个工具的 schema 作为 JSON 塞进 system 提示 → 模型回一个 {tool, args, say}
+   （三种通道同构：平台 Agent(AGENT_URL) ／ 自建 LLM(LLM_*) ／ 无 key 时的规则规划器）
+② 参数归一化：认别名（dialogue/台词→text、duration→seconds…），丢掉自创键名
+③ 拼请求体：build_payload() 按工具映射成 {kind, prompt/text/script, image_b64, resolution, seconds, voice, segments}
+④ 执行：POST {ENGINE_BASE_URL} → 拿 job_id → 轮询状态 → 取回成片 → 页面预览 + 记进任务台账 + 展示调用轨迹
+```
+
+**无 key 时（当前空间形态）**：走**规则规划器**，用关键词判定，产出结构与 LLM **完全一致**——
+含「台词/说话/口型/配音」或 `say: xxx` → `generate_talk`（并抽出引号内的台词）；
+含「故事/短剧/剧本/多段/连贯」 → `make_story_film`；含「怎么/如何/为什么/架构」 → `answer`；其余 → `generate_video`。
+
+### 10.4 真正的工作流由谁执行（桥接方式）
+
+```
+空间(免费CPU)                        GPU 机器（本机）
+工具 → POST {ENGINE_BASE_URL}  ──▶  引擎网关（薄薄一层服务）
+                                    └─ 内部调用 h3_submit.py --stage r2v --prompt ... --image ...
+                                       └─ ComfyUI(8188) + H3 推理 + 成品链(插帧/修复/配音字幕/ASR)
+     ◀── job_id / {status,video_url}      产物 outputs/video_N.mp4
+页面预览/下载 ◀── 取回成片
+```
+
+网关只要实现**两个动作**：`POST` 提交（返回 `job_id`）、`GET {ENGINE_STATUS_URL}/{job_id}` 查询（返回状态与 `video_url`）——
+契约写在空间仓库的 `接口说明.md` 里。**空间 ↔ 本机之间只传这几种字段，不传工作流**。
+
+### 10.5 工作流想给别人怎么办
+
+工作流与代码都放在**开源仓库**（`workflows/remote_workflows/` + `studio/`）：谁要就 clone 自己跑。
+**「发布工具」就是这个意思**——空间只发布 Agent 与接口，工作流属于开源工具部分。
+
+### 10.6 可能的追问
+
+| 追问 | 回答 |
+|---|---|
+| 工具是怎么被选出来的？ | 三种通道产物同构：平台 Agent / 自建 LLM / 规则规划器；空间零密钥时用规则规划器，仍展示决策与请求体 |
+| 为什么用 JSON 而不是 function calling？ | 任何 OpenAI 兼容模型都能用；本地小模型不回 tool_calls 也能按 JSON 走；而且**可解释**（轨迹里直接看到 JSON） |
+| 工具会执行本机脚本吗？ | 不会。空间侧零本机依赖，只发 HTTP；本机脚本只由网关在 GPU 机器上调用 |
+| 把工作流直接放空间行不行？ | 跑不动（无 GPU/无模型），还会把本机路径暴露出去；所以按课程要求只留接口 |
+
 ## 九、现场注意事项（别翻车）
 
 1. **别现场跑真实生成**（分钟级等待）：用**录屏/样片**演示；真出片放成片播放；
