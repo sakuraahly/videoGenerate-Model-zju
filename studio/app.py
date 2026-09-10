@@ -145,7 +145,17 @@ def build_app(show: dict):
         with gr.Tabs():
             with gr.Tab("🤖 Agent 对话"):
                 gr.Markdown("### 直接说需求，agent 自己选工具、定参数、调外部生成接口")
-                gr.Markdown("_本空间不部署模型：LLM 负责决策 + 外部视频 API 负责出片；未配置 key 时为规划演示。_")
+                try:
+                    from agent_client import AgentClient as _AC
+                    _ac = _AC()
+                    _mode_txt = ("✅ 已接入外部生成接口（可真实出片）" if _ac.mode == 'agent-api'
+                                 else "🧪 规划演示模式（未配置外部 API：仍会展示决策与参数；"
+                                      "配置 LLM_*/VIDEO_API_* 后自动切真实调用）")
+                except Exception:  # noqa: BLE001
+                    _mode_txt = "🧪 规划演示模式"
+                gr.Markdown("**当前模式**：%s" % _mode_txt)
+                gr.Markdown("_本空间不部署模型：LLM 负责决策 + 外部视频 API 负责出片；接口清单见「能力与部署」页与仓库 "
+                            "studio/接口说明.md。_")
                 chatbot = gr.Chatbot(label="对话", height=340)  # Gradio 6.x 默认 messages 格式
                 with gr.Row():
                     msg = gr.Textbox(label="说点什么", scale=4,
@@ -260,8 +270,14 @@ def build_app(show: dict):
 | **GPU 硬件档（如 A10 24G）** | 空间内跑**轻量视频模型**（Wan2.1-1.3B / CogVideoX-2B 等）→ 页面上真实出片 |
 | **引擎网关（REMOTE_API）** | 表单直连你的本地大模型引擎（H3 全链：生成→台词→字幕→口型→ASR） |
 
-当前后端：**{backend.name}**。切换方式：空间设置里换硬件档，或配置环境变量
-`REMOTE_API` + `STUDIO_TOKEN`（引擎网关）。
+当前后端：**{backend.name}**。**形态①（已定案）：创空间只放 Agent，模型走外部 API**——
+在空间「设置 → 变量 / 密钥」里填这几项即可真实出片（不填=规划演示）：
+| 变量 | 说明 |
+|---|---|
+| `VIDEO_API_URL` / `VIDEO_API_KEY` | 外部视频生成服务（协议：POST → job_id 或 video_url） |
+| `VIDEO_API_STATUS_URL` | 可选，异步作业查询地址 |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | 可选，OpenAI 兼容决策模型（不填用内置规则规划器） |
+> 备选：切 GPU 硬件档可在空间内跑轻量模型；或启用 `runs/bridge/queue_worker.py` 任务队列桥接本机 H3 引擎（当前未启用）。
 
 _{show['footer']}_""")
 

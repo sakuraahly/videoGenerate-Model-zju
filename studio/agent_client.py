@@ -8,11 +8,11 @@
   3) TTS API（可选）：台词语音；
   未配置任何 key → **demo 模式**：用规则化的"规划器"演示 agent 的决策轨迹 + 匹配样片（比赛演示可用）。
 
-环境变量：
-  LLM_BASE_URL / LLM_API_KEY / LLM_MODEL      （如 https://api.deepseek.com/v1, deepseek-chat）
-  VIDEO_API_URL / VIDEO_API_KEY               （你的视频生成服务，POST {prompt,resolution,seconds} → {task_id}）
-  VIDEO_API_STATUS_URL                        （可选，GET 查询；缺省视为同步返回 {video_url}）
-  STUDIO_BACKEND=agent|demo|form              （默认 agent：有 LLM key 走真循环，否则 demo 规划器）
+环境变量（在创空间「设置 → 变量/密钥」里配置即可，代码不含任何密钥）：
+  LLM_BASE_URL / LLM_API_KEY / LLM_MODEL   决策用大模型（OpenAI 兼容 /chat/completions；缺省走内置规则规划器）
+  VIDEO_API_URL / VIDEO_API_KEY            外部视频生成服务（协议见 studio/接口说明.md）
+  VIDEO_API_STATUS_URL                     可选：异步作业查询地址（缺省视为同步直返 {video_url}）
+  STUDIO_BACKEND=agent|demo|form           默认 agent：配了 key 走真实调用，没配就是规划演示
 """
 from __future__ import annotations
 
@@ -133,24 +133,50 @@ class AgentClient:
         if not self.video_url:
             trace['result'] = 'demo（未配置 VIDEO_API_URL）'
             return {'ok': True, 'kind': 'demo', 'tool': tool, 'args': args, 'trace': trace}
-        # 调外部视频 API（约定：POST {prompt,seconds,resolution} → {task_id|video_url}）
+        # 调外部视频 API（两种协议，见 studio/接口说明.md）
+        #   A 异步作业：POST {VIDEO_API_URL} → {job_id}；GET {VIDEO_API_STATUS_URL} 或 <URL>/<job_id> → {status,video_url}
+        #   B 同步直返：POST {VIDEO_API_URL} → {video_url}
         try:
             import urllib.request
             payload = {'prompt': args.get('prompt') or args.get('text') or args.get('script') or '',
                        'resolution': args.get('resolution', '480p'),
-                       'seconds': int(args.get('seconds') or 5)}
+                       'seconds': int(args.get('seconds') or 5),
+                       'kind': 'talk' if tool == 'generate_talk' else ('story' if tool == 'make_story_film' else 't2v')}
             if tool == 'generate_talk':
                 payload['text'] = args.get('text')
                 payload['voice'] = args.get('voice', 'h3')
+            if tool == 'make_story_film':
+                payload['script'] = args.get('script')
+                payload['segments'] = args.get('segments')
             req = urllib.request.Request(self.video_url,
                                          data=json.dumps(payload).encode(),
                                          headers={'Authorization': 'Bearer ' + self.video_key,
                                                   'Content-Type': 'application/json'})
-            with urllib.request.urlopen(req, timeout=120) as r:
+            with urllib.request.urlopen(req, timeout=180) as r:
                 d = json.loads(r.read().decode('utf-8', 'replace') or '{}')
             trace['result'] = d
-            return {'ok': True, 'kind': 'remote', 'task': d.get('task_id') or d.get('id'),
-                    'video': d.get('video_url'), 'trace': trace}
+            job_id = d.get('job_id') or d.get('task_id') or d.get('id')
+            video = d.get('video_url') or d.get('url')
+            # 异步协议：轮询状态直到出现 video_url（最多 ~10 分钟）
+            if job_id and not video and self.video_status:
+                import time as _t
+                t0 = _t.time()
+                while _t.time() - t0 < 600:
+                    _t.sleep(10)
+                    st_url = (self.video_status.rstrip('/') + '/' + str(job_id)
+                              if self.video_status.endswith(('jobs', 'job'))
+                              else self.video_status.rstrip('/') + '/' + str(job_id))
+                    with urllib.request.urlopen(
+                            urllib.request.Request(st_url, headers={'Authorization': 'Bearer ' + self.video_key}),
+                            timeout=60) as sr:
+                        sd = json.loads(sr.read().decode('utf-8', 'replace') or '{}')
+                    trace.setdefault('polls', []).append(sd.get('status'))
+                    if sd.get('video_url') or sd.get('url'):
+                        video = sd.get('video_url') or sd.get('url')
+                        break
+                    if sd.get('status') in ('failed', 'error'):
+                        raise RuntimeError(sd.get('error') or '外部服务返回失败')
+            return {'ok': True, 'kind': 'remote', 'task': job_id, 'video': video, 'trace': trace}
         except Exception as e:  # noqa: BLE001
             trace['result'] = 'ERR ' + str(e)[:160]
             return {'ok': False, 'kind': 'error', 'text': '外部生成接口调用失败：%s' % str(e)[:200],
