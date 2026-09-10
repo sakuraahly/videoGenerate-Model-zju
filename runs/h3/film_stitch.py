@@ -38,15 +38,18 @@ def normalize(src: Path, dst: Path, width: int, height: int, fps: int, strip_aud
         # 2026-09-09 修复：不能 -an（concat demuxer 要求全部输入流一致，缺音轨会把 keep 段的音轨一起丢）
         # → 垫静音音轨（同参数 aac/双声道/44100）；注意所有 -i 必须在 -vf 等输出选项之前
         cmd = [FFMPEG, '-y', '-v', 'error', '-i', str(src),
-               '-f', 'lavfi', '-t', '999', '-i', 'anullsrc=r=44100:cl=stereo',
-               '-map', '0:v:0', '-map', '1:a:0', '-shortest', '-c:a', 'aac',
+               '-f', 'lavfi', '-t', '999', '-i', 'anullsrc=r=48000:cl=stereo',
+               '-map', '0:v:0', '-map', '1:a:0', '-shortest', '-c:a', 'aac', '-ar', '48000',
                '-vf', f'scale={width}:{height}', '-r', str(fps), '-c:v', 'libx264',
                '-crf', '21', '-preset', 'fast', '-pix_fmt', 'yuv420p']
     else:
+        # 2026-09-10：逐段响度对齐 + 统一 48k 立体声（跨段音量忽大忽小=用户听感"听不清"）
         cmd = [FFMPEG, '-y', '-v', 'error', '-i', str(src),
                '-vf', f'scale={width}:{height}', '-r', str(fps),
                '-c:v', 'libx264', '-crf', '21', '-preset', 'fast',
-               '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ac', '2', '-ar', '44100']
+               '-pix_fmt', 'yuv420p',
+               '-af', 'highpass=f=60,loudnorm=I=-15:TP=-1.5:LRA=11',
+               '-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-ar', '48000']
     cmd.append(str(dst))
     _run(cmd)
     return

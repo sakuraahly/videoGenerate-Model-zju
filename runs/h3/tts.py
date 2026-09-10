@@ -36,6 +36,23 @@ def _ffmpeg_cmd(parts: list) -> list:
     return parts
 
 
+# ---------------------------------------------------------------------------
+# 语音清晰链（2026-09-10 实测事故修复）
+# 现场：用户反馈"语音不清晰"。频谱实测——CosyVoice 原始输出 85% rolloff=3398Hz，
+# 经旧链（afftdn=nf=-25 降噪 + aac）后只剩 2672Hz（掉 726Hz），而参考音色是 3609Hz。
+# 结论：旧的 FFT 降噪器把语音高频吃掉了，人耳听感=发闷、不清。故：
+#   1) 去掉 afftdn（噪声交给 H3 原生音轨本就有的环境感，台词段是替换轨，无需额外降噪）；
+#   2) 高通 75Hz 去隆隆声，300Hz 轻减浑浊，3kHz/6.5kHz 提临场度（清晰度主战场）；
+#   3) loudnorm 统一到 -15 LUFS / TP -1.5，并统一 48kHz 双声道（跨段拼接不再格式打架）。
+# ---------------------------------------------------------------------------
+SPEECH_CLARITY_AF = ('apad,highpass=f=75,'
+                     'equalizer=f=280:t=q:w=1.0:g=-1.5,'
+                     'equalizer=f=3000:t=q:w=1.2:g=3.2,'
+                     'equalizer=f=6500:t=q:w=1.0:g=2.0,'
+                     'loudnorm=I=-15:TP=-1.5:LRA=11')
+SPEECH_AR = '48000'
+
+
 def probe_duration(path: Path) -> float:
     try:
         r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -297,7 +314,8 @@ def replace_audio_only(input_video: Path, audio: Path, out: Path, dur: float = 0
     tmp = out.with_name(out.stem + "_aud" + out.suffix)
     cmd = _ffmpeg_cmd(["ffmpeg", "-y", "-i", str(input_video), "-i", str(audio),
            "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-           "-filter:a", "apad,afftdn=nf=-25,loudnorm=I=-14:TP=-1.0:LRA=11", "-c:a", "aac", "-b:a", "192k"])
+           "-filter:a", SPEECH_CLARITY_AF, "-ar", SPEECH_AR, "-ac", "2",
+           "-c:a", "aac", "-b:a", "192k"])
     if dur and dur > 0:
         cmd += ["-t", f"{dur:.3f}"]
     cmd += [str(tmp)]
@@ -403,7 +421,8 @@ def attach_speech_and_subtitle(input_video: Path, text: str, out: Path = None,
             _sh1.copy2(str(input_video), str(with_sub))
         cmd = _ffmpeg_cmd(["ffmpeg", "-y", "-i", str(with_sub), "-i", str(speech),
                "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-               "-filter:a", "apad,afftdn=nf=-25,loudnorm=I=-14:TP=-1.0:LRA=11", "-c:a", "aac", "-b:a", "192k"])
+               "-filter:a", SPEECH_CLARITY_AF, "-ar", SPEECH_AR, "-ac", "2",
+               "-c:a", "aac", "-b:a", "192k"])
         if dur and dur > 0:
             cmd += ["-t", f"{dur:.3f}"]
         cmd += [str(tmp_out)]
@@ -434,7 +453,8 @@ def replace_with_speech_text(input_video: Path, text: str, out: Path = None,
         synthesize(text, speech, voice=voice)
         cmd = _ffmpeg_cmd(["ffmpeg", "-y", "-i", str(input_video), "-i", str(speech),
                "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-               "-filter:a", "apad", "-c:a", "aac", "-b:a", "192k"])
+               "-filter:a", SPEECH_CLARITY_AF, "-ar", SPEECH_AR, "-ac", "2",
+               "-c:a", "aac", "-b:a", "192k"])
         if dur and dur > 0:
             cmd += ["-t", f"{dur:.3f}"]
         cmd += [str(tmp_out)]

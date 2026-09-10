@@ -127,6 +127,53 @@ def pick_prompt_paths(
     return pos, neg
 
 
+# ---------------------------------------------------------------------------
+# 语音清晰条款（工作流默认层；2026-09-10 用户要求「把相关提示词直接写进工作流默认设置」）
+# 背景：提示词里的语音约束过去只靠 agent 临场写，漏写就会出现含糊人声/乱语；
+# 而在本模块注入 = 无论提示词来自 CLI、模板默认文件还是 agent 现场撰写，都必然带上。
+# 台词段（有 TTS 或提示词含说话线索）→ 加"清晰语音"条款；
+# 无台词段 → 加"仅环境声、无人声"条款（实测 H3 会在无台词镜头里自行编造乱语人声）。
+# ---------------------------------------------------------------------------
+SPEECH_POS = ('clear articulate speech, precise consonants, natural lip movement matching the spoken '
+              'words, dialogue clearly audible above the ambience, clean close-miked voice')
+SPEECH_NEG = ('mumbled speech, slurred words, garbled unintelligible voice, robotic monotone, '
+              'muffled distorted voice, overlapping voices, background chatter, inaudible whispering')
+NO_SPEECH_POS = 'ambient sound only, no spoken words, no human speech'
+
+_SPEECH_HINTS = ('says', 'say:', 'speaks', 'speaking', 'dialogue', 'monologue', 'narrator',
+                 '\u8bf4\u8bdd', '\u53f0\u8bcd', '\u5bf9\u8bdd', '\u72ec\u767d', '\u8bf4\u9053', '\u558a', '\u4f4e\u8bed')
+
+
+def detect_speech_wanted(prompt: str, tts_text: str = '', stage_id: str = '') -> bool:
+    """本段是否需要"清晰人声"：有 TTS 文本 / 说话类阶段 / 提示词含说话线索。"""
+    if (tts_text or '').strip():
+        return True
+    if str(stage_id or '') in ('talk', 'lipsync'):
+        return True
+    t = (prompt or '').lower()
+    return any(h in t for h in _SPEECH_HINTS)
+
+
+def augment_speech_clause(positive: str, negative: str, want_speech: bool, enabled: bool = True):
+    """把语音条款注入正/负提示词。幂等（已含则不重复）。返回 (positive, negative, added)。"""
+    pos, neg = (positive or '').strip(), (negative or '').strip()
+    if not enabled:
+        return pos, neg, []
+    added = []
+    if want_speech:
+        if 'clear articulate speech' not in pos.lower():
+            pos = (pos + ', ' + SPEECH_POS).strip(', ')
+            added.append('positive:speech')
+    else:
+        if 'ambient sound only' not in pos.lower():
+            pos = (pos + ', ' + NO_SPEECH_POS).strip(', ')
+            added.append('positive:no-speech')
+    if 'mumbled speech' not in neg.lower():
+        neg = (neg + ', ' + SPEECH_NEG).strip(', ')
+        added.append('negative:audio')
+    return pos, neg, added
+
+
 def read_text_path(path: Optional[Path], what: str) -> str:
     if path is None or not path.exists():
         return ""

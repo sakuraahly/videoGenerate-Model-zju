@@ -307,6 +307,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                 help="七审（S6）：TTS 音色——显式语言×性别：xiaoxiao=中文女(默认)/yunxi=中文男/aria=英文女/daler=英文男(真人样本)；yunjian=沉稳男/yunyang=青年男/xiaoyi=冷静女（人物个性音色 2026-09-09）；音色库见 assets/tts_voices/manifest.json")
     p.add_argument("--tts-text", type=str, default="",
                 help="中文台词/旁白文本：完成后将该文本合成中文语音并替换视频音轨（T2b）")
+    p.add_argument("--no-speech-clause", action="store_true",
+                help="关闭语音条款默认注入（默认开启：台词段加'清晰人声'、无台词段加'仅环境声、无人声';"
+                     "提示词里已含同义条款时自动去重）")
     p.add_argument("--tts-backend", type=str, default="cosy", choices=["cosy", "local", "edge"],
                    help="S13 P链①: cosy=CosyVoice2-0.5B 自然音色(默认,GPU优先/OOM自动CPU)/local=F5-TTS 本地/edge=edge-tts 在线(降级保留,显式指定)")
     p.add_argument("--asr-check", action="store_true",
@@ -538,6 +541,14 @@ def _stage_mode(args: argparse.Namespace, project_dir: Path,
         negative = h3prompts.read_text_path(explicit_neg_file, "负向提示词")
     else:
         negative = h3prompts.read_text_path(np, "负向提示词")
+
+    # 语音条款默认注入（2026-09-10 用户要求：写进默认设置，不靠临场提示词）
+    _want_speech = h3prompts.detect_speech_wanted(prompt, getattr(args, 'tts_text', '') or '', stage_id)
+    prompt, negative, _sp_added = h3prompts.augment_speech_clause(
+        prompt, negative, _want_speech, enabled=not getattr(args, 'no_speech_clause', False))
+    if _sp_added:
+        print('SPEECH_CLAUSE: %s（%s）' % (','.join(_sp_added),
+              '台词段' if _want_speech else '无台词段=仅环境声'), flush=True)
 
     images = h3stage.gather_images(project_dir, stage, args.image)
     gp = _resolve_gp_text(args, project_dir, prompt, negative)
