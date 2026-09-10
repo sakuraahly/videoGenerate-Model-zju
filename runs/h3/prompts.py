@@ -138,7 +138,11 @@ SPEECH_POS = ('clear articulate speech, precise consonants, natural lip movement
               'words, dialogue clearly audible above the ambience, clean close-miked voice')
 SPEECH_NEG = ('mumbled speech, slurred words, garbled unintelligible voice, robotic monotone, '
               'muffled distorted voice, overlapping voices, background chatter, inaudible whispering')
-NO_SPEECH_POS = 'ambient sound only, no spoken words, no human speech'
+# 2026-09-10 用户反馈定案：无台词段光写"no speech"不够——H3 仍会让人物**动嘴说话**，
+# 而我们拼接时会把它的乱语音轨剔除 → 成片开头"有口型、没声音"。必须显式要求**嘴闭着、嘴唇不动**。
+NO_SPEECH_POS = ('the character stays completely silent with the mouth closed and the lips still, not talking, '
+                 'not mouthing words, no silent speech, no lip movement at all; ambient sound only, '
+                 'no human voice, no spoken words')
 
 # H3 原生字幕/画面文字的清晰度条款（2026-09-10 用户要求"增加 H3 原生生成的文字的清晰度"）：
 # 实测 H3 会把提示词里的台词**自己画成画面字幕**（白字黑边、笔画正确）；但分辨率越低越糊，
@@ -173,6 +177,9 @@ NO_TEXT_POS = ('the character speaks on camera with the mouth clearly moving, bu
                'text, no lettering on any surface')
 NO_TEXT_NEG = ('on-screen subtitles, burned-in captions, karaoke text, floating text overlay, letters over the '
                'image, foreground sign lettering, text rendered on screen')
+# 无台词段的负向词：唇动/无声说话同样要压掉（拼掉音轨后就是"有口型没声音"）
+NO_SPEECH_NEG = ('talking mouth, moving lips, mouthing words, silent speech, lip sync without audio, '
+                 'mouth opening and closing as if speaking, whispering')
 
 _SPEECH_HINTS = ('says', 'say:', 'speaks', 'speaking', 'dialogue', 'monologue', 'narrator',
                  '\u8bf4\u8bdd', '\u53f0\u8bcd', '\u5bf9\u8bdd', '\u72ec\u767d', '\u8bf4\u9053', '\u558a', '\u4f4e\u8bed')
@@ -226,6 +233,9 @@ def augment_speech_clause(positive: str, negative: str, want_speech: bool,
         if 'ambient sound only' not in pos.lower():
             pos = (pos + ', ' + NO_SPEECH_POS).strip(', ')
             added.append('positive:no-speech')
+        if 'mouthing words' not in neg.lower():
+            neg = (neg + ', ' + NO_SPEECH_NEG).strip(', ')
+            added.append('negative:no-speech')
     if 'mumbled speech' not in neg.lower():
         neg = (neg + ', ' + SPEECH_NEG).strip(', ')
         added.append('negative:audio')

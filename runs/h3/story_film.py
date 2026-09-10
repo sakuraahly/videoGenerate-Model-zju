@@ -264,6 +264,28 @@ def qa_onscreen_text(video: str, times: list) -> str:
     return 'unknown'
 
 
+def qa_silent_segment(video: str) -> str:
+    """无台词段验收：模型有没有自作主张让人物说话。
+
+    2026-09-10 用户反馈「开头人物有说话动作却没声音」——根因是 H3 会给无台词镜头**自己编一段话**
+    （实测 ASR 拿到「小沙我们领域口见没男都比较少啊」），而拼接会把这段乱语音轨剔除 → 只剩唇动。
+    这里用 ASR 判定：返回 'silent' | 'speech' | 'unknown'（unknown=环境问题，绝不当成 silent 放行）。
+    """
+    try:
+        r = subprocess.run([ASR_PY, str(PROJECT_ROOT / 'runs' / 'h3' / 'asr_check.py'), str(video)],
+                           capture_output=True, text=True, timeout=600)
+    except Exception:  # noqa: BLE001
+        return 'unknown'
+    out = (r.stdout or '') + (r.stderr or '')
+    for ln in out.splitlines():
+        if ln.startswith('ASR_TEXT:'):
+            body = ln.split(':', 1)[1].strip()
+            if '<|nospeech|>' in body:
+                return 'silent'
+            return 'speech' if body else 'silent'
+    return 'unknown'
+
+
 def run_segment(idx: int, prompt: str, prev_frame, args, work: Path, st: dict,
                 story: dict, sec: int | None = None, seed_bump: int = 0) -> str:
     """生成一段；返回该段视频文件路径。sec=本段视频秒数（台词段按台词时长匹配）。
@@ -580,6 +602,21 @@ def cmd_run(args) -> int:
                         os.environ['STORY_QA_FORCE_CROP'] = '1'
                         print('seg%d 裁底与换种子均未通过 → 成片阶段再兜底裁切' % idx, flush=True)
             segs[idx] = file
+            # 无台词段静音验收：模型若自己让人物说话 → 换种子重生成（否则成片开头会「有口型没声音」）
+            if not line and str(getattr(args, 'voice_mode', 'native')) == 'native' \
+                    and int(getattr(args, 'qa_tries', 0)) > 0:
+                _tries = int(args.qa_tries)
+                _v = 'unknown'
+                for _a in range(_tries):
+                    _v = qa_silent_segment(file)
+                    print('seg%d 静音验收: %s（第 %d/%d 次）' % (idx, _v, _a + 1, _tries), flush=True)
+                    if _v != 'speech' or _a + 1 >= _tries:
+                        break
+                    print('seg%d 模型自己让人物说话了 → 换种子重生成（%s）'
+                          % (idx, Path(file).name), flush=True)
+                    file = run_segment(idx, prompt, prev_frame, args, work, st, story,
+                                       sec=eff_sec, seed_bump=_a + 1)
+                    segs[idx] = file
             if line:
                 out_seg = work / ('seg_%02d_v.mp4' % idx)
                 if str(getattr(args, 'voice_mode', 'native')) == 'native':

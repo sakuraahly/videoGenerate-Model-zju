@@ -70,6 +70,10 @@ def lint(story: dict) -> tuple:
         if cjk and not wants_text:
             warn.append('seg%d: prompt 里有中文文本 %s —— H3 会把中文指令文本直接画进画面，'
                         '除"确实要出现在画面上的字"外请一律用英文' % (i, '/'.join(cjk[:3])))
+        # 3.6) 无台词且画面里有人 → H3 可能自己让人物说话；拼接剔掉乱语音轨后成片就"有口型没声音"
+        if str(i) not in (story.get('lines') or {}) and ((seg or {}).get('cast') or []):
+            warn.append('seg%d: 有角色、没有台词 —— H3 可能自己让人物说话，成片会出现"唇动无声"；'
+                        '建议该镜改为无人定场，或给它一句台词' % i)
         # 4) style 与 prompt 自相矛盾：本镜头要画面文字，整体却禁字
         if re.search(r'sign reads|招牌上写着|字样是', p, re.I) \
            and re.search(r'no (on-screen )?(text|lettering|subtitles)', str(story.get('style') or ''), re.I):
