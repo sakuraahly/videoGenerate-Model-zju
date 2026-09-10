@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import subprocess
 import sys
 import time
@@ -222,12 +223,54 @@ def instruct_text(line: dict) -> str:
     return '用' + tone
 
 
+def crop_bottom_band(src: Path, dst: Path, ratio: float):
+    """裁掉底部一条带再放大回原尺寸（模型自绘字幕固定在下三分之一）。
+
+    确定性的补救手段：不必反复换种子重烧（每次 2-3 分钟），先裁底 + 再验收，
+    只有裁底后仍检出文字才换种子重生成。失败返回 None（调用方保留原段）。
+    """
+    w, h = probe_wh(src)
+    ratio = float(ratio or 0)
+    if not (w and h) or ratio <= 0:
+        return None
+    vf = 'crop=iw:ih*%.3f:0:0,scale=%d:%d' % (max(1.0 - ratio, 0.5), w, h)
+    r = subprocess.run(['ffmpeg', '-nostdin', '-y', '-v', 'error', '-i', str(src), '-vf', vf,
+                        '-c:v', 'libx264', '-crf', '18', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+                        '-c:a', 'copy', str(dst)], capture_output=True, text=True, timeout=1800)
+    return dst if (r.returncode == 0 and dst.is_file()) else None
+
+
+def qa_onscreen_text(video: str, times: list) -> str:
+    """用视觉模型查画面里有没有"模型自己画的字"（H3 会自动把台词渲染成字幕）。
+
+    返回 'clean' | 'text' | 'unknown'（unknown=缺 token/网络问题，绝不当成 clean 放行）。
+    """
+    import os as _os
+    tok = (_os.environ.get('MS_TOKEN') or _os.environ.get('LLM_API_KEY') or '').strip()
+    if not tok:
+        return 'unknown'
+    qa = PROJECT_ROOT / 'runs' / 'h3' / 'frame_qa.py'
+    try:
+        r = subprocess.run(['python3', str(qa), video, '--times', ','.join('%.2f' % t for t in times)],
+                           capture_output=True, text=True, timeout=900,
+                           env={**_os.environ, 'MS_TOKEN': tok})
+    except Exception:  # noqa: BLE001
+        return 'unknown'
+    out = (r.stdout or '') + (r.stderr or '')
+    for ln in out.splitlines():
+        if ln.startswith('QA_RESULT:'):
+            v = ln.split(':', 1)[1].strip().lower()
+            return v if v in ('clean', 'text') else 'unknown'
+    return 'unknown'
+
+
 def run_segment(idx: int, prompt: str, prev_frame, args, work: Path, st: dict,
-                story: dict, sec: int | None = None) -> str:
-    """生成一段；返回该段视频文件路径。sec=本段视频秒数（台词段按台词时长匹配）。"""
+                story: dict, sec: int | None = None, seed_bump: int = 0) -> str:
+    """生成一段；返回该段视频文件路径。sec=本段视频秒数（台词段按台词时长匹配）。
+    seed_bump=同提示词换种子重生成（画面被模型加了字时用）。"""
     cmd = ['python3', str(SUBMIT), '--stage', 'i2v' if prev_frame else 't2v',
            '--resolution', args.resolution, '--lora', args.lora,
-           '--seconds', str(int(sec or args.seconds)), '--seed', str(args.seed),
+           '--seconds', str(int(sec or args.seconds)), '--seed', str(int(args.seed) + int(seed_bump)),
            '--force-new']  # 故事片主控自带进度管理; 不用 h3_submit 的 last_job 断点
     if prev_frame:
         cmd += ['--image', str(prev_frame)]
@@ -268,6 +311,18 @@ ASR_PY = str(Path.home() / 'ai' / 'asr-venv' / 'bin' / 'python3')
 
 # 后期字幕位置（2026-09-10 用户要求"位置尽量往下放"）：0.03×高 ≈ 480p 下 14px 安全边距
 SUBTITLE_MARGIN_V = 0.03
+
+
+def probe_wh(path) -> tuple:
+    """读宽高（兜底裁切要把画面缩放回原尺寸）。"""
+    try:
+        r = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                            '-show_entries', 'stream=width,height', '-of', 'csv=p=0', str(path)],
+                           capture_output=True, text=True, timeout=60)
+        w, h = (r.stdout or '').strip().split(',')[:2]
+        return int(w), int(h)
+    except Exception:  # noqa: BLE001
+        return 0, 0
 
 
 def probe_duration(path) -> float:
@@ -370,6 +425,25 @@ def run_line_native(idx: int, seg_file: str, line: dict, out: Path, work: Path, 
     if not text:
         return seg_file
     target = Path(seg_file)
+    # 兜底：若 QA 闸门始终判定"画面有模型字幕"（换种子也没躲过），就裁掉底部那条带再放大回原尺寸，
+    # 保证成片里不会出现"模型字幕 + 我们字幕"两条叠字（用户明确的红线）。
+    import os as _os
+    if _os.environ.get('STORY_QA_FORCE_CROP') == '1':
+        crop = float(_os.environ.get('STORY_QA_CROP_BOTTOM', '0.12') or 0.12)
+        w, h = probe_wh(target)
+        if crop > 0 and w and h:
+            cropped = work / ('seg_%02d_crop.mp4' % idx)
+            vf = 'crop=iw:ih*%.3f:0:0,scale=%d:%d' % (max(1.0 - crop, 0.5), w, h)
+            r = subprocess.run(['ffmpeg', '-nostdin', '-y', '-v', 'error', '-i', str(target),
+                                '-vf', vf, '-c:v', 'libx264', '-crf', '18', '-preset', 'fast',
+                                '-pix_fmt', 'yuv420p', '-c:a', 'copy', str(cropped)],
+                               capture_output=True, text=True, timeout=1800)
+            if r.returncode == 0 and cropped.is_file():
+                print('seg%d 兜底：裁掉底部 %.0f%% 以去除模型字幕' % (idx, crop * 100), flush=True)
+                target = cropped
+            else:
+                print('[警告] seg%d 兜底裁切失败(保留原段): %s' % (idx, (r.stderr or '')[-150:]),
+                      file=sys.stderr)
     if burn_subtitle:
         import sys as _s
         if str(PROJECT_ROOT / 'runs') not in _s.path:
@@ -410,6 +484,9 @@ def cmd_run(args) -> int:
             state_path(Path(args.work_dir)).unlink()
     work = Path(args.work_dir)
     work.mkdir(parents=True, exist_ok=True)
+    if float(getattr(args, 'qa_crop_bottom', 0) or 0) > 0:
+        import os as _os2
+        _os2.environ['STORY_QA_CROP_BOTTOM'] = str(float(args.qa_crop_bottom))
     st = load_state(work, story)
     lines = story.get('lines') or {}
     # 台词先行×时长匹配（2026-09-09 用户批评'视频结束还没说完'）：
@@ -469,6 +546,39 @@ def cmd_run(args) -> int:
                 prev_frame = Path(prev_file) if prev_file and Path(prev_file).is_file() else None
                 file = run_segment(idx, prompt, prev_frame, args, work, st, story,
                                    sec=eff_sec)
+                # VLM 验收闸门（2026-09-10）：H3 有概率把台词画成画面字幕 → 换种子重生成
+                if line and str(getattr(args, 'voice_mode', 'native')) == 'native' \
+                        and int(getattr(args, 'qa_tries', 0)) > 0:
+                    verdict = 'unknown'
+                    tries = int(args.qa_tries)
+                    crop_ratio = float(getattr(args, 'qa_crop_bottom', 0.12) or 0)
+                    for attempt in range(tries):
+                        dur = probe_duration(file)
+                        verdict = qa_onscreen_text(file, [dur * f for f in (0.3, 0.55, 0.8)])
+                        print('seg%d 画面文字验收: %s（第 %d/%d 次）'
+                              % (idx, verdict, attempt + 1, tries), flush=True)
+                        if verdict != 'text':
+                            break
+                        # ① 先做确定性补救：裁掉底部带（模型字幕就在那一带），再验收
+                        cand = crop_bottom_band(Path(file), work / ('seg_%02d_crop.mp4' % idx),
+                                                crop_ratio)
+                        if cand:
+                            cd = probe_duration(cand)
+                            v2 = qa_onscreen_text(str(cand), [cd * f for f in (0.3, 0.55, 0.8)])
+                            print('seg%d 裁掉底部 %.0f%% 后再验: %s' % (idx, crop_ratio * 100, v2),
+                                  flush=True)
+                            if v2 != 'text':
+                                file, verdict = str(cand), v2
+                                break
+                        # ② 裁底也没救 → 换种子重生成
+                        if attempt + 1 < tries:
+                            print('seg%d 仍有模型字幕 → 换种子重生成（%s）' % (idx, Path(file).name),
+                                  flush=True)
+                            file = run_segment(idx, prompt, prev_frame, args, work, st, story,
+                                               sec=eff_sec, seed_bump=attempt + 1)
+                    if verdict == 'text':      # 极端情况：裁底+换种子都不行 → 交给后期再兜底裁一次
+                        os.environ['STORY_QA_FORCE_CROP'] = '1'
+                        print('seg%d 裁底与换种子均未通过 → 成片阶段再兜底裁切' % idx, flush=True)
             segs[idx] = file
             if line:
                 out_seg = work / ('seg_%02d_v.mp4' % idx)
@@ -531,6 +641,10 @@ def main(argv=None) -> int:
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--work-dir', default='/tmp/story_film')
     ap.add_argument('--stitch', action='store_true')
+    ap.add_argument('--qa-tries', type=int, default=3,
+                    help='画面文字验收重试次数（VLM 检出模型自绘字幕→换种子重生成；0=关闭闸门）')
+    ap.add_argument('--qa-crop-bottom', type=float, default=0.12,
+                    help='闸门始终失败时兜底裁掉的底部比例（默认 0.12=去掉模型字幕那条带）')
     ap.add_argument('--no-subtitle', action='store_true',
                     help='不烧后期字幕（默认烧：提示词已要求模型不要画字，字幕由我们在后期加，位置贴底）')
     ap.add_argument('--voice-mode', default='native', choices=['native', 'tts'],

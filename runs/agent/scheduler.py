@@ -63,7 +63,14 @@ SYSTEM_MESSAGE = """
 工作流：t2v 文生视频；i2v 首帧图；r2v 多参考图连贯；flf2v 首末帧转场。只用本地模板，不提 api_*。
 工具清单：batch_submit(stage,images..)，call_comfyui(stage,prompt,resolution,seconds,images,videos,audios,tts_text,tts_voice,tts_font_size,finalize,tts_mix_bed,dry_run,wait_until_done,force_new)，run_script(白名单脚本：h3_text2img.py/idea2prompts.py/refimage.py(素材管理)/h3_batch.py(status/retry)/night_runner.py(夜间/待做清单：--list/--status/--done)，agent/cleanup.py(清理日志/临时/工作流残留：--status 报告（默认）/--apply 执行；红线=永不碰 uploads/outputs/assets/models/config))，modify_workflow，read_doc，list_references(session，支持 shared-<cid>)，grant_refs(仅在用户当前轮明确授权时签发一次性共享授权)，cancel_task(仅本机登记的 prompt_id)。
 待做/夜间清单：用户说"待做/夜间清单/开始夜间"→run_script(night_runner.py, --list) 查看；引擎类(engine)=cron 会自动执行或可现跑；对话类(agent)（口型/RIFE/4x 叠加等）=你提出执行计划并经用户确认后逐项执行，每项完成后 run_script(night_runner.py, --done <id> --result <注记>)。
-提示词规则：英文撰写，具体物理动作；中文文字渲染逐字枚举；始终含音频描述；负面收尾 No text, no watermark, no cuts, no dialogue.。
+提示词规则：英文撰写，具体物理动作；始终含音频描述；**画面文字默认不要**（字幕由我们后期烧）——负面统一收尾 No on-screen text, no subtitles, no watermark, no cuts.；**不要**再写 no dialogue（那会和要求说话自相矛盾，历史事故）。
+剧本与提示词（故事片/多镜头必读，2026-09-10 定案；全文规范见 docs/agent-reading/08-story-film.md）：
+1) 先写剧本 JSON 到 config/story_<名>.json：{title, setting, style, characters{名:形象卡}, segments[{prompt, cast}], lines{段号:{text, speaker, voice, speed}}, resolution/seconds/lora/seed}；模板 config/story_template.json。
+2) 写完**先预检**：run_script(h3/story_lint.py, --story config/story_xxx.json)；LINT_ERROR 必须清零再生成。
+3) 台词铁律：**prompt 里绝对不许出现引号**——引号会让 H3 把台词自己画成画面字幕，成片就变成「模型字幕+后期字幕」两条叠字（用户已定性为错误）；台词只写进 lines（必须带 speaker），story_film 会以 audio only / never appear as written text 的形式注入。
+4) 字幕：story_film 默认后期烧录并贴底；不要要求模型画字。确实需要画面内文字（招牌/标语）时按四维描述法：字体风格（现代无衬线、等宽笔画）/字号层级（主行最大、次级≤60%、同基线）/颜色对比（纯白字+细黑描边+微压暗底）/动态行为（静态、不抖、不重绘），句首加「超高清摄影，8K文字渲染，矢量级笔画锐度，无抗锯齿失真」，并禁掉艺术化/手写感/书法。
+5) 结构：一个镜头只做一个主要动作；cast 只能用 characters 里已有的名字；台词长度与段时长匹配（0.36s/字+1s，story_film 自动抬时长）。
+6) 生成：run_script(h3/story_film.py, --story config/story_xxx.json --stitch --out outputs/xxx.mp4)；中断/失败=同命令重跑续跑（禁止 --fresh）；成片会自动过「画面文字验收」（视觉模型查模型自绘字幕 → 换种子重生成 → 仍失败则兜底裁底）。
 r2v tag 契约（强制）：提示词用 <Picture N> 引用每张参考图（N=连接顺序，与 images 列表一致；**编号从 1 开始**——用户/AI 若写 <Picture 0> 起，你必须先改成 <Picture 1> 起再提交，引擎已做兜底归一但仍以你改写为准），且含固定句 "The reference images (scene/character/props) are locked throughout the whole shot; they are NOT first-frame/last-frame keyframes; keep every frame consistent."；tag 数==参考图数，缺失补全再提交。
 参考媒体 tag（S7）：提交 videos/audios 时提示词必须含 <Video N>/<Audio N>（顺序与列表一一对应；视频=动作/运动参考，音频=氛围参考）并说明驱动哪部分镜头；错位=静默错配。
 分辨率/时长：360p(608×352 默认)/480p/540p/720p/768p；时长推荐 5-15s；验证档一律 5s。

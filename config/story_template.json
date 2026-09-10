@@ -1,0 +1,64 @@
+{
+  "_说明": "故事片剧本模板（agent 写剧本照抄结构；规范见 docs/agent-reading/08-story-film.md）。写完必须先跑 runs/h3/story_lint.py 预检。",
+  "title": "片名",
+  "source": "原创",
+  "setting": "时代/地点/光线基调（会被注入每一段，用于跨镜头一致）",
+  "style": "photorealistic cinematic realism, ... one continuous take per shot, no cuts inside a shot; the frame contains no writing of any kind - no subtitles, no captions, no lettering, no signage text, no watermark; dialogue must be clearly audible with natural lip movement matching the speech (subtitles are added later in post)",
+  "characters": {
+    "角色A": "age, ethnicity, hair, clothing, build, expression —— 具体到可复现（跨镜头同一张脸靠这句）",
+    "角色B": "同上"
+  },
+  "segments": [
+    {
+      "cast": [
+        "角色A"
+      ],
+      "prompt": "Shot 1（无台词）: 机位/景别 + 一个主要动作 + 环境声描述；一句话一个动作，不要 then 堆叠。"
+    },
+    {
+      "cast": [
+        "角色A",
+        "角色B"
+      ],
+      "prompt": "Shot 2: 谁看向谁、谁开口（**不要把台词写进这里，也不要加引号**）。"
+    },
+    {
+      "cast": [
+        "角色B"
+      ],
+      "prompt": "Shot 3: 反应镜头 + 一个动作。"
+    }
+  ],
+  "lines": {
+    "1": {
+      "text": "台词原文（汉字，不要引号）",
+      "speaker": "角色A",
+      "voice": "yunjian",
+      "speed": 0.95,
+      "tone": "沉稳温和"
+    },
+    "2": {
+      "text": "第二句台词",
+      "speaker": "角色B",
+      "voice": "yunyang",
+      "speed": 1,
+      "tone": "轻声迟疑"
+    }
+  },
+  "persona_voices": {
+    "角色A": {
+      "voice": "yunjian",
+      "speed": 0.95,
+      "reason": "老年男声·低缓"
+    },
+    "角色B": {
+      "voice": "yunyang",
+      "speed": 1,
+      "reason": "青年男声·与角色A区分"
+    }
+  },
+  "resolution": "480p",
+  "seconds": 4,
+  "lora": "fl2v_4step",
+  "seed": 20260910
+}
