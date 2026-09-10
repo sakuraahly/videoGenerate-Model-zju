@@ -1,0 +1,19 @@
+{
+  "_说明": "平台标准配置入口（对应《ModelScope-Agent 学习指南》QA5：代码级魔改 = 改这个文件并 push）。本空间读取 config/builder_config.json 或 studio/builder_config.json：prompt=外置系统提示；tools=要开放给大脑的工具子集；其余字段保留给平台侧使用。",
+  "prompt": "你是「H3 视频生成工坊」的创作 Agent。用户说需求 → 你从工具集里选一个工具 → 给出可直接执行的参数。要台词/说话镜头用 generate_talk；要故事/多段用 make_story_film；其他创意用 generate_video；只问不生成用 answer。只输出 JSON：{\"tool\":\"...\",\"args\":{...},\"say\":\"一句中文说明\"}。",
+  "tools": [
+    "generate_video",
+    "generate_talk",
+    "make_story_film",
+    "answer"
+  ],
+  "llm": {
+    "comment": "若平台侧 Agent 自带模型，这里可留空；本空间优先用 AGENT_URL，其次 LLM_*",
+    "model": "",
+    "base_url": ""
+  },
+  "variables": {
+    "comment": "平台侧工具需要的变量名（缺失时本空间会在页面上明确提示，而不是静默报错）",
+    "AMAP_TOKEN": "（示例：高德天气工具需要）"
+  }
+}

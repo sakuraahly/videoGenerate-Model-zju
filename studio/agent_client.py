@@ -121,6 +121,16 @@ class AgentClient:
         self.engine_key = _env('ENGINE_API_KEY', 'VIDEO_API_KEY')
         self.engine_status = self._url(_env('ENGINE_STATUS_URL', 'VIDEO_API_STATUS_URL'))
         self.toolset = [t.strip() for t in _env('TOOLSET', default='all').split(',') if t.strip()]
+        # 平台标准通道（2026-09-10 按《ModelScope-Agent 学习指南》对齐）：
+        #   文档的做法是「零代码创建 Agent → 发布 → 只取 AGENT_URL → 在创空间里替换该环境变量 → 重启空间展示」。
+        #   所以 AGENT_URL 是**首选大脑**：平台上的 Agent（自带 prompt/tools/知识）负责决策；
+        #   我们只做「工具集 + 前端」，与 LLM_* 通道并存，优先级 AGENT_URL > LLM_* > 规则规划器。
+        self.agent_url = self._url(_env('AGENT_URL'))
+        self.agent_token = _env('AGENT_TOKEN')
+        try:
+            self.agent_timeout = int(float(_env('AGENT_TIMEOUT', default='90') or 90))
+        except Exception:  # noqa: BLE001
+            self.agent_timeout = 90
         self.llm_extra = {}
         raw_extra = _env('LLM_EXTRA_JSON')      # 例:{"chat_template_kwargs":{"enable_thinking":false}}
         if raw_extra:
@@ -131,6 +141,33 @@ class AgentClient:
             except Exception:  # noqa: BLE001
                 pass
         self.system_prompt = self._load_system_prompt()
+        self.builder_cfg = self._load_builder_config()
+        if self.builder_cfg:                     # 平台约定的代码级配置入口（config/builder_config.json）
+            if str(self.builder_cfg.get('prompt') or '').strip():
+                self.system_prompt = str(self.builder_cfg['prompt'])
+            tools = self.builder_cfg.get('tools')
+            if isinstance(tools, list) and tools and self.toolset == ['all']:
+                names = [t if isinstance(t, str) else str((t or {}).get('name') or '') for t in tools]
+                names = [n.strip() for n in names if n and n.strip()]
+                if names:
+                    self.toolset = names
+
+    @staticmethod
+    def _load_builder_config() -> dict:
+        """读 config/builder_config.json（平台 Agent 代码级配置约定）。
+
+        文档《ModelScope-Agent 学习指南》QA5：代码级魔改 = 在本地 config/builder_config.json
+        改字段并调试 → commit & push → 重启空间展示。这里只取我们关心的三样：prompt / tools / 变量。
+        """
+        for cand in (Path(__file__).resolve().parent / 'builder_config.json',
+                     Path(__file__).resolve().parent.parent / 'config' / 'builder_config.json'):
+            try:
+                if cand.is_file():
+                    data = json.loads(cand.read_text(encoding='utf-8-sig'))
+                    return data if isinstance(data, dict) else {}
+            except Exception:  # noqa: BLE001
+                continue
+        return {}
 
     # ---------- 外置大脑:system 提示可注入 ----------
     @staticmethod
@@ -150,8 +187,17 @@ class AgentClient:
         return DEFAULT_SYSTEM
 
     @property
+    def brain(self) -> str:
+        """当前决策通道：agent-url（平台 Agent，首选）/ llm（自建大脑）/ rule（内置规则规划器）。"""
+        if self.agent_url:
+            return 'agent-url'
+        if self.llm_key:
+            return 'llm'
+        return 'rule'
+
+    @property
     def mode(self) -> str:
-        if self.llm_key or self.engine_url:
+        if self.agent_url or self.llm_key or self.engine_url:
             return 'agent-api'
         return 'demo-planner'
 
@@ -162,13 +208,127 @@ class AgentClient:
 
     def status(self) -> dict:
         """给 UI 用的自检信息(不泄露密钥,只表明是否已配置)。"""
-        return {'mode': self.mode, 'brain': bool(self.llm_key), 'model': self.llm_model,
+        return {'mode': self.mode, 'brain': bool(self.llm_key or self.agent_url),
+                'brain_channel': self.brain,
+                'agent_url': bool(self.agent_url),
+                'builder_config': bool(self.builder_cfg),
+                'model': self.llm_model,
                 'engine': bool(self.engine_url), 'status_api': bool(self.engine_status),
                 'tools': [t['name'] for t in self.tools()],
                 'system_prompt': 'custom' if self.system_prompt != DEFAULT_SYSTEM else 'default'}
 
+    # ---------- 平台 Agent 通道（AGENT_URL，容错适配） ----------
+    def _ask_agent_url(self, messages: list) -> str:
+        """把对话发给平台上的 Agent（AGENT_URL），返回它的文本回复。
+
+        平台 Agent 的返回形态不固定（OpenAI 兼容 JSON / 通用 JSON / SSE 流），这里逐个尝试并统一抽文本；
+        全部失败就抛异常，由上层降级——绝不假装成功。
+        """
+        import urllib.request
+        headers = {'Content-Type': 'application/json',
+                   'Accept': 'application/json, text/event-stream'}
+        if self.agent_token:
+            headers['Authorization'] = 'Bearer ' + self.agent_token
+        payloads = [
+            {'model': _env('AGENT_MODEL', default='modelscope-agent'),
+             'messages': messages, 'stream': False},
+            {'messages': messages},
+            {'input': messages[-1].get('content', ''), 'messages': messages},
+        ]
+        last = None
+        for body in payloads:
+            try:
+                req = urllib.request.Request(self.agent_url, data=json.dumps(body).encode(),
+                                             headers=headers)
+                with urllib.request.urlopen(req, timeout=self.agent_timeout) as r:
+                    raw = r.read().decode('utf-8', 'replace')
+                    ctype = r.headers.get('Content-Type') or ''
+                txt = self._extract_agent_text(raw, ctype)
+                if txt:
+                    return txt
+                last = ValueError('平台 Agent 返回体里没解析出文本')
+            except Exception as e:  # noqa: BLE001
+                last = e
+        raise last if last else RuntimeError('AGENT_URL 调用失败')
+
+    @staticmethod
+    def _extract_agent_text(raw: str, ctype: str = '') -> str:
+        """从平台 Agent 返回里抽文本：OpenAI 兼容 JSON / 通用 JSON / SSE 三种形态都认。"""
+        raw = (raw or '').strip()
+        if not raw:
+            return ''
+        if 'event-stream' in (ctype or '').lower() or raw.startswith('data:'):
+            chunks = []
+            for line in raw.splitlines():
+                line = line.strip()
+                if not line.startswith('data:'):
+                    continue
+                piece = line[5:].strip()
+                if not piece or piece == '[DONE]':
+                    continue
+                chunks.append(AgentClient._pick_text(piece) or piece)
+            return ''.join(chunks).strip()
+        return AgentClient._pick_text(raw)
+
+    @staticmethod
+    def _pick_text(raw: str) -> str:
+        """按常见字段路径抽文本（不同平台/版本字段名不一样，全试一遍）。"""
+        try:
+            d = json.loads(raw)
+        except Exception:  # noqa: BLE001
+            return raw if not raw.lstrip().startswith(('{', '[')) else ''
+        paths = (('choices', 0, 'message', 'content'), ('choices', 0, 'text'),
+                 ('data', 'text'), ('data', 'response'), ('data', 'content'),
+                 ('data', 0, 'text'), ('response',), ('answer',), ('content',),
+                 ('text',), ('output_text',), ('message',), ('result',))
+        for path in paths:
+            cur = d
+            ok = True
+            for k in path:
+                if isinstance(cur, list) and isinstance(k, int) and len(cur) > k:
+                    cur = cur[k]
+                elif isinstance(cur, dict) and k in cur:
+                    cur = cur[k]
+                else:
+                    ok = False
+                    break
+            if ok and isinstance(cur, str) and cur.strip():
+                return cur.strip()
+        return ''
+
+    def _plan_agent_url(self, user_msg: str, history: list) -> dict:
+        """让平台 Agent 决策：把 system 提示 + 工具清单 + 最近对话发过去，收 {tool,args,say}。
+
+        容错：平台 Agent 若只回自然语言（没按我们的 JSON 约定），就把它的文本当 answer 交付，
+        不做假动作、也不硬套工具。
+        """
+        msgs = [{"role": "system", "content": self.system_prompt
+                 + "\n可用工具(JSON 列表):" + json.dumps(self.tools(), ensure_ascii=False)}]
+        for h in (history or [])[-6:]:
+            c = h.get('content')
+            if isinstance(c, list):
+                c = ' '.join(x.get('text', '') for x in c if isinstance(x, dict))
+            msgs.append({"role": h.get('role', 'user'), "content": str(c or '')[:800]})
+        msgs.append({"role": "user", "content": user_msg})
+        try:
+            txt = self._ask_agent_url(msgs)
+        except Exception as e:  # noqa: BLE001
+            return {'tool': 'answer',
+                    'args': {'text': '(平台 Agent 暂不可用：%s；本轮按内置规则执行。)' % str(e)[:120]},
+                    'say': '平台 Agent 没接上，我先用内置规则给你方案。'}
+        try:
+            plan = json.loads(txt)
+            if isinstance(plan, dict) and plan.get('tool'):
+                plan['args'] = normalize_args(plan['tool'], plan.get('args') or {})
+                return plan
+        except Exception:  # noqa: BLE001
+            pass
+        return {'tool': 'answer', 'args': {'text': txt}, 'say': ''}
+
     # ---------- 决策(大脑) ----------
     def plan(self, user_msg: str, history: list) -> dict:
+        if self.brain == 'agent-url':
+            return self._plan_agent_url(user_msg, history)
         if not self.llm_key:
             return self._rule_plan(user_msg)
         msgs = [{"role": "system", "content": self.system_prompt

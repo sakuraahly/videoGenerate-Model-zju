@@ -229,10 +229,12 @@ def build_app(show: dict):
                                  "当前是演示预览，不做假动作")
                 else:
                     _mode_txt = "🧪 规划演示模式（未配置外部接口：仍完整展示工具决策 + 请求体预览）"
+                _chan = _st.get('brain_channel') or 'rule'
+                _brain_txt = {'agent-url': "✅ 平台 Agent（AGENT_URL）",
+                              'llm': "✅ 自建大脑（LLM_*：%s）" % _st.get('model'),
+                              'rule': "内置规则规划器（未配置大脑接口）"}.get(_chan, _chan)
                 gr.Markdown("**当前模式**：%s　|　**外置大脑**：%s　|　**视频生成接口**：%s"
-                            % (_mode_txt,
-                               ("已配置（%s）" % _st.get('model')) if _st.get('brain')
-                               else "未配置（自动用内置规则规划器）",
+                            % (_mode_txt, _brain_txt,
                                "已配置" if _st.get('engine') else "未配置"))
                 gr.Markdown("**工具集**（agent 的手脚，全部走接口）：%s\n\n"
                             "_本空间不部署模型：大脑由 `LLM_*` 接口控制，出片由 `ENGINE_*` 接口控制；"
@@ -374,7 +376,7 @@ def build_app(show: dict):
 
 _{show['footer']}_""")
 
-        gr.Markdown(f"\n---\n_空间版本 v2.4（2026-09-10 · Agent=工具集+外置大脑；接口全外置·无本机依赖）_")
+        gr.Markdown(f"\n---\n_空间版本 v2.5（2026-09-10 · Agent=工具集+外置大脑；支持平台 AGENT_URL 通道与 builder_config.json）_")
     return demo
 
 

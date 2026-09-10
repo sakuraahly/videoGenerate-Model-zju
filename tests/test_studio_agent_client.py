@@ -391,3 +391,83 @@ def test_plan_degrades_after_repeated_failure(monkeypatch):
         os.environ.pop("LLM_BASE_URL", None)
         os.environ.pop("LLM_API_KEY", None)
 
+
+
+# ---------- 平台 Agent 通道（AGENT_URL，按《ModelScope-Agent 学习指南》对齐） ----------
+
+def test_brain_priority_agent_url_over_llm_over_rule():
+    os.environ["AGENT_URL"] = "https://agent.example.com/api/agent"
+    os.environ["LLM_BASE_URL"] = "https://llm.example/v1"
+    os.environ["LLM_API_KEY"] = "k"
+    try:
+        c = ac.AgentClient()
+        assert c.brain == "agent-url" and c.agent_url.endswith("/api/agent")
+        os.environ.pop("AGENT_URL")
+        assert ac.AgentClient().brain == "llm"
+        os.environ.pop("LLM_API_KEY")
+        assert ac.AgentClient().brain == "rule"
+    finally:
+        for k in ("AGENT_URL", "LLM_BASE_URL", "LLM_API_KEY"):
+            os.environ.pop(k, None)
+
+
+def test_agent_text_extraction_all_shapes():
+    """平台 Agent 返回形态不固定：OpenAI 兼容 / 通用 JSON / SSE 都要能抽出来。"""
+    openai = '{"choices":[{"message":{"content":"你好"}}]}'
+    generic = '{"data":{"text":"世界"}}'
+    resp = '{"response":"回答"}'
+    sse = 'data: {"data": {"text": "流式"}}\n\ndata: [DONE]\n'
+    assert ac.AgentClient._extract_agent_text(openai) == "你好"
+    assert ac.AgentClient._extract_agent_text(generic) == "世界"
+    assert ac.AgentClient._extract_agent_text(resp) == "回答"
+    assert ac.AgentClient._extract_agent_text(sse, "text/event-stream") == "流式"
+    assert ac.AgentClient._extract_agent_text("纯文本回复") == "纯文本回复"
+    assert ac.AgentClient._extract_agent_text('{"foo":1}') == ""
+
+
+def test_plan_agent_url_uses_json_plan(monkeypatch):
+    os.environ["AGENT_URL"] = "https://agent.example.com/api/agent"
+    try:
+        c = ac.AgentClient()
+        monkeypatch.setattr(c, "_ask_agent_url", lambda msgs: json.dumps(
+            {"tool": "generate_talk", "args": {"dialogue": "天冷了"}, "say": "做说话镜头"}))
+        plan = c.plan("让老人说一句话", [])
+        assert plan["tool"] == "generate_talk" and plan["args"]["text"] == "天冷了"
+    finally:
+        os.environ.pop("AGENT_URL", None)
+
+
+def test_plan_agent_url_falls_back_to_plain_answer(monkeypatch):
+    """平台 Agent 只回自然语言（没按约定给 JSON）→ 当 answer 交付，不硬套工具。"""
+    os.environ["AGENT_URL"] = "https://agent.example.com/api/agent"
+    try:
+        c = ac.AgentClient()
+        monkeypatch.setattr(c, "_ask_agent_url", lambda msgs: "我可以帮你生成视频，请给我一句台词。")
+        plan = c.plan("你好", [])
+        assert plan["tool"] == "answer" and "请给我一句台词" in plan["args"]["text"]
+    finally:
+        os.environ.pop("AGENT_URL", None)
+
+
+def test_plan_agent_url_failure_degrades_honestly(monkeypatch):
+    os.environ["AGENT_URL"] = "https://agent.example.com/api/agent"
+    try:
+        c = ac.AgentClient()
+
+        def boom(msgs):
+            raise RuntimeError("502")
+
+        monkeypatch.setattr(c, "_ask_agent_url", boom)
+        plan = c.plan("让老人说一句话", [])
+        assert plan["tool"] == "answer" and "暂不可用" in plan["args"]["text"]
+    finally:
+        os.environ.pop("AGENT_URL", None)
+
+
+def test_status_reports_brain_channel():
+    os.environ["AGENT_URL"] = "https://agent.example.com/api/agent"
+    try:
+        st = ac.AgentClient().status()
+        assert st["brain_channel"] == "agent-url" and st["agent_url"] is True and st["brain"] is True
+    finally:
+        os.environ.pop("AGENT_URL", None)
