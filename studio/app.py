@@ -80,6 +80,20 @@ def _shared_client():
 _SHARED_ONE = None
 
 
+
+# 服务商预设：让「接外部通用大模型」变成点一下（2026-09-10）
+PROVIDER_PRESETS = {
+    '阿里云百炼（DashScope 兼容模式）': ('https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus'),
+    'DeepSeek': ('https://api.deepseek.com', 'deepseek-chat'),
+    '魔搭 API-Inference（社区免费额度）': ('https://api-inference.modelscope.cn/v1', 'Qwen/Qwen3.5-35B-A3B'),
+    '智谱 GLM（开放平台）': ('https://open.bigmodel.cn/api/paas/v4', 'glm-4-flash'),
+    '自定义（自己填地址与模型名）': ('', ''),
+}
+
+
+def provider_choices():
+    return list(PROVIDER_PRESETS.keys())
+
 def _client_from(ov: dict = None, existing=None):
     """按会话构建/更新 AgentClient（BYOK：用户自带密钥优先，且只跟着这个会话）。
 
@@ -291,12 +305,21 @@ def build_app(show: dict):
                         "填你自己的模型服务凭据即可用本工具；**本空间不代付、不共享任何密钥**。"
                         " 密钥只随本次请求发到本进程内存里用于调用你指定的服务，"
                         "**不写盘、不进日志**；换会话/刷新页面后请重填。留空则使用空间默认（若有）。")
+                    byok_preset = gr.Dropdown(label="① 选服务商（自动填地址与模型名）",
+                                              choices=provider_choices(), value=provider_choices()[0])
                     with gr.Row():
-                        byok_base = gr.Textbox(label="模型服务地址（OpenAI 兼容）", scale=3,
+                        byok_base = gr.Textbox(label="② 模型服务地址（OpenAI 兼容）", scale=3,
                                                placeholder="例：https://dashscope.aliyuncs.com/compatible-mode/v1")
                         byok_model = gr.Textbox(label="模型名", scale=1, placeholder="例：qwen-plus")
-                    byok_key = gr.Textbox(label="模型服务 API Key（你自己的）", type="password",
+                    byok_key = gr.Textbox(label="③ 模型服务 API Key（你自己的）", type="password",
                                           placeholder="sk-...（只在本会话内存里）")
+
+                    def _apply_preset(name):
+                        """选服务商 → 自动填地址与模型名（Key 仍要用户自己填）。"""
+                        base, model = PROVIDER_PRESETS.get(name, ('', ''))
+                        return gr.update(value=base), gr.update(value=model)
+
+                    byok_preset.change(_apply_preset, [byok_preset], [byok_base, byok_model])
                     with gr.Accordion("（可选）视频生成接口 —— 你自己的", open=False):
                         with gr.Row():
                             byok_eng = gr.Textbox(label="ENGINE_BASE_URL", scale=3)
@@ -467,7 +490,7 @@ _{show['footer']}_""")
 
                 _probe.click(_probe_click, [sess_client] + BYOK_IN, [_probe_out])
 
-        gr.Markdown(f"\n---\n_空间版本 v3.1（2026-09-10 · Agent=工具集+外置大脑；BYOK 自带密钥 + **零信任单页版入口** + 安全加固 + 连接自测）_")
+        gr.Markdown(f"\n---\n_空间版本 v3.2（2026-09-10 · Agent=工具集+外置大脑；服务商一键预设 + BYOK + 零信任单页入口 + 安全加固 + 连接自测）_")
     return demo
 
 
