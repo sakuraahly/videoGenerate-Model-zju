@@ -100,8 +100,22 @@ def decide(ping: bool, comfy_gb: Optional[float], threshold: float = 32.0) -> Tu
     return "start", "ComfyUI 占用 %.1fGB，可共存启动" % comfy_gb
 
 
+def _safe_token(v, pattern: str, default: str) -> str:
+    """参数白名单校验：这三个值会被拼进 shell 命令（tmux … %s），必须防注入。"""
+    import re as _re
+    s = str(v if v is not None else default).strip()
+    return s if _re.fullmatch(pattern, s) else default
+
+
 def start_sglang(mem: str = None, spec: str = "off", max_run: str = "1") -> bool:
-    """tmux 启动 SGLang（共存低耗参数）；返回是否已发启动。"""
+    """tmux 启动 SGLang（共存低耗参数）；返回是否已发启动。
+
+    2026-09-10 加固：三个参数只允许白名单字符（内存比例是数字、spec 只能 on/off、max_run 只能数字），
+    不合法一律回退默认值——避免被拼进 shell 命令造成注入。
+    """
+    mem = _safe_token(mem, r"[0-9]+(\.[0-9]+)?", "0.40")
+    spec = _safe_token(spec, r"(on|off)", "off")
+    max_run = _safe_token(max_run, r"[0-9]+", "1")
     script = str(PROJECT_ROOT / "shell" / "start_sglang_coexist.sh")
     env = ("SGLANG_MEM=%s SGLANG_SPEC=%s SGLANG_MAX_RUN=%s "
            % (mem or "0.40", spec, max_run))

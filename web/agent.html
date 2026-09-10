@@ -115,7 +115,7 @@ function addMsg(role, html){
   d.className = "msg " + (role==="user" ? "me" : role==="assistant" ? "ai" : "sys");
   d.innerHTML = html; $("chat").appendChild(d); window.scrollTo(0, document.body.scrollHeight); return d;
 }
-function esc(s){ return String(s==null?"":s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
 
 function parsePlan(text){
   let t = String(text||"").trim();

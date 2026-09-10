@@ -747,3 +747,66 @@ def test_status_reports_brain_channel():
         assert st["brain_channel"] == "agent-url" and st["agent_url"] is True and st["brain"] is True
     finally:
         os.environ.pop("AGENT_URL", None)
+
+
+# ---------- 会话回收与注入白名单（2026-09-10 加固续） ----------
+
+def test_session_client_keeps_ledger_and_isolates(monkeypatch):
+    """同一 sid 复用同一客户端（台账不丢）；不同会话互不可见。"""
+    import app as _app
+    monkeypatch.setattr(_app, '_SESS', {})
+    sid1, c1 = _app._session_client('', {'LLM_API_KEY': 'sk-a', 'LLM_BASE_URL': 'https://a.example/v1'})
+    assert sid1 and len(sid1) == 16
+    c1.record_job('generate_video', {'prompt': 'p'}, {'prompt': 'p'}, 'job-1')
+    sid2, c2 = _app._session_client(sid1, {'LLM_API_KEY': 'sk-a', 'LLM_BASE_URL': 'https://a.example/v1'})
+    assert sid2 == sid1 and c2 is c1 and len(c2.job_log) == 1
+    sid3, c3 = _app._session_client('', {'LLM_API_KEY': 'sk-b'})
+    assert sid3 != sid1 and c3 is not c1 and c3.job_log == []
+
+
+def test_session_client_ttl_releases_key(monkeypatch):
+    """过期会话连同其内存里的 key 一起释放（不留长期驻留）。"""
+    import app as _app
+    monkeypatch.setattr(_app, '_SESS', {})
+    monkeypatch.setenv('SESSION_TTL_SEC', '60')      # 代码有 max(60, ttl) 下限（防止过短误踢会话）
+    clock = {'t': 1000.0}
+    monkeypatch.setattr('time.time', lambda: clock['t'])
+    sid, _c = _app._session_client('', {'LLM_API_KEY': 'sk-a'})
+    assert sid in _app._SESS
+    clock['t'] += 61
+    sid2, _c2 = _app._session_client('', {'LLM_API_KEY': 'sk-a'})
+    assert sid not in _app._SESS and sid2 != sid
+
+
+def test_session_client_cap_evicts_oldest(monkeypatch):
+    import app as _app
+    monkeypatch.setattr(_app, '_SESS', {})
+    monkeypatch.setenv('SESSION_MAX', '2')
+    ids = []
+    for i in range(3):
+        s, _ = _app._session_client('', {'LLM_API_KEY': 'sk-%d' % i})
+        ids.append(s)
+    assert len(_app._SESS) == 2 and ids[0] not in _app._SESS
+
+
+def test_state_never_holds_client_object():
+    """防回归：State 只允许存不透明 id，不能把含密钥的客户端对象交给前端状态层。"""
+    src = (ROOT / 'studio' / 'app.py').read_text(encoding='utf-8')
+    assert "sess_id = gr.State" in src and "sess_client = gr.State" not in src
+
+
+def test_sglang_guard_rejects_injection():
+    """start_sglang 的参数会被拼进 shell 命令 —— 非法值必须回退默认（防注入）。"""
+    sys.path.insert(0, str(ROOT))
+    from runs.agent import sglang_guard as sg
+    assert sg._safe_token("0.5; rm -rf ~", r"[0-9]+(\.[0-9]+)?", "0.40") == "0.40"
+    assert sg._safe_token("on", r"(on|off)", "off") == "on"
+    assert sg._safe_token("3 && curl evil", r"[0-9]+", "1") == "1"
+    assert sg._safe_token(None, r"[0-9]+", "1") == "1"
+
+
+def test_static_page_escapes_quotes():
+    """零信任单页把模型输出塞进 innerHTML：转义必须覆盖引号，不能只挡尖括号。"""
+    html = (ROOT / 'web' / 'agent.html').read_text(encoding='utf-8')
+    line = [l for l in html.splitlines() if 'function esc' in l][0]
+    assert "&quot;" in line and "&#39;" in line
