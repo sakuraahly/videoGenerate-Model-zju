@@ -348,7 +348,11 @@ class TestSubgraphFlatten(unittest.TestCase):
 
     def _load(self, name):
         import json as _json
-        return _json.loads((self.MIRROR / name).read_text(encoding="utf-8-sig"))
+        p = self.MIRROR / name
+        if not p.is_file():
+            # 2026-09-10：同事原件（api_*/video_t2v 等未注册模板）已归档到 archive/
+            p = self.MIRROR / "archive" / name
+        return _json.loads(p.read_text(encoding="utf-8-sig"))
 
     def _flat(self, name):
         from h3 import subgraph
@@ -1150,7 +1154,10 @@ class TestStageCli(unittest.TestCase):
                                         str(self.RUNS.parent / "my_video.mp4"), "--dry-run")
             self.assertEqual(code, 0)
             data = json.loads(out[out.index("{"):])
-            self.assertEqual(data["2"]["inputs"]["text"], "一只猫")
+            # 2026-09-10：提交前会追加语音/文字条款（augment_speech_clause），
+            # 因此断言"以原提示词开头"而不是完全相等
+            self.assertTrue(data["2"]["inputs"]["text"].startswith("一只猫"),
+                            msg=data["2"]["inputs"]["text"][:120])
             self.assertEqual(data["2"]["inputs"]["seed"], "42")
             self.assertEqual(data["1"]["inputs"]["image"], "my_video.mp4")  # dry-run:本地名
         finally:

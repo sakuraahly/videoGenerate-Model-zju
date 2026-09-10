@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test 3: modify_workflow tool — does the agent find and update nodes correctly?
 
-Uses api_minimax_h3_r2v.json (small file, LoadImage node id=2).
+Uses video_minimax_h3_r2v.json (small file, LoadImage node id=2).
 Makes a backup, runs the test, restores the original.
 """
 import os
@@ -36,7 +36,7 @@ SYSTEM = """\
 请用中文回答。
 """
 
-WORKFLOW_FILE = 'remote_workflows/api_minimax_h3_r2v.json'
+WORKFLOW_FILE = 'remote_workflows/video_minimax_h3_r2v.json'
 WORKFLOW_FULL = os.path.join(PROJECT_ROOT, 'workflows', WORKFLOW_FILE)
 BACKUP = WORKFLOW_FULL + '.bak'
 
@@ -53,7 +53,7 @@ def main():
         )
 
         prompt = (
-            '请修改工作流 remote_workflows/api_minimax_h3_r2v.json，'
+            '请修改工作流 remote_workflows/video_minimax_h3_r2v.json，'
             '把 LoadImage 节点（id=2）的 widgets_values 里的图片名改成 drama_asset_villain.png'
         )
         messages = [{'role': 'user', 'content': prompt}]

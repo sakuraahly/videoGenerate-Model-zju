@@ -573,6 +573,54 @@
         "positive_key": "prompt",
         "negative_key": "negative_prompt"
       }
+    },
+    {
+      "id": "video_t2v_ui",
+      "engine": "local",
+      "stage": "t2v_ui",
+      "purpose": "text-to-video 的 UI 模板版：读 video_h3_t2v_builtin.json（由内置生成器导出、widget 顺序对齐节点定义），便于在 ComfyUI 里查看/修改内置 T2V 的默认参数；不可用时回退内置生成器 h3_t2v。",
+      "needs_images": "none",
+      "slot": "video_t2v",
+      "enabled": true,
+      "template": "workflows/remote_workflows/video_h3_t2v_builtin.json",
+      "format": "ui",
+      "slots": {
+        "images": [],
+        "videos": [],
+        "audios": []
+      },
+      "prompt_inject": {
+        "node_type": "4c314f31-ecda-4b08-ae98-faaba1bf613f",
+        "widget_index": 0
+      },
+      "params": {
+        "resolutions": [
+          "360p",
+          "480p",
+          "540p",
+          "720p",
+          "768p"
+        ],
+        "seconds": {
+          "min": 5,
+          "max": 15
+        },
+        "fps": 24,
+        "steps": 20,
+        "seed": "12345"
+      },
+      "features": {
+        "reference_videos": false,
+        "per_segment": false,
+        "audio": false,
+        "negative_support": true
+      },
+      "inject_spec": {
+        "class_prefix": "MiniMaxH3",
+        "positive_key": "prompt",
+        "negative_key": "negative_prompt"
+      },
+      "builtin": "h3_t2v"
     }
   ],
   "prompt_slots": {

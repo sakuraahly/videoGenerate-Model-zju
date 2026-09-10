@@ -59,6 +59,15 @@
 - 参数: resolutions=360p,480p,540p,720p,768p; seconds=5..15; fps=24; steps=20
 - 特性: reference_videos, audio, negative_support, ref_tag_required
 
+## video_t2v_ui (stage=t2v_ui)
+
+- 用途: text-to-video 的 UI 模板版：读 video_h3_t2v_builtin.json（由内置生成器导出、widget 顺序对齐节点定义），便于在 ComfyUI 里查看/修改内置 T2V 的默认参数；不可用时回退内置生成器 h3_t2v。
+- 生成器: **内置 h3_t2v**（代码现场构建 API 工作流，不读模板文件）
+- 备用模板: `workflows/remote_workflows/video_h3_t2v_builtin.json`
+- 槽位: images=none; videos=0; audios=0
+- 参数: resolutions=360p,480p,540p,720p,768p; seconds=5..15; fps=24; steps=20
+- 特性: negative_support
+
 ## 当前全部可用（digest）
 
 - video_t2v (stage=t2v): images=none resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=negative_support
@@ -68,17 +77,13 @@
 - video_r2v_finalize (stage=finalize): images=referencex8 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=reference_videos,audio,negative_support,ref_tag_required
 - video_r2v_rife (stage=rife): images=referencex8 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=reference_videos,audio,negative_support,ref_tag_required
 - video_r2v_restore (stage=restore): images=referencex8 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=reference_videos,audio,negative_support,ref_tag_required
+- video_t2v_ui (stage=t2v_ui): images=none resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=negative_support
 
 ## 未注册模板（引擎不会自动用）
 
 > 同目录下但没有任何 stage/注册表条目引用的工作流：只有 GUI 手动打开或 `--template <路径>` 显式指定才会跑。
 
-- `api_minimax_h3_flf2v.json`（3723 B）
-- `api_minimax_h3_r2v.json`（4246 B）
-- `api_minimax_h3_t2v.json`（4280 B）
-- `h3_finalize_chain.json`（1533 B）
-- `sd_inpaint_fix.json`（7752 B）
-- `video_minimax_h3_t2v.json`（42234 B）
+- （无）
 
 ## 权威与自检
 

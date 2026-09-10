@@ -3,7 +3,7 @@
   "default_stage": "t2v",
   "templates_dir": "workflows/remote_workflows",
   "remote_workflow_templates": {
-    "_comment": "远程主机（spark）上同事的工作流原件（绝对路径，ssh 可达），仅供 bats/workflow/sync_remote_workflows.bat 取回作对照。注意：取回会**覆盖**镜像目录里我们改造过的版本，务必先 git status / git diff 确认。video_*=本地 H3 推理节点；api_*=Comfy 云 API 模板（Comfy 云代理 MiniMax 官方 API，需登录 Comfy 账号）。",
+    "_comment": "同事原件在 spark 上的绝对路径，仅由 shell/sync_remote_workflows.ps1 取回做对照——取回后落到 workflows/remote_workflows/archive/originals/（2026-09-10 起），不再覆盖根目录里我们改造过的在用模板。",
     "api_minimax_h3_t2v.json": "/home/<用户名>/ai/ComfyUI/user/default/workflows/api_minimax_h3_t2v.json",
     "api_minimax_h3_r2v.json": "/home/<用户名>/ai/ComfyUI/user/default/workflows/api_minimax_h3_r2v.json",
     "api_minimax_h3_flf2v.json": "/home/<用户名>/ai/ComfyUI/user/default/workflows/api_minimax_h3_flf2v.json",
@@ -15,7 +15,7 @@
   "_unregistered_templates": "模板目录里还有几份**未注册为 stage** 的工作流（引擎不会自动用，只有 GUI 手动打开或 CLI --template 显式指定才用）：video_minimax_h3_r2v_finalize.json（生成+结尾成品链一体，31 节点）、..._rife_finalize.json（35 节点，RIFE 插帧版）、..._restore_finalize.json（36 节点，整脸修复版）、h3_finalize_chain.json（H3Finalize→H3AsrCheck 成品链）、sd_inpaint_fix.json（重绘修补）。",
   "stages": {
     "t2v": {
-      "description": "文生视频 T2V：默认用内置本地 H3 生成器（远程本地推理，无需登录云端）",
+      "description": "文生视频 T2V：默认用**内置生成器** h3_t2v（代码现场构建 API 工作流，离线可用、瞬时）；同一套工作流的**可视化/可编辑版本**是 video_h3_t2v_builtin.json，对应阶段 t2v_ui（在 ComfyUI 里可直接打开改，改完用 --stage t2v_ui 生效）。",
       "kind": "video",
       "template": "",
       "template_kind": "api",
@@ -92,6 +92,18 @@
       "template": "video_minimax_h3_r2v_restore_finalize.json",
       "template_kind": "ui",
       "builtin": null,
+      "prompt_files": {
+        "positive": "prompts/positive_prompts.txt",
+        "negative": "prompts/negative_prompts.txt"
+      },
+      "default_images": []
+    },
+    "t2v_ui": {
+      "description": "内置生成器的 UI 模板版：读 workflows/remote_workflows/video_h3_t2v_builtin.json（widget 值按节点定义顺序，引擎可读回；在 ComfyUI 里改这个文件即可调整默认参数）",
+      "kind": "video",
+      "template": "video_h3_t2v_builtin.json",
+      "template_kind": "ui",
+      "builtin": "h3_t2v",
       "prompt_files": {
         "positive": "prompts/positive_prompts.txt",
         "negative": "prompts/negative_prompts.txt"

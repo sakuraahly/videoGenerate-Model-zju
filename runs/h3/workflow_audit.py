@@ -75,15 +75,18 @@ def audit(project_dir=None) -> dict:
         rec = {'stage': st.get('_id') or st.get('id'), 'template': name,
                'kind': str(st.get('template_kind') or ''), 'builtin': builtin or '',
                'dir': str(tdir.relative_to(root)) if str(tdir).startswith(str(root)) else str(tdir)}
-        if builtin:
+        if builtin and not name:
+            # 纯内置生成器：不读任何模板文件（离线可用）
             rec.update({'path': '', 'exists': True, 'sha1': '', 'nodes': None, 'format': 'builtin'})
             stages.append(rec)
             continue
+        # 有模板 + 有 builtin 兜底：两个都记（模板不可用时引擎会自动回退）
         p = (tdir / name) if name else Path()
         ok = bool(name) and p.is_file()
         rec.update({'path': (str(p.relative_to(root)) if name else ''), 'exists': ok,
                     'sha1': _sha1(p) if ok else '', 'nodes': _nodes(p) if ok else None,
-                    'format': _fmt(p) if ok else '?'})
+                    'format': _fmt(p) if ok else '?',
+                    'fallback': ('内置生成器 %s' % builtin) if builtin else ''})
         if not ok:
             missing.append(rec)
         stages.append(rec)
@@ -102,9 +105,19 @@ def audit(project_dir=None) -> dict:
             dep.append({'template': f.name, 'in_mirror': mirror.is_file(),
                         'same': bool(mirror.is_file() and _sha1(mirror) == _sha1(f)),
                         'dep_sha1': _sha1(f), 'mirror_sha1': _sha1(mirror) if mirror.is_file() else ''})
+    arch = []
+    adir = tdir / 'archive'
+    if adir.is_dir():
+        for f in sorted(adir.glob('*.json')):
+            arch.append({'template': f.name, 'bytes': f.stat().st_size, 'format': _fmt(f)})
+        orig = adir / 'originals'
+        if orig.is_dir():
+            for f in sorted(orig.glob('*.json')):
+                arch.append({'template': 'originals/' + f.name, 'bytes': f.stat().st_size,
+                             'format': _fmt(f)})
     return {'ok': not missing, 'project': str(root), 'templates_dir': str(tdir),
             'stages': stages, 'unregistered': unregistered, 'deprecated_diff': dep,
-            'deprecated_dir': DEPRECATED_DIR, 'missing': missing}
+            'deprecated_dir': DEPRECATED_DIR, 'missing': missing, 'archive': arch}
 
 
 def render(rep: dict) -> str:
@@ -113,14 +126,16 @@ def render(rep: dict) -> str:
     lines = ['镜像目录（引擎读取）: %s' % rep['templates_dir'], '',
              '%-10s %-6s %-8s %-42s %-9s %-6s %s' % ('stage', 'kind', 'format', '实际模板', 'sha1', 'nodes', '状态')]
     for r in rep['stages']:
-        if r.get('builtin'):
+        if r.get('builtin') and not r.get('template'):
             lines.append('%-10s %-6s %-8s %-42s %-9s %-6s %s'
                          % (r['stage'], 'builtin', 'builtin', '(内置生成器 %s)' % r['builtin'], '-', '-', 'OK'))
             continue
+        note = ('OK' if r['exists'] else 'X 文件不存在')
+        if r.get('fallback'):
+            note += '（不可用时回退：%s）' % r['fallback']
         lines.append('%-10s %-6s %-8s %-42s %-9s %-6s %s'
                      % (r['stage'], r['kind'] or '-', r['format'], r['template'], r['sha1'] or '-',
-                        str(r['nodes'] if r['nodes'] is not None else '-'),
-                        'OK' if r['exists'] else 'X 文件不存在'))
+                        str(r['nodes'] if r['nodes'] is not None else '-'), note))
     lines.append('')
     if rep['unregistered']:
         lines.append('未注册模板（引擎不会自动用；GUI 手动或 --template 显式指定才用）:')
@@ -129,6 +144,11 @@ def render(rep: dict) -> str:
                                                     (' (%s 节点)' % u['nodes']) if u['nodes'] else ''))
     else:
         lines.append('未注册模板: 无')
+    if rep.get('archive'):
+        lines.append('')
+        lines.append('归档目录 archive/（不在用；引擎不会读，只有 --template 显式指定才会跑）:')
+        for u in rep['archive']:
+            lines.append('  - %-42s %6d B  %s' % (u['template'], u['bytes'], u['format']))
     lines.append('')
     dep = rep.get('deprecated_diff') or []
     if dep:

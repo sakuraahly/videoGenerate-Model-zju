@@ -47,6 +47,25 @@ def test_real_pipeline_matches_example_shape():
         assert (tdir / st["template"]).is_file(), "stage %s 的模板不存在: %s" % (name, st["template"])
 
 
+def test_mirror_root_has_no_unregistered_leftovers():
+    """根目录＝在用：整理后不应再有未注册文件（归档进 archive/ 了）。"""
+    from h3 import workflow_audit as wa
+
+    rep = wa.audit(REPO)
+    assert rep["unregistered"] == [], "根目录还有未注册模板: %s" % [u["template"] for u in rep["unregistered"]]
+    names = {r["template"] for r in rep["stages"]}
+    assert "video_h3_t2v_builtin.json" in names          # 内置生成器的 UI 孪生已注册为 t2v_ui
+
+
+def test_archive_layout_and_sync_protection():
+    """归档目录存在；同步脚本必须把原件放到 originals/（不能覆盖在用模板——当天踩过的坑）。"""
+    arch = REPO / "workflows" / "remote_workflows" / "archive"
+    assert arch.is_dir()
+    script = (REPO / "shell" / "sync_remote_workflows.ps1").read_text(encoding="utf-8", errors="replace")
+    assert "archive" in script and "originals" in script
+    assert "remote_workflows\\archive\\originals" in script or "archive\\originals" in script
+
+
 def test_deprecated_config_templates_has_readme():
     """config/templates 已废弃：必须留着说明，否则下一个人还会往那儿改。"""
     assert (REPO / "config" / "templates" / "README.md").is_file()

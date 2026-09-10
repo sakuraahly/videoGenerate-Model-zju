@@ -56,6 +56,11 @@
       "label": "成品链 + 整脸修复 + RIFE（36 节点）",
       "positive": "prompts/workflows/video_r2v.positive.txt",
       "negative": "prompts/workflows/video_r2v.negative.txt"
+    },
+    "video_t2v_ui": {
+      "label": "内置 T2V 的 UI 模板版（video_h3_t2v_builtin.json，可在 ComfyUI 直接改）",
+      "positive": "prompts/workflows/video_t2v.positive.txt",
+      "negative": "prompts/workflows/video_t2v.negative.txt"
     }
   },
   "workflow_files": {
@@ -68,6 +73,7 @@
     "api_minimax_h3_flf2v.json": "api_flf2v",
     "video_minimax_h3_r2v_finalize.json": "video_r2v_finalize",
     "video_minimax_h3_r2v_rife_finalize.json": "video_r2v_rife",
-    "video_minimax_h3_r2v_restore_finalize.json": "video_r2v_restore"
+    "video_minimax_h3_r2v_restore_finalize.json": "video_r2v_restore",
+    "video_h3_t2v_builtin.json": "video_t2v_ui"
   }
 }

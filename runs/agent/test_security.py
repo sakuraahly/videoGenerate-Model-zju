@@ -128,7 +128,7 @@ def test_modify_workflow_security():
     check(
         '非法 JSON changes',
         tool.call({
-            'workflow_path': 'remote_workflows/api_minimax_h3_r2v.json',
+            'workflow_path': 'remote_workflows/video_minimax_h3_r2v.json',
             'changes': 'not-json',
         }),
         '不是合法 JSON',
@@ -136,7 +136,7 @@ def test_modify_workflow_security():
     check(
         '不存在的节点 ID',
         tool.call({
-            'workflow_path': 'remote_workflows/api_minimax_h3_r2v.json',
+            'workflow_path': 'remote_workflows/video_minimax_h3_r2v.json',
             'changes': '{"99999": {"mode": 4}}',
         }),
         '不存在',
@@ -144,7 +144,7 @@ def test_modify_workflow_security():
     check(
         '非整数节点 ID',
         tool.call({
-            'workflow_path': 'remote_workflows/api_minimax_h3_r2v.json',
+            'workflow_path': 'remote_workflows/video_minimax_h3_r2v.json',
             'changes': '{"abc": {"mode": 4}}',
         }),
         '必须是整数',

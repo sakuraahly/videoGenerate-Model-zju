@@ -23,21 +23,55 @@
 
 代码里第二处硬编码：`runs/h3/refimage.py::_stage_template()` → 参考图接线固定走 `workflows/remote_workflows/video_minimax_h3_<stage>.json`。
 
-## 2. 三类文件，别搞混
+## 2. 目录怎么分的（2026-09-10 整理后）
 
-1. **注册模板**（上表 4 个）——引擎会按 stage 自动使用；
-2. **未注册模板**——放在同一目录但没有任何 stage 引用，**引擎不会自动用**，只有 GUI 手动打开或
-   `--template <路径>` 显式指定才会跑。当前包括：
-   `h3_finalize_chain.json`（H3Finalize→H3AsrCheck 成品链**片段**，不是完整工作流）、
-   `sd_inpaint_fix.json`（重绘修补）、`video_minimax_h3_t2v.json`（t2v 走内置生成器，故未注册）、
-   `api_minimax_h3_*.json`（Comfy 云节点模板）；
-   > 命名提醒：`api_*` 是「Comfy 云通道」的命名约定，**不代表 API 格式**——这三个文件其实是 **UI 格式**
-   > （审计命令会把每个文件的真实格式列出来）。
-   >
-   > 2026-09-10 起，三份成品链模板（`..._finalize` / `..._rife_finalize` / `..._restore_finalize`）
-   > **已注册为 stage**：`finalize` / `rife` / `restore`（实跑验证：`--stage finalize` 出片 608×352/4.46s ✔）。
-3. **废弃目录 `config/templates/`**——历史副本树，**引擎不读**，内容已与镜像分叉。目录里放了 `README.md` 说明，
-   并且 `modify_workflow` 工具**已不允许**再往那里写。
+```
+workflows/remote_workflows/
+├── video_minimax_h3_i2v.json             ← 在用（注册模板）
+├── video_minimax_h3_r2v.json             ← 在用
+├── video_minimax_h3_flf2v.json           ← 在用
+├── video_minimax_h3_r2v_finalize.json    ← 在用（stage finalize）
+├── video_minimax_h3_r2v_rife_finalize.json    ← 在用（stage rife）
+├── video_minimax_h3_r2v_restore_finalize.json ← 在用（stage restore）
+├── video_h3_t2v_builtin.json             ← 在用（stage t2v_ui：内置 T2V 的可视化孪生）
+├── archive/                              ← 归档：不在用，引擎不会读
+│   ├── api_minimax_h3_{t2v,r2v,flf2v}.json   （Comfy 云通道模板）
+│   ├── video_minimax_h3_t2v.json             （同事的 t2v 原件，被内置生成器取代）
+│   ├── h3_finalize_chain.json                （成品链片段，不是完整工作流）
+│   ├── sd_inpaint_fix.json                   （重绘修补）
+│   └── originals/                            ← 同事原件（sync 脚本的落点，仅对照）
+└── （根目录不再放任何未注册文件——审计会检查这一点）
+```
+
+- **根目录＝在用**：只有注册模板；`python runs/h3/workflow_audit.py` 会报「未注册模板: 无」；
+- **`archive/`＝归档**（引擎不读，只有 `--template archive/xxx.json` 显式指定才会跑）；
+- **`archive/originals/`＝同事原件**（`bats/workflow/sync_remote_workflows.bat` 的落点）；
+- **`config/templates/`＝废弃**（历史副本树，引擎不读，目录里有 `README.md`，`modify_workflow` 已禁止写入）；
+- 命名提醒：`api_*` 是「Comfy 云通道」的命名约定，**不代表 API 格式**——那几个文件其实是 UI 格式。
+
+### 2.1 内置生成器 ↔ UI 模板（`t2v` / `t2v_ui`）
+
+| stage | 走什么 | 何时用 |
+|---|---|---|
+| `t2v` | **内置生成器**（代码现场拼 15 节点 API 流） | 默认；**快且离线可用**（不依赖 ComfyUI 在线） |
+| `t2v_ui` | 读 `video_h3_t2v_builtin.json`（UI 格式） | 想在 ComfyUI 里**打开/修改**内置 T2V 的默认参数时 |
+
+两者产出的工作流是同一套节点（UNETLoader/CLIPLoader/VAELoader×2/MiniMaxH3ImageToVideo/BasicGuider/
+KSamplerSelect/BasicScheduler/RandomNoise/SamplerCustomAdvanced/VAEDecode/VAEDecodeAudio/CreateVideo/SaveVideo）；
+`t2v_ui` 在模板不可用或转换失败时会**自动回退**到内置生成器。
+
+重新导出这份 UI 模板（改了内置生成器参数后）：
+
+```bash
+# 必须在能访问 ComfyUI /object_info 的机器上跑（如 spark）
+python3 runs/h3/export_ui_template.py --builtin-t2v \
+    --out workflows/remote_workflows/video_h3_t2v_builtin.json
+```
+
+> 为什么需要专门工具：`workflow.py::workflow_to_ui()` 只保证连线正确，widget 值沿用构建顺序；
+> 而引擎的 UI→API 转换器**严格按 object_info 声明顺序**消费 widget 值，顺序不对就会报
+> 「有 N 个 widget 值无法按定义分配」并回退。`export_ui_template.py` 按同一套规则反向生成，
+> 因此导出后引擎能原样读回（实测：dry-run 显示「工作流来源: 模板文件」，实跑出片 608×352）。
 
 ## 3. 改工作流的正确流程
 
