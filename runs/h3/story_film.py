@@ -76,7 +76,26 @@ def load_story(path: Path) -> dict:
     return d
 
 
-def build_prompt(seg: dict, story: dict) -> str:
+def spoken_line_clause(line: dict, cast: list) -> str:
+    """把台词原文写进提示词（2026-09-10 用户纠正：不要 TTS 配音盖掉 H3 原声）。
+
+    实测：不写台词时 H3 会自己编造乱语人声（ASR 得到"哎让那警早牵传法案的亡吗"）；
+    写进提示词后由 H3 自己说出该台词（talk_one 路线，ASR 可达 1.000），
+    口型与语音本来就同步 → 成片=原生配音+字幕原文，不再"重新配音"。
+    """
+    text = str((line or {}).get('text') or '').strip()
+    if not text:
+        return ''
+    spk = str((line or {}).get('speaker') or '').strip()
+    if not spk and cast:
+        spk = str(cast[0])
+    who = spk or 'the character in frame'
+    return ('SPOKEN LINE — %s speaks Mandarin Chinese, slowly and clearly, every syllable articulated, '
+            'voice up-front and intelligible: "%s". The lip movement must match this speech exactly; '
+            'no other speech, no mumbling, no overlapping voices.' % (who, text))
+
+
+def build_prompt(seg: dict, story: dict, line: dict = None, voice_mode: str = 'native') -> str:
     """段提示词 = 作者 prompt + **故事背景** + 角色锚定句 + 在场约束 + 行为约束 + 风格句。
 
     剧本遵守（2026-09-09 用户批评'人物行为不按剧本/形象不符'后加）：
@@ -102,6 +121,10 @@ def build_prompt(seg: dict, story: dict) -> str:
                          % ', '.join(str(c) for c in cast))
         else:
             parts.append('No people in this shot; empty scenery only.')
+    if str(voice_mode) == 'native' and line:
+        clause = spoken_line_clause(line, cast or [])
+        if clause:
+            parts.append(clause)
     parts.append('Only the described action happens in this shot; '
                  'characters do not enter, leave, appear or repeat actions '
                  'unless the prompt says so. The story order follows the '
@@ -314,6 +337,32 @@ def run_line(idx: int, seg_file: str, line: dict, args, work: Path, st: dict) ->
     return seg_file  # 兜底：保留源段（画面片）并报告
 
 
+def run_line_native(idx: int, seg_file: str, line: dict, out: Path, work: Path, st: dict) -> str:
+    """原生配音：台词已写进提示词→H3 自己说。这里只烧字幕 + ASR 回环验收（不替换音轨）。"""
+    text = str((line or {}).get('text') or '').strip()
+    if not text:
+        return seg_file
+    import sys as _s
+    if str(PROJECT_ROOT / 'runs') not in _s.path:
+        _s.path.insert(0, str(PROJECT_ROOT / 'runs'))
+    import h3.tts as _tts
+    try:
+        res = _tts.attach_speech_and_subtitle(
+            Path(seg_file), text, out=out, audio_mode='keep', subtitle_source='text',
+            burn_subtitle=True, subtitle_style='harmony', subtitle_font='auto',
+            subtitle_color='auto')
+        spd = float(res.get('speech_dur') or 0)
+    except Exception as e:  # noqa: BLE001
+        print('[错误] seg%d 原生台词字幕失败: %s' % (idx, str(e)[:200]), file=sys.stderr)
+        return seg_file
+    score = _asr_score(out, 0.0, spd + 0.30, text) if spd else -1.0
+    syn_seg(st, idx, {'file': str(out), 'line': text, 'mode': 'native',
+                      'score': score, 'line_ph': line_ph(line)})
+    save_state(work, st)
+    print('seg%d 原生台词 ASR=%.2f（H3 自己说，仅烧字幕不求替换音轨）' % (idx, score), flush=True)
+    return str(out)
+
+
 def cmd_run(args) -> int:
     story = load_story(Path(args.story))
     # 缺省参数回退到 story JSON（CLI 未给定时不重复写）
@@ -337,8 +386,8 @@ def cmd_run(args) -> int:
     import h3.tts as _tts
     plan = []          # (prompt, ph, sec, line_or_None)
     for idx, seg in enumerate(story['segments']):
-        prompt = build_prompt(seg, story)
         line = lines.get(str(idx))
+        prompt = build_prompt(seg, story, line, getattr(args, 'voice_mode', 'native'))
         eff_sec = int(args.seconds)
         qph = prompt_hash(prompt)
         if line:
@@ -388,7 +437,11 @@ def cmd_run(args) -> int:
                                    sec=eff_sec)
             segs[idx] = file
             if line:
-                file = run_line(idx, file, line, args, work, st)
+                out_seg = work / ('seg_%02d_v.mp4' % idx)
+                if str(getattr(args, 'voice_mode', 'native')) == 'native':
+                    file = run_line_native(idx, file, line, out_seg, work, st)
+                else:
+                    file = run_line(idx, file, line, args, work, st)
                 segs[idx] = file
         prev_file = segs.get(idx, file)
         # 末帧优先：更新 prev_frame 用本段实际文件的末帧（若本段刚跑已提取 last_）
@@ -442,6 +495,8 @@ def main(argv=None) -> int:
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--work-dir', default='/tmp/story_film')
     ap.add_argument('--stitch', action='store_true')
+    ap.add_argument('--voice-mode', default='native', choices=['native', 'tts'],
+                    help='native(默认)=台词写进提示词由 H3 自己说+字幕原文(不重新配音)；tts=旧行为(CosyVoice 配音替换原轨)')
     ap.add_argument('--ambience', default='room', choices=['room', 'rain', 'none'],
                     help='无台词段铺的底噪（默认 room=房间底噪；拼接时生效）')
     ap.add_argument('--out', default='/tmp/story_film.mp4')

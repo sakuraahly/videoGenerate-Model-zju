@@ -33,6 +33,13 @@ def _run(cmd, timeout=1800):
     return r
 
 
+# 台词段（保留原生/人声音轨的段）走"语音清晰链"：提临场度 + 去浑浊 + 统一响度
+# （2026-09-10 用户要求"想办法增加 H3 原生生成语音的清晰度"；实测原生 85%rolloff 仅 1664Hz）
+SPEECH_CLARITY_AF_STITCH = ('highpass=f=75,equalizer=f=280:t=q:w=1.0:g=-1.5,'
+                            'equalizer=f=3000:t=q:w=1.2:g=3.2,equalizer=f=6500:t=q:w=1.0:g=2.0,'
+                            'loudnorm=I=-15:TP=-1.5:LRA=11')
+
+
 def _probe_duration(path: Path) -> float:
     try:
         r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
@@ -67,9 +74,22 @@ def ambience_source(kind: str, db: float, dur: float) -> str:
             f'afade=t=in:st=0:d=0.8,afade=t=out:st={fo:.3f}:d=1.2,aformat=channel_layouts=stereo')
 
 
+def mix_filtergraph(width: int, height: int, fps: int) -> str:
+    """台词段"原声 + 房间底噪"混音滤镜图。
+
+    ⚠️ 顺序是回归修复点（2026-09-10 实测 bug）：loudnorm 放在 amix **之前**时，它内部的 3 秒
+    前瞻缓冲会让 amix 的时间轴错位，输出音轨被截短（实测 7.29s→4.30s，成片尾部整段没声音，
+    视频 19.08s / 音轨 16.08s）。正确顺序 = highpass → amix → asetpts(重置时间戳) → loudnorm。
+    """
+    return (f'[0:v]scale={width}:{height},fps={fps},format=yuv420p[v];'
+            f'[0:a]highpass=f=75[a0];'
+            f'[a0][1:a]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[am];'
+            f'[am]asetpts=N/SR/TB,{SPEECH_CLARITY_AF_STITCH}[a]')
+
+
 def normalize(src: Path, dst: Path, width: int, height: int, fps: int, strip_audio: bool = False,
               ambience: str = 'none', ambience_db: float = -32.0,
-              mix_ambience: bool = False) -> None:
+              mix_ambience: bool = False, enhance_speech: bool = False) -> None:
     vopts = ['-c:v', 'libx264', '-crf', '21', '-preset', 'fast', '-pix_fmt', 'yuv420p']
     aopts = ['-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-ar', '48000']
     dur = _probe_duration(src)
@@ -86,9 +106,7 @@ def normalize(src: Path, dst: Path, width: int, height: int, fps: int, strip_aud
         # 台词段也垫同一条底噪（混音而非替换）——否则"有底噪的段"与"干声台词段"之间会
         # 听出明显的真空/切换（2026-09-10 自检发现）
         amb = ambience_source(ambience, ambience_db, dur)
-        fc = (f'[0:v]scale={width}:{height},fps={fps},format=yuv420p[v];'
-              f'[0:a]highpass=f=60,loudnorm=I=-15:TP=-1.5:LRA=11[a0];'
-              f'[a0][1:a]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]')
+        fc = mix_filtergraph(width, height, fps)
         cmd = [FFMPEG, '-y', '-v', 'error', '-i', str(src),
                '-f', 'lavfi', '-t', f'{max(dur, 1.0):.3f}', '-i', amb,
                '-filter_complex', fc, '-map', '[v]', '-map', '[a]'] + vopts + aopts
@@ -96,7 +114,8 @@ def normalize(src: Path, dst: Path, width: int, height: int, fps: int, strip_aud
         # 2026-09-10：逐段响度对齐 + 统一 48k 立体声（跨段音量忽大忽小=用户听感"听不清"）
         cmd = [FFMPEG, '-y', '-v', 'error', '-i', str(src),
                '-vf', f'scale={width}:{height}', '-r', str(fps)] + vopts + [
-               '-af', 'highpass=f=60,loudnorm=I=-15:TP=-1.5:LRA=11'] + aopts
+               '-af', (SPEECH_CLARITY_AF_STITCH if enhance_speech
+                       else 'highpass=f=60,loudnorm=I=-15:TP=-1.5:LRA=11')] + aopts
     cmd.append(str(dst))
     _run(cmd)
     return
@@ -118,7 +137,7 @@ def stitch(segments: list, out: Path, width: int = 864, height: int = 480,
             _keep = str(i) in keep_segs
             normalize(sp, np_, width, height, fps, strip_audio=(strip_audio and not _keep),
                       ambience=ambience, ambience_db=ambience_db,
-                      mix_ambience=(mix_ambience and _keep))
+                      mix_ambience=(mix_ambience and _keep), enhance_speech=_keep)
             norm_paths.append(np_)
         lst = work / 'list.txt'
         lst.write_text(chr(10).join(f"file '{p}'" for p in norm_paths) + chr(10), encoding='utf-8')

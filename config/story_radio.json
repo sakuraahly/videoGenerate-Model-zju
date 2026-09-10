@@ -34,14 +34,16 @@
       "voice": "yunjian",
       "speed": 0.95,
       "tone": "沉稳温和、带一点自豪",
-      "spoken": ""
+      "spoken": "",
+      "speaker": "父亲"
     },
     "2": {
       "text": "真的……还能听见，当年的声音吗？",
       "voice": "yunyang",
       "speed": 1,
       "tone": "轻声、迟疑、期待",
-      "spoken": ""
+      "spoken": "",
+      "speaker": "小林"
     }
   },
   "persona_voices": {

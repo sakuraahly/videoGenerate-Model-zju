@@ -41,6 +41,17 @@ def test_augment_is_idempotent_and_switchable():
     assert off == ("shot", "low quality", [])
 
 
+def test_mix_filtergraph_loudnorm_comes_after_amix():
+    """回归：loudnorm 必须在 amix 之后，否则音轨被截短 3 秒（成片尾部静音）。"""
+    from runs.h3.film_stitch import mix_filtergraph
+
+    fc = mix_filtergraph(864, 480, 24)
+    assert fc.index("amix=") < fc.index("loudnorm="), "loudnorm 不能排在 amix 之前"
+    assert "asetpts=N/SR/TB" in fc                     # 混音后重置时间戳
+    assert "[am]asetpts=N/SR/TB," in fc              # 时间戳重置后再进清晰链/响度
+    assert "scale=864:480" in fc and "fps=24" in fc
+
+
 def test_ambience_source_room_and_rain():
     """无台词段铺房间底噪（用户定案）：波形/电平/淡入淡出都要对，且默认远低于语音。"""
     from runs.h3.film_stitch import ambience_source
