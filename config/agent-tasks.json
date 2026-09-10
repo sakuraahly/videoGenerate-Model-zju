@@ -25,6 +25,19 @@
       "args": "--status"
     },
     {
+      "id": "sched-cleanup",
+      "name": "每周清理（日志/临时目录/工作流残留/pycache）",
+      "kind": "engine",
+      "enabled": true,
+      "schedule": {
+        "min": "30",
+        "hour": "20",
+        "dow": "6"
+      },
+      "script": "agent/cleanup.py",
+      "args": "--apply"
+    },
+    {
       "id": "sched-daily-report",
       "name": "每日 20:00 生产简报（agent 对话任务：汇总当日产物并汇报）",
       "kind": "agent",
