@@ -13,6 +13,7 @@
   AGENT_SYSTEM_PROMPT 或 AGENT_SYSTEM_PROMPT_FILE              自定义 system 提示
   ENGINE_BASE_URL / ENGINE_API_KEY (旧名 VIDEO_API_URL / VIDEO_API_KEY)
   ENGINE_STATUS_URL (旧名 VIDEO_API_STATUS_URL)                异步作业查询地址
+  LLM_EXTRA_JSON                                               可选,附加请求字段(如关思考降延迟)
   TOOLSET=all|generate_video,generate_talk,...                 暴露给大脑的工具子集
 """
 from __future__ import annotations
@@ -47,6 +48,33 @@ TOOLS = [
      "params": {"text": "回答内容"}},
 ]
 
+# 大脑可能自创键名（实测 Qwen3.5-27B 会用 dialogue/character/style）——统一归一化到工具 schema
+ARG_ALIASES = {
+    'text': ('text', 'dialogue', 'line', 'speech', 'content', 'script_line', '台词', '对话', '文案'),
+    'prompt': ('prompt', 'description', 'scene', 'desc', 'content_prompt', '创意', '描述'),
+    'seconds': ('seconds', 'duration', 'length', 'duration_seconds', '时长'),
+    'resolution': ('resolution', 'size', 'quality', '分辨率'),
+    'voice': ('voice', 'speaker', 'timbre', '音色'),
+    'segments': ('segments', 'parts', 'shots', '段数'),
+    'image_b64': ('image_b64', 'image', 'ref_image', 'reference_image', 'img', '参考图'),
+}
+
+
+def normalize_args(tool: str, args: dict) -> dict:
+    """把大脑给的参数归一化到该工具的 schema：认别名、丢自创键（否则会生成空台词）。"""
+    spec = next((t for t in TOOLS if t['name'] == tool), None)
+    if spec is None:
+        return {}
+    out = {}
+    for key in spec['params']:
+        for alias in ARG_ALIASES.get(key, (key,)):
+            v = (args or {}).get(alias)
+            if isinstance(v, (str, int, float)) and str(v).strip():
+                out[key] = v
+                break
+    return out
+
+
 DEFAULT_SYSTEM = """你是 H3 视频生成工坊的创作 Agent,部署在魔搭创空间(免费 CPU,本地不跑模型)。
 你的职责:理解用户创意 -> 从工具集里选一个工具 -> 给出可直接执行的参数 -> 交由外部生成接口执行。
 规则:
@@ -54,7 +82,10 @@ DEFAULT_SYSTEM = """你是 H3 视频生成工坊的创作 Agent,部署在魔搭�
 2) 用户要"故事/短剧/多段/连贯" -> make_story_film。
 3) 其他创意 -> generate_video;只问不生成 -> answer。
 4) 默认 resolution=480p、seconds=5;说话镜头时长由接口按语音自动匹配。
-5) 只输出一个 JSON:{"tool":"<工具名>","args":{...},"say":"给用户的一句中文说明"},不要输出多余文本。
+5) args 只能使用这些键名,不要自创(不要出现 dialogue/character/style 之类):
+   generate_video: prompt, resolution, seconds;  generate_talk: text, voice;
+   make_story_film: script, segments;           answer: text。
+6) 只输出一个 JSON:{"tool":"<工具名>","args":{...},"say":"给用户的一句中文说明"},不要输出多余文本。
 """
 
 
@@ -77,6 +108,15 @@ class AgentClient:
         self.engine_key = _env('ENGINE_API_KEY', 'VIDEO_API_KEY')
         self.engine_status = _env('ENGINE_STATUS_URL', 'VIDEO_API_STATUS_URL').rstrip('/')
         self.toolset = [t.strip() for t in _env('TOOLSET', default='all').split(',') if t.strip()]
+        self.llm_extra = {}
+        raw_extra = _env('LLM_EXTRA_JSON')      # 例:{"chat_template_kwargs":{"enable_thinking":false}}
+        if raw_extra:
+            try:
+                parsed = json.loads(raw_extra)
+                if isinstance(parsed, dict):
+                    self.llm_extra = parsed
+            except Exception:  # noqa: BLE001
+                pass
         self.system_prompt = self._load_system_prompt()
 
     # ---------- 外置大脑:system 提示可注入 ----------
@@ -128,17 +168,23 @@ class AgentClient:
         msgs.append({"role": "user", "content": user_msg})
         payload = {"model": self.llm_model, "messages": msgs, "temperature": 0.3,
                    "response_format": {"type": "json_object"}}
-        try:
-            d = self._post_json(self.llm_base + '/chat/completions', payload, self.llm_key, timeout=90)
-            txt = (d.get('choices') or [{}])[0].get('message', {}).get('content', '{}')
-            plan = json.loads(txt)
-            if isinstance(plan, dict) and plan.get('tool'):
-                return plan
-        except Exception as e:  # noqa: BLE001
-            return {'tool': 'answer',
-                    'args': {'text': '(大脑接口暂不可用:%s)' % str(e)[:120]},
-                    'say': '我先按内置规则给你方案。'}
-        return self._rule_plan(user_msg)
+        payload.update(self.llm_extra)          # 外置扩展:关思考/调 top_p/换模板,不改代码
+        last_err = ''
+        for attempt in range(3):        # 实测大脑偶发空响应/抖动:重试 3 次(间隔 1s)再降级
+            try:
+                d = self._post_json(self.llm_base + '/chat/completions', payload, self.llm_key, timeout=90)
+                txt = ((d.get('choices') or [{}])[0].get('message') or {}).get('content') or ''
+                plan = json.loads(txt)
+                if isinstance(plan, dict) and plan.get('tool'):
+                    plan['args'] = normalize_args(plan['tool'], plan.get('args') or {})
+                    return plan
+                last_err = '模型未返回 tool 字段(可能被限流)'
+            except Exception as e:  # noqa: BLE001
+                last_err = str(e)[:120]
+            time.sleep(1.0)
+        return {'tool': 'answer',
+                'args': {'text': '(外置大脑暂不可用:%s;本轮按内置规则执行。)' % last_err},
+                'say': '大脑接口抖动,我先用内置规则给你方案。'}
 
     @staticmethod
     def _rule_plan(user_msg: str) -> dict:
@@ -229,9 +275,11 @@ class AgentClient:
 
     def run_tool(self, plan: dict) -> dict:
         tool = plan.get('tool')
-        args = plan.get('args') or {}
+        args = normalize_args(tool, plan.get('args') or {})
         allowed = {t['name'] for t in self.tools()}
         trace = {'tool': tool, 'args': self._brief(args)}
+        if plan.get('_repaired'):
+            trace['repaired'] = plan['_repaired']
         if tool not in allowed:
             trace['result'] = 'tool-not-in-toolset'
             return {'ok': False, 'kind': 'error', 'trace': trace,
@@ -275,6 +323,21 @@ class AgentClient:
 
     def answer(self, user_msg: str, history: list, image_path: str = '', image_b64: str = '') -> dict:
         plan = self.plan(user_msg, history)
+        allowed = {t['name'] for t in self.tools()}
+        if plan.get('tool') not in allowed:      # 大脑选了未开放的工具 -> 按规则规划器修复
+            plan = self._rule_plan(user_msg)
+            plan['_repaired'] = 'tool-not-allowed'
+        need = {'generate_talk': ('text',)}      # 关键参数缺失(模型爱自创键名) -> 补齐
+        miss = [k for k in need.get(plan.get('tool'), ()) if not (plan.get('args') or {}).get(k)]
+        if miss:
+            fixed = self._rule_plan(user_msg)
+            if fixed.get('tool') == plan.get('tool'):
+                merged = dict(plan.get('args') or {})
+                for k in miss:
+                    if (fixed.get('args') or {}).get(k):
+                        merged[k] = fixed['args'][k]
+                plan['args'] = merged
+                plan['_repaired'] = 'args:' + ','.join(miss)
         img = image_b64 or (self.file_to_b64(image_path) if image_path else '')
         if img and plan.get('tool') in ('generate_video', 'generate_talk', 'make_story_film'):
             args = dict(plan.get('args') or {})

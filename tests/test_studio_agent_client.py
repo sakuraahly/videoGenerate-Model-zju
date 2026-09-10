@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -260,3 +261,101 @@ def test_prune_outputs_keeps_latest(tmp_path):
     ac.AgentClient.prune_outputs(tmp_path, keep=12)
     left = sorted(p.name for p in tmp_path.glob("*"))
     assert len(left) == 12 and "f0.mp4" not in left and "f14.mp4" in left
+
+# ---------- 大脑自创键名 / 抖动：实测问题对应的回归测试 ----------
+
+def test_llm_extra_json_is_passed_through(monkeypatch):
+    """外置扩展字段(如关思考)必须原样进请求体，坏 JSON 不能把 Agent 弄崩。"""
+    import os as _os
+    _os.environ["LLM_BASE_URL"] = "https://llm.example/v1"
+    _os.environ["LLM_API_KEY"] = "k"
+    _os.environ["LLM_EXTRA_JSON"] = '{"chat_template_kwargs": {"enable_thinking": false}}'
+    try:
+        c = ac.AgentClient()
+        seen = {}
+
+        def fake_post(url, payload, key="", timeout=90):
+            seen.update(payload)
+            return {"choices": [{"message": {"content": '{"tool":"answer","args":{"text":"ok"}}'}}]}
+
+        monkeypatch.setattr(c, "_post_json", fake_post)
+        assert c.plan("随便问问", [])["tool"] == "answer"
+        assert seen["chat_template_kwargs"] == {"enable_thinking": False}
+        _os.environ["LLM_EXTRA_JSON"] = "not-json"
+        assert ac.AgentClient().llm_extra == {}
+    finally:
+        for k in ("LLM_BASE_URL", "LLM_API_KEY", "LLM_EXTRA_JSON"):
+            _os.environ.pop(k, None)
+
+
+def test_normalize_args_aliases_and_drops_unknown():
+    got = ac.normalize_args("generate_talk", {"dialogue": "天冷了，进屋坐坐。", "character": "老人",
+                                              "style": "realistic", "voice": "native"})
+    assert got == {"text": "天冷了，进屋坐坐。", "voice": "native"}   # character/style 被丢弃
+    got2 = ac.normalize_args("generate_video", {"description": "雨夜老屋", "duration": 6, "size": "720p"})
+    assert got2 == {"prompt": "雨夜老屋", "seconds": 6, "resolution": "720p"}
+    assert ac.normalize_args("answer", {"text": "说明"}) == {"text": "说明"}
+
+
+def test_run_tool_accepts_aliased_args():
+    c = ac.AgentClient()
+    out = c.run_tool({"tool": "generate_talk", "args": {"dialogue": "你好", "speaker": "native"}})
+    assert out["payload"]["text"] == "你好" and out["payload"]["kind"] == "talk"
+
+
+def test_answer_repairs_talk_without_text(monkeypatch):
+    c = ac.AgentClient()
+    monkeypatch.setattr(c, "plan", lambda u, h: {"tool": "generate_talk",
+                                                 "args": {"character": "老人"}, "say": "ok"})
+    out = c.answer('让老人说一句“天冷了，快进屋坐坐吧。”', [])
+    assert out["payload"]["kind"] == "talk"
+    assert out["payload"]["text"] == "天冷了，快进屋坐坐吧。"
+    assert out["trace"]["repaired"].startswith("args:text")
+
+
+def test_answer_repairs_disallowed_tool(monkeypatch):
+    os.environ["TOOLSET"] = "answer"
+    try:
+        c = ac.AgentClient()
+        monkeypatch.setattr(c, "plan", lambda u, h: {"tool": "generate_video", "args": {"prompt": "x"}})
+        out = c.answer("做一段雨夜老屋门口有猫的 5 秒镜头", [])
+        assert out["trace"].get("repaired") == "tool-not-allowed"
+    finally:
+        os.environ.pop("TOOLSET", None)
+
+
+def test_plan_retries_on_empty_brain_response(monkeypatch):
+    os.environ["LLM_BASE_URL"] = "https://llm.example/v1"
+    os.environ["LLM_API_KEY"] = "k"
+    try:
+        c = ac.AgentClient()
+        calls = {"n": 0}
+
+        def fake_post(url, payload, key="", timeout=90):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                return {"choices": [{"message": {"content": ""}}]}      # 实测到的抖动形态
+            return {"choices": [{"message": {"content": '{"tool":"generate_video","args":{"prompt":"雨夜"}}'}}]}
+
+        monkeypatch.setattr(c, "_post_json", fake_post)
+        monkeypatch.setattr(ac.time, "sleep", lambda s: None)
+        plan = c.plan("雨夜老屋", [])
+        assert calls["n"] == 3 and plan["tool"] == "generate_video"
+    finally:
+        os.environ.pop("LLM_BASE_URL", None)
+        os.environ.pop("LLM_API_KEY", None)
+
+
+def test_plan_degrades_after_repeated_failure(monkeypatch):
+    os.environ["LLM_BASE_URL"] = "https://llm.example/v1"
+    os.environ["LLM_API_KEY"] = "k"
+    try:
+        c = ac.AgentClient()
+        monkeypatch.setattr(c, "_post_json", lambda *a, **k: {"choices": [{"message": {"content": ""}}]})
+        monkeypatch.setattr(ac.time, "sleep", lambda s: None)
+        plan = c.plan("让老人说一句台词", [])
+        assert plan["tool"] == "answer" and "暂不可用" in plan["args"]["text"]
+    finally:
+        os.environ.pop("LLM_BASE_URL", None)
+        os.environ.pop("LLM_API_KEY", None)
+
