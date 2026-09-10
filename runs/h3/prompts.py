@@ -154,16 +154,18 @@ TEXT_PREFIX_CN = '超高清摄影，8K文字渲染，矢量级笔画锐度，无
 # 结论：短小、独立、像"标题/字幕"的字符串会被当作画面文字渲染；
 # 故清晰度要求不再单独成句，而是**融进下面的长描述句**（描述性长句不会被画出来，实测招牌段只出"修表"）。
 TEXT_PREFIX_EN = ''   # 保留常量名以免旧调用报错；已不再注入（见上）
-TEXT_RENDER_POS = ('the on-screen lettering is rendered with ultra-high-definition photographic quality and '
-                   '8K-grade text transfer, at vector-grade stroke sharpness with zero anti-aliasing artifacts; '
-                   'it is clean professional type: '
-                   '(1) font style: modern sans-serif (Heiti) with uniform stroke width and straight terminals, '
-                   'no decorative or calligraphic flourishes; (2) size hierarchy: the primary line is the largest '
-                   'and clearly dominant, any secondary text is at most 60% of that size and sits on the same '
-                   'straight baseline; (3) colour contrast: pure white glyphs with a thin dark outline over a '
-                   'subtly darkened panel, high contrast, no glow, no gradient; (4) motion: static and rock-steady '
-                   'in every frame, no flicker, no jitter, no warping, no stroke morphing, no re-drawn letters')
-TEXT_BAN_NEG = ('artistic lettering, handwritten script, calligraphy, brush strokes, graffiti, decorative '
+# ⚠️ 2026-09-10 三次实测（同一提示词、同种子，只改文字条款）：
+#   ① 中文前缀"超高清摄影，8K文字渲染，矢量级笔画锐度，无抗锯齿失真" → 画面多出乱码"无抗锡纹九锐朱度"
+#   ② 改英文前缀 ultra-high-definition photography / 8K text rendering… → 画面多出"Ultra-high-devi-gtifics"
+#   ③ 去掉前缀、把要求融进长描述句（含 font style/size hierarchy/colour contrast/motion 四维）→ 画面多出"Pant国ゥ格』爱戯"
+# 但三次里**招牌本身"修表"两个字都完全正确**。
+# 结论：H3 只要在提示词里读到"关于文字的指令性文字"，就会把它当成要渲染的字幕画出来。
+# 因此：**正向提示词里不要写任何"关于文字"的指令**（只写"牌子上写着 X"这种内容句）；
+# 清晰度/不糊/不重影等要求全部放**负向词**（负向不参与渲染）。
+TEXT_RENDER_POS = ''   # 已废弃：正向不再写文字指令（保留常量名兼容旧调用）
+TEXT_BAN_NEG = ('blurry illegible lettering, garbled or wrong characters, missing and extra strokes, '
+                'doubled or ghosted text, extra caption lines, stray overlay text, subtitle bars, watermark, '
+                'artistic lettering, handwritten script, calligraphy, brush strokes, graffiti, decorative '
                 'flourishes, warped or morphing glyphs, melting strokes, letters that redraw themselves')
 # 默认策略（用户定案）：**画面里不要任何文字/字幕** —— 字幕由后期烧录，模型画的会与后期叠字
 NO_TEXT_POS = ('the character speaks on camera with the mouth clearly moving, but the spoken words are NOT '
@@ -212,11 +214,10 @@ def augment_speech_clause(positive: str, negative: str, want_speech: bool,
     if want_speech and 'clear articulate speech' not in pos.lower():
         pos = (pos + ', ' + SPEECH_POS).strip(', ')
         added.append('positive:speech')
-    if want_text:                      # 明确要字：四维描述法 + 前缀 + 禁"艺术化/手写感"
-        # 不再注入独立前缀（会被模型画进画面）；清晰度已并入 TEXT_RENDER_POS 长句
-        if '(1) font style' not in pos:
-            pos = (pos + ', ' + TEXT_RENDER_POS).strip(', ')
-            added.append('positive:text-4d')
+    if want_text:                      # 明确要字：正向只加"聚焦在字上"，指令性要求全放负向
+        if 'sharp focus on the lettering' not in pos.lower():
+            pos = (pos + ', sharp focus on the lettering, even lighting across the characters').strip(', ')
+            added.append('positive:text-focus')
     elif want_speech:                  # 默认：说话镜头不要任何画面文字（字幕我们后期加）
         if 'no subtitles, no captions' not in pos.lower():
             pos = (pos + ', ' + NO_TEXT_POS).strip(', ')
@@ -228,9 +229,9 @@ def augment_speech_clause(positive: str, negative: str, want_speech: bool,
     if 'mumbled speech' not in neg.lower():
         neg = (neg + ', ' + SPEECH_NEG).strip(', ')
         added.append('negative:audio')
-    if want_text and 'artistic lettering' not in neg.lower():
+    if want_text and 'garbled or wrong characters' not in neg.lower():
         neg = (neg + ', ' + TEXT_BAN_NEG).strip(', ')
-        added.append('negative:text-artistic')
+        added.append('negative:text-quality')
     elif want_speech and 'burned-in captions' not in neg.lower():
         neg = (neg + ', ' + NO_TEXT_NEG).strip(', ')
         added.append('negative:no-text')
