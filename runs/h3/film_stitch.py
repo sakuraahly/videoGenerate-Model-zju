@@ -62,12 +62,21 @@ def _probe_duration(path: Path) -> float:
         return 0.0
 
 
+# 噪声源实测 RMS（2026-09-10 标定）：底噪电平按"目标 RMS"反算增益，不再直接当衰减量用
+# （历史 bug：把 -30 当 attenuation 用 → brown 源 -20dB 再压 30dB = -50dB，成片开头 4 秒等于静音）
+# 2026-09-10 二次修正：原来的"房间底噪"= 布朗噪声低通 900Hz，能量几乎全在 900Hz 以下，
+# 笔记本/手机喇叭放不出来 → 用户仍反馈"开头没声音"。改为**中频段房间空气声**（粉噪 100–4000Hz）。
+AMBIENCE_SOURCE_RMS = {'room': -27.4, 'rain': -25.1}   # 实测（room=粉噪 100–4000Hz）
+AMBIENCE_TARGET_DB = -30.0        # 无台词段（原本纯静音）的目标 RMS：明显可闻
+AMBIENCE_UNDER_SPEECH_DB = -36.0  # 台词段垫底噪的目标 RMS：比台词低约 16dB
+
+
 def ambience_source(kind: str, db: float, dur: float) -> str:
     """无台词段的"房间底噪/雨声"声源（lavfi 表达式）。
 
     背景（2026-09-10 用户定案）：H3 原生音轨是无台词镜头里的乱语人声（实测 seg0 = "笑得啊"），
     必须剔除；但整段静音（-91dB）会让成片"死气沉沉"。用户选择：**铺一层极轻的房间底噪**。
-      room = 布朗噪声 + 低通 900Hz：像室内空调/远处街道的低频hush（最自然，默认）
+      room = 粉噪 100–4000Hz：室内空气声（中频段，中小喇叭也能听到；默认）
       rain = 粉红噪声 + 400Hz~9kHz 带通 + 轻颤音：像窗外雨声
     电平默认 -32dB（远低于语音，绝不抢戏），首尾各加淡入淡出防爆音。
     """
@@ -76,13 +85,15 @@ def ambience_source(kind: str, db: float, dur: float) -> str:
         return ''
     d = max(float(dur or 0), 1.0)
     fo = max(d - 1.2, 0.1)
+    src_rms = AMBIENCE_SOURCE_RMS.get('rain' if k == 'rain' else 'room', -20.0)
+    gain = float(db) - src_rms        # 目标 RMS → 相对源增益
     if k == 'rain':
         base = 'anoisesrc=color=pink:amplitude=0.5:sample_rate=48000'
         chain = 'highpass=f=400,lowpass=f=9000,tremolo=f=0.4:d=0.15'
     else:  # room
-        base = 'anoisesrc=color=brown:amplitude=0.6:sample_rate=48000'
-        chain = 'highpass=f=50,lowpass=f=900'
-    return (f'{base}:duration={d:.3f},{chain},volume={float(db):.1f}dB,'
+        base = 'anoisesrc=color=pink:amplitude=0.35:sample_rate=48000'
+        chain = 'highpass=f=100,lowpass=f=4000'
+    return (f'{base}:duration={d:.3f},{chain},volume={gain:.1f}dB,'
             f'afade=t=in:st=0:d=0.8,afade=t=out:st={fo:.3f}:d=1.2,aformat=channel_layouts=stereo')
 
 
@@ -101,7 +112,8 @@ def mix_filtergraph(width: int, height: int, fps: int) -> str:
 
 def normalize(src: Path, dst: Path, width: int, height: int, fps: int, strip_audio: bool = False,
               ambience: str = 'none', ambience_db: float = -32.0,
-              mix_ambience: bool = False, enhance_speech: bool = False) -> None:
+              mix_ambience: bool = False, enhance_speech: bool = False,
+              ambience_speech_db: float = None) -> None:
     vopts = ['-c:v', 'libx264', '-crf', '21', '-preset', 'fast', '-pix_fmt', 'yuv420p']
     aopts = ['-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-ar', '48000']
     dur = _probe_duration(src)
@@ -117,7 +129,8 @@ def normalize(src: Path, dst: Path, width: int, height: int, fps: int, strip_aud
     elif mix_ambience and ambience not in ('', 'none'):
         # 台词段也垫同一条底噪（混音而非替换）——否则"有底噪的段"与"干声台词段"之间会
         # 听出明显的真空/切换（2026-09-10 自检发现）
-        amb = ambience_source(ambience, ambience_db, dur)
+        amb = ambience_source(ambience, (ambience_speech_db if ambience_speech_db is not None
+                                         else ambience_db), dur)
         fc = mix_filtergraph(width, height, fps)
         cmd = [FFMPEG, '-y', '-v', 'error', '-i', str(src),
                '-f', 'lavfi', '-t', f'{max(dur, 1.0):.3f}', '-i', amb,
@@ -136,7 +149,8 @@ def normalize(src: Path, dst: Path, width: int, height: int, fps: int, strip_aud
 def stitch(segments: list, out: Path, width: int = 0, height: int = 0,
            fps: int = 24, keep_norm: bool = False, strip_audio: bool = False,
            keep_segs: set | None = None, ambience: str = 'room',
-           ambience_db: float = -32.0, mix_ambience: bool = False) -> Path:
+           ambience_db: float = AMBIENCE_TARGET_DB, mix_ambience: bool = False,
+           ambience_speech_db: float = AMBIENCE_UNDER_SPEECH_DB) -> Path:
     keep_segs = keep_segs or set()
     # 2026-09-10 实测 bug 修复：默认尺寸过去写死 864×480，会把 720p/1080p 分段**降采样**成 480p
     # （用户要 720p 版时成片仍是 480p）。现在 width/height=0 表示"跟随第一段真实分辨率"。
@@ -155,7 +169,8 @@ def stitch(segments: list, out: Path, width: int = 0, height: int = 0,
             _keep = str(i) in keep_segs
             normalize(sp, np_, width, height, fps, strip_audio=(strip_audio and not _keep),
                       ambience=ambience, ambience_db=ambience_db,
-                      mix_ambience=(mix_ambience and _keep), enhance_speech=_keep)
+                      mix_ambience=(mix_ambience and _keep), enhance_speech=_keep,
+                      ambience_speech_db=ambience_speech_db)
             norm_paths.append(np_)
         lst = work / 'list.txt'
         lst.write_text(chr(10).join(f"file '{p}'" for p in norm_paths) + chr(10), encoding='utf-8')
@@ -185,7 +200,10 @@ def main() -> int:
     ap.add_argument('--keep-audio-segs', default='', help='逗号分隔段索引（0 基）——strip-audio 时仍保留音轨（如真台词段）')
     ap.add_argument('--ambience', default='room', choices=['room', 'rain', 'none'],
                     help='被剔除音轨的段铺什么底噪：room=房间底噪(默认,最自然)/rain=雨声/none=纯静音')
-    ap.add_argument('--ambience-db', type=float, default=-30.0, help='底噪电平（默认 -30dB，远低于语音）')
+    ap.add_argument('--ambience-db', type=float, default=-33.0,
+                    help='无台词段底噪的目标 RMS（默认 -33dB；比台词低约 13dB，明显可闻）')
+    ap.add_argument('--ambience-speech-db', type=float, default=-38.0,
+                    help='台词段垫底噪的目标 RMS（默认 -38dB，比台词低约 18dB）')
     ap.add_argument('--ambience-under-speech', action='store_true',
                     help='台词段也垫同一条底噪（混音）——避免"有底噪的段"与"干声段"之间听出真空')
     args = ap.parse_args()
@@ -194,7 +212,8 @@ def main() -> int:
     out = Path(args.out)
     stitch(segs, out, args.width, args.height, args.fps, args.keep_norm, args.strip_audio, keep_segs,
            ambience=args.ambience, ambience_db=args.ambience_db,
-           mix_ambience=args.ambience_under_speech)
+           mix_ambience=args.ambience_under_speech,
+           ambience_speech_db=args.ambience_speech_db)
     _p = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
                          '-show_entries', 'stream=width,height,r_frame_rate',
                          '-show_entries', 'format=duration',

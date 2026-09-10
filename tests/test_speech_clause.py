@@ -93,23 +93,23 @@ def test_mix_filtergraph_loudnorm_comes_after_amix():
 
 
 def test_ambience_source_room_and_rain():
-    """无台词段铺房间底噪（用户定案）：波形/电平/淡入淡出都要对，且默认远低于语音。"""
-    from runs.h3.film_stitch import ambience_source
+    """底噪电平按目标 RMS 反算（历史 bug：把它当衰减量用 → 成片开头 4 秒等于静音）。"""
+    from runs.h3.film_stitch import AMBIENCE_SOURCE_RMS, ambience_source
 
-    room = ambience_source("room", -32.0, 4.5)
-    assert "anoisesrc=color=brown" in room and "lowpass=f=900" in room
-    assert "volume=-32.0dB" in room and "duration=4.500" in room
-    assert "afade=t=in" in room and "afade=t=out" in room
+    room = ambience_source("room", -30.0, 4.5)
+    # 中频段房间空气声（低频版中小喇叭听不见，用户二次反馈后改的）
+    assert "anoisesrc=color=pink" in room and "highpass=f=100" in room and "lowpass=f=4000" in room
+    # 目标是 RMS：增益 = 目标 - 源实测 RMS（不是把目标当衰减量用，历史 bug）
+    assert "volume=%.1fdB" % (-30.0 - AMBIENCE_SOURCE_RMS["room"]) in room
+    assert "duration=4.500" in room and "afade=t=in" in room and "afade=t=out" in room
     assert "aformat=channel_layouts=stereo" in room
 
-    rain = ambience_source("rain", -30.0, 3.0)
-    assert "anoisesrc=color=pink" in rain and "highpass=f=400" in rain and "volume=-30.0dB" in rain
+    rain = ambience_source("rain", -38.0, 3.0)
+    assert "anoisesrc=color=pink" in rain and "highpass=f=400" in rain
+    assert "volume=%.1fdB" % (-38.0 - AMBIENCE_SOURCE_RMS["rain"]) in rain
 
-    assert ambience_source("none", -32.0, 4.0) == ""
-    assert ambience_source("", -32.0, 4.0) == ""
-    # 极短段也不能出现负的淡出起点
-    assert "afade=t=out:st=0.100" in ambience_source("room", -32.0, 0.2)
-
+    assert ambience_source("none", -33.0, 4.0) == ""
+    assert "afade=t=out:st=0.100" in ambience_source("room", -30.0, 0.2)
 
 def test_template_patcher_is_idempotent(tmp_path):
     """模板默认提示词补丁：写入一次即生效，重复跑不再叠加（用户要求写进工作流默认设置）。"""
