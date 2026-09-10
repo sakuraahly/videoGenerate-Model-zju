@@ -151,15 +151,28 @@ class AgentClient:
                 if len(parts) >= 2:
                     quoted = parts[1].strip().strip('\u201d\u300d\u300f"')
                 break
-        if any(k in t for k in ('\u53f0\u8bcd', '\u8bf4\u8bdd', '\u8bf4\u4e00\u53e5', '\u53e3\u578b', '\u914d\u97f3', '\u72ec\u767d')):
+        talk_kw = ('\u53f0\u8bcd', '\u8bf4\u8bdd', '\u8bf4\u4e00\u53e5', '\u53e3\u578b', '\u914d\u97f3', '\u72ec\u767d',
+                   'say:', 'says:', 'speak', 'dialogue', 'voiceover', 'voice-over', 'lipsync', 'lip sync')
+        story_kw = ('\u6545\u4e8b', '\u77ed\u5267', '\u5267\u672c', '\u591a\u6bb5', '\u8fde\u8d2f',
+                    'story', 'short film', 'screenplay', 'script', 'multi-shot')
+        answer_kw = ('\u600e\u4e48', '\u5982\u4f55', '\u4e3a\u4ec0\u4e48', '\u5efa\u8bae', '\u8bf4\u660e', '\u67b6\u6784',
+                     'how does', 'how do', 'why ', 'explain', 'architecture', 'what is')
+        import re
+        if not quoted:  # 英文/无引号写法："say: <台词>" / "让老人说：..."
+            m = re.search(r'(?:say|says|speak|tell(?:\s+\w+)?|台词|说)\s*[:：]\s*(.+)', t, re.I)
+            if m:
+                quoted = m.group(1).strip().strip('"\u201d\u300d\u300f')
+        # 有明确"说"的动作 + 取到了台词 → 直接判为说话镜头（比关键词更可靠）
+        said = bool(quoted) and bool(re.search(r'say|says|speak|tell|台词|说|念', t, re.I))
+        if any(k in t for k in talk_kw) or said:
             return {'tool': 'generate_talk',
                     'args': {'text': quoted or '\u4f60\u597d,\u5f88\u9ad8\u5174\u89c1\u5230\u4f60\u3002',
                              'voice': 'native'},
                     'say': '明白,做一个说话镜头:让人物亲口说出台词,时长由接口按语音自动匹配。'}
-        if any(k in t for k in ('\u6545\u4e8b', '\u77ed\u5267', '\u5267\u672c', '\u591a\u6bb5', '\u8fde\u8d2f')):
+        if any(k in t for k in story_kw):
             return {'tool': 'make_story_film', 'args': {'script': t[:200], 'segments': 3},
                     'say': '这是多段故事需求:我按段提交,逐段出片并给你汇总。'}
-        if any(k in t for k in ('\u600e\u4e48', '\u5982\u4f55', '\u4e3a\u4ec0\u4e48', '\u5efa\u8bae', '\u8bf4\u660e', '\u67b6\u6784')):
+        if any(k in t for k in answer_kw):
             return {'tool': 'answer',
                     'args': {'text': '本空间只部署 Agent(工具集 + 外置大脑),不跑模型:'
                                      '大脑(LLM 接口)决定用哪个工具与参数,工具再调外部视频生成接口出片。'},

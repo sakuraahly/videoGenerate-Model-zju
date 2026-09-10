@@ -66,6 +66,26 @@ def test_rule_planner_routing(text, tool):
     assert ac.AgentClient._rule_plan(text)["tool"] == tool
 
 
+@pytest.mark.parametrize("text,tool", [
+    ("let the old man say: come inside, it is cold", "generate_talk"),
+    ("make a short film about a cat", "make_story_film"),
+    ("how does this space work?", "answer"),
+    ("a cat watching the warm light at a rainy door", "generate_video"),
+])
+def test_rule_planner_english_routing(text, tool):
+    """无外置大脑时英文提示词也要能正确路由（演示常被用英文提示词试）。"""
+    assert ac.AgentClient._rule_plan(text)["tool"] == tool
+
+
+def test_rule_planner_extracts_line_without_quotes():
+    """英文/无引号写法也要能取出台词（否则演示会念默认句）。"""
+    plan = ac.AgentClient._rule_plan('let the old man say: come inside, it is cold outside')
+    assert plan["tool"] == "generate_talk"
+    assert plan["args"]["text"] == "come inside, it is cold outside"
+    plan2 = ac.AgentClient._rule_plan('让老人说：天冷了，进屋坐坐。')
+    assert plan2["args"]["text"] == "天冷了，进屋坐坐。"
+
+
 def test_rule_planner_extracts_quoted_line():
     plan = ac.AgentClient._rule_plan('让女孩说一句“我们回家吧”')
     assert plan["tool"] == "generate_talk"

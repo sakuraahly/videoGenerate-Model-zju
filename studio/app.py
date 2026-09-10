@@ -372,8 +372,24 @@ _{show['footer']}_""")
     return demo
 
 
+def launch_kwargs(app) -> dict:
+    """按当前 gradio 版本能力组装 launch 参数（跨版本安全，缺能力就少传一个参数）。"""
+    kw = {}
+    try:
+        kw['theme'] = __import__('gradio').themes.Soft()
+    except Exception:  # noqa: BLE001
+        pass
+    try:  # Gradio 5.30+/6.x 才有 MCP；本空间用不到，关掉它（也避免 gr.State 的 MCP 警告）
+        import inspect as _inspect
+        if 'mcp_server' in _inspect.signature(app.launch).parameters:
+            kw['mcp_server'] = False
+    except Exception:  # noqa: BLE001
+        pass
+    return kw
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser("H3 视频生成工坊（创空间创作台 v2.0）")
+    ap = argparse.ArgumentParser("H3 视频生成工坊（创空间 Agent v2.4）")
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", "7860")))
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--share", action="store_true")
@@ -381,14 +397,10 @@ def main() -> int:
     show = load_show()
     app = build_app(show)
     app.queue()
-    try:
-        _theme = __import__('gradio').themes.Soft()
-    except Exception:  # noqa: BLE001
-        _theme = None
     app.launch(server_name=args.host, server_port=args.port, share=args.share,
                show_error=True, quiet=True,
                allowed_paths=[str(ASSETS), str(HERE / "outputs")],
-               **(dict(theme=_theme) if _theme is not None else {}))
+               **launch_kwargs(app))
     return 0
 
 
