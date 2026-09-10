@@ -34,12 +34,39 @@
 - 参数: resolutions=360p,480p,540p,720p,768p; seconds=5..15; fps=24; steps=20
 - 特性: negative_support
 
+## video_r2v_finalize (stage=finalize)
+
+- 用途: r2v + 成品链一体（生成→结尾 H3Finalize→H3AsrCheck）：一次提交直接拿到配音/字幕/验收后的成品（31 节点）
+- 模板: `workflows/remote_workflows/video_minimax_h3_r2v_finalize.json`（format=ui）
+- 槽位: images=referencex8; videos=1; audios=1
+- 参数: resolutions=360p,480p,540p,720p,768p; seconds=5..15; fps=24; steps=20
+- 特性: reference_videos, audio, negative_support, ref_tag_required
+
+## video_r2v_rife (stage=rife)
+
+- 用途: r2v + RIFE 48fps 插帧 + 成品链：画面顺滑的高帧率成品（35 节点）
+- 模板: `workflows/remote_workflows/video_minimax_h3_r2v_rife_finalize.json`（format=ui）
+- 槽位: images=referencex8; videos=1; audios=1
+- 参数: resolutions=360p,480p,540p,720p,768p; seconds=5..15; fps=24; steps=20
+- 特性: reference_videos, audio, negative_support, ref_tag_required
+
+## video_r2v_restore (stage=restore)
+
+- 用途: r2v + 整脸修复 + RIFE + 成品链：完整后期链，画质/人脸最佳（36 节点）
+- 模板: `workflows/remote_workflows/video_minimax_h3_r2v_restore_finalize.json`（format=ui）
+- 槽位: images=referencex8; videos=1; audios=1
+- 参数: resolutions=360p,480p,540p,720p,768p; seconds=5..15; fps=24; steps=20
+- 特性: reference_videos, audio, negative_support, ref_tag_required
+
 ## 当前全部可用（digest）
 
 - video_t2v (stage=t2v): images=none resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=negative_support
 - video_i2v (stage=i2v): images=first_framex1 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=negative_support
 - video_r2v (stage=r2v): images=referencex8 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=reference_videos,audio,negative_support,ref_tag_required
 - video_flf2v (stage=flf2v): images=first_framex1, last_framex1 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=negative_support
+- video_r2v_finalize (stage=finalize): images=referencex8 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=reference_videos,audio,negative_support,ref_tag_required
+- video_r2v_rife (stage=rife): images=referencex8 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=reference_videos,audio,negative_support,ref_tag_required
+- video_r2v_restore (stage=restore): images=referencex8 resolutions=[360p,480p,540p,720p,768p] seconds=5..15 features=reference_videos,audio,negative_support,ref_tag_required
 
 ## 未注册模板（引擎不会自动用）
 
@@ -50,9 +77,6 @@
 - `api_minimax_h3_t2v.json`（4280 B）
 - `h3_finalize_chain.json`（1533 B）
 - `sd_inpaint_fix.json`（7752 B）
-- `video_minimax_h3_r2v_finalize.json`（28322 B）
-- `video_minimax_h3_r2v_restore_finalize.json`（22240 B）
-- `video_minimax_h3_r2v_rife_finalize.json`（21737 B）
 
 ## 权威与自检
 

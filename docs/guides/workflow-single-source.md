@@ -17,6 +17,9 @@
 | `i2v` | `video_minimax_h3_i2v.json` | UI 格式（含子图），引擎在线解组为 API |
 | `r2v` | `video_minimax_h3_r2v.json` | 多参考图；含 `MiniMaxH3ReferenceToVideo` |
 | `flf2v` | `video_minimax_h3_flf2v.json` | 本地双帧变体（非同事原件） |
+| `finalize` | `video_minimax_h3_r2v_finalize.json` | r2v + 成品链一体（生成→H3Finalize→H3AsrCheck，31 节点），实跑验证过 |
+| `rife` | `video_minimax_h3_r2v_rife_finalize.json` | r2v + RIFE 插帧 + 成品链（35 节点） |
+| `restore` | `video_minimax_h3_r2v_restore_finalize.json` | r2v + 整脸修复 + RIFE + 成品链（36 节点） |
 
 代码里第二处硬编码：`runs/h3/refimage.py::_stage_template()` → 参考图接线固定走 `workflows/remote_workflows/video_minimax_h3_<stage>.json`。
 
@@ -25,10 +28,14 @@
 1. **注册模板**（上表 4 个）——引擎会按 stage 自动使用；
 2. **未注册模板**——放在同一目录但没有任何 stage 引用，**引擎不会自动用**，只有 GUI 手动打开或
    `--template <路径>` 显式指定才会跑。当前包括：
-   `video_minimax_h3_r2v_finalize.json`（生成+结尾成品链一体，31 节点）、
-   `..._rife_finalize.json`（35 节点，RIFE 插帧）、`..._restore_finalize.json`（36 节点，整脸修复）、
-   `h3_finalize_chain.json`（H3Finalize→H3AsrCheck 成品链片段）、`sd_inpaint_fix.json`（重绘修补）、
-   `api_minimax_h3_*.json`（Comfy 云节点模板，命名虽叫 api_ 但文件其实是 UI 格式）；
+   `h3_finalize_chain.json`（H3Finalize→H3AsrCheck 成品链**片段**，不是完整工作流）、
+   `sd_inpaint_fix.json`（重绘修补）、`video_minimax_h3_t2v.json`（t2v 走内置生成器，故未注册）、
+   `api_minimax_h3_*.json`（Comfy 云节点模板）；
+   > 命名提醒：`api_*` 是「Comfy 云通道」的命名约定，**不代表 API 格式**——这三个文件其实是 **UI 格式**
+   > （审计命令会把每个文件的真实格式列出来）。
+   >
+   > 2026-09-10 起，三份成品链模板（`..._finalize` / `..._rife_finalize` / `..._restore_finalize`）
+   > **已注册为 stage**：`finalize` / `rife` / `restore`（实跑验证：`--stage finalize` 出片 608×352/4.46s ✔）。
 3. **废弃目录 `config/templates/`**——历史副本树，**引擎不读**，内容已与镜像分叉。目录里放了 `README.md` 说明，
    并且 `modify_workflow` 工具**已不允许**再往那里写。
 

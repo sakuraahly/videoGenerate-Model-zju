@@ -61,6 +61,42 @@
         "negative": "prompts/negative_prompts.txt"
       },
       "default_images": []
+    },
+    "finalize": {
+      "description": "r2v + 成品链一体（生成→结尾 H3Finalize→H3AsrCheck）：一次提交直接拿到配音/字幕/验收后的成品（31 节点）",
+      "kind": "video",
+      "template": "video_minimax_h3_r2v_finalize.json",
+      "template_kind": "ui",
+      "builtin": null,
+      "prompt_files": {
+        "positive": "prompts/positive_prompts.txt",
+        "negative": "prompts/negative_prompts.txt"
+      },
+      "default_images": []
+    },
+    "rife": {
+      "description": "r2v + RIFE 48fps 插帧 + 成品链：画面顺滑的高帧率成品（35 节点）",
+      "kind": "video",
+      "template": "video_minimax_h3_r2v_rife_finalize.json",
+      "template_kind": "ui",
+      "builtin": null,
+      "prompt_files": {
+        "positive": "prompts/positive_prompts.txt",
+        "negative": "prompts/negative_prompts.txt"
+      },
+      "default_images": []
+    },
+    "restore": {
+      "description": "r2v + 整脸修复 + RIFE + 成品链：完整后期链，画质/人脸最佳（36 节点）",
+      "kind": "video",
+      "template": "video_minimax_h3_r2v_restore_finalize.json",
+      "template_kind": "ui",
+      "builtin": null,
+      "prompt_files": {
+        "positive": "prompts/positive_prompts.txt",
+        "negative": "prompts/negative_prompts.txt"
+      },
+      "default_images": []
     }
   }
 }

@@ -349,6 +349,228 @@
       "purpose": "first+last frame via Hailuo API (Comfy cloud login required)",
       "needs_images": "2 images (self-provided example)",
       "slot": "api_flf2v"
+    },
+    {
+      "id": "video_r2v_finalize",
+      "engine": "local",
+      "stage": "finalize",
+      "purpose": "r2v + 成品链一体（生成→结尾 H3Finalize→H3AsrCheck）：一次提交直接拿到配音/字幕/验收后的成品（31 节点）",
+      "needs_images": "multiple reference images (8 slots default)",
+      "slot": "video_r2v",
+      "enabled": true,
+      "template": "workflows/remote_workflows/video_minimax_h3_r2v_finalize.json",
+      "format": "ui",
+      "slots": {
+        "images": [
+          {
+            "role": "reference",
+            "count": 8
+          }
+        ],
+        "videos": [
+          {
+            "role": "reference",
+            "count": 3
+          }
+        ],
+        "audios": [
+          {
+            "role": "reference",
+            "count": 3
+          }
+        ]
+      },
+      "prompt_inject": {
+        "node_type": "PrimitiveStringMultiline",
+        "widget_index": 0
+      },
+      "params": {
+        "resolutions": [
+          "360p",
+          "480p",
+          "540p",
+          "720p",
+          "768p"
+        ],
+        "seconds": {
+          "min": 5,
+          "max": 15
+        },
+        "fps": 24,
+        "steps": 20,
+        "seed": "12345",
+        "ref_image_size": {
+          "default": "max",
+          "options": [
+            "max",
+            "match"
+          ],
+          "note": "max=<=2048px short edge, strong identity fidelity, slower (ref tokens per step); match=scaled to gen resolution, faster, weaker fidelity"
+        },
+        "reference_media": {
+          "note": "S7: videos/audios via inject_media_refs (API layer); <=3 each; ref_videos ref_video_N (24fps frames 2-15s), ref_video_audios ref_video_audio_N (same-numbered video soundtrack), ref_audios ref_audio_N (standalone)"
+        }
+      },
+      "features": {
+        "reference_videos": true,
+        "per_segment": false,
+        "audio": true,
+        "negative_support": true,
+        "ref_tag_required": true
+      },
+      "inject_spec": {
+        "class_prefix": "MiniMaxH3",
+        "positive_key": "prompt",
+        "negative_key": "negative_prompt"
+      }
+    },
+    {
+      "id": "video_r2v_rife",
+      "engine": "local",
+      "stage": "rife",
+      "purpose": "r2v + RIFE 48fps 插帧 + 成品链：画面顺滑的高帧率成品（35 节点）",
+      "needs_images": "multiple reference images (8 slots default)",
+      "slot": "video_r2v",
+      "enabled": true,
+      "template": "workflows/remote_workflows/video_minimax_h3_r2v_rife_finalize.json",
+      "format": "ui",
+      "slots": {
+        "images": [
+          {
+            "role": "reference",
+            "count": 8
+          }
+        ],
+        "videos": [
+          {
+            "role": "reference",
+            "count": 3
+          }
+        ],
+        "audios": [
+          {
+            "role": "reference",
+            "count": 3
+          }
+        ]
+      },
+      "prompt_inject": {
+        "node_type": "PrimitiveStringMultiline",
+        "widget_index": 0
+      },
+      "params": {
+        "resolutions": [
+          "360p",
+          "480p",
+          "540p",
+          "720p",
+          "768p"
+        ],
+        "seconds": {
+          "min": 5,
+          "max": 15
+        },
+        "fps": 24,
+        "steps": 20,
+        "seed": "12345",
+        "ref_image_size": {
+          "default": "max",
+          "options": [
+            "max",
+            "match"
+          ],
+          "note": "max=<=2048px short edge, strong identity fidelity, slower (ref tokens per step); match=scaled to gen resolution, faster, weaker fidelity"
+        },
+        "reference_media": {
+          "note": "S7: videos/audios via inject_media_refs (API layer); <=3 each; ref_videos ref_video_N (24fps frames 2-15s), ref_video_audios ref_video_audio_N (same-numbered video soundtrack), ref_audios ref_audio_N (standalone)"
+        }
+      },
+      "features": {
+        "reference_videos": true,
+        "per_segment": false,
+        "audio": true,
+        "negative_support": true,
+        "ref_tag_required": true
+      },
+      "inject_spec": {
+        "class_prefix": "MiniMaxH3",
+        "positive_key": "prompt",
+        "negative_key": "negative_prompt"
+      }
+    },
+    {
+      "id": "video_r2v_restore",
+      "engine": "local",
+      "stage": "restore",
+      "purpose": "r2v + 整脸修复 + RIFE + 成品链：完整后期链，画质/人脸最佳（36 节点）",
+      "needs_images": "multiple reference images (8 slots default)",
+      "slot": "video_r2v",
+      "enabled": true,
+      "template": "workflows/remote_workflows/video_minimax_h3_r2v_restore_finalize.json",
+      "format": "ui",
+      "slots": {
+        "images": [
+          {
+            "role": "reference",
+            "count": 8
+          }
+        ],
+        "videos": [
+          {
+            "role": "reference",
+            "count": 3
+          }
+        ],
+        "audios": [
+          {
+            "role": "reference",
+            "count": 3
+          }
+        ]
+      },
+      "prompt_inject": {
+        "node_type": "PrimitiveStringMultiline",
+        "widget_index": 0
+      },
+      "params": {
+        "resolutions": [
+          "360p",
+          "480p",
+          "540p",
+          "720p",
+          "768p"
+        ],
+        "seconds": {
+          "min": 5,
+          "max": 15
+        },
+        "fps": 24,
+        "steps": 20,
+        "seed": "12345",
+        "ref_image_size": {
+          "default": "max",
+          "options": [
+            "max",
+            "match"
+          ],
+          "note": "max=<=2048px short edge, strong identity fidelity, slower (ref tokens per step); match=scaled to gen resolution, faster, weaker fidelity"
+        },
+        "reference_media": {
+          "note": "S7: videos/audios via inject_media_refs (API layer); <=3 each; ref_videos ref_video_N (24fps frames 2-15s), ref_video_audios ref_video_audio_N (same-numbered video soundtrack), ref_audios ref_audio_N (standalone)"
+        }
+      },
+      "features": {
+        "reference_videos": true,
+        "per_segment": false,
+        "audio": true,
+        "negative_support": true,
+        "ref_tag_required": true
+      },
+      "inject_spec": {
+        "class_prefix": "MiniMaxH3",
+        "positive_key": "prompt",
+        "negative_key": "negative_prompt"
+      }
     }
   ],
   "prompt_slots": {
