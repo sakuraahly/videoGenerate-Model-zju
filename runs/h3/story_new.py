@@ -30,6 +30,8 @@ from runs.h3 import story_lint as _lint  # noqa: E402
 
 
 def _load_payload(a) -> str:
+    if getattr(a, 'payload_file', ''):
+        return Path(a.payload_file).read_text(encoding='utf-8-sig')
     if a.json_file:
         return Path(a.json_file).read_text(encoding='utf-8-sig')
     if a.b64:
@@ -39,7 +41,7 @@ def _load_payload(a) -> str:
             raise ValueError('base64 解码失败: %s' % e)
     if a.json:
         return a.json
-    raise ValueError('必须给 --json / --b64 / --json-file 之一')
+    raise ValueError('必须给 --json / --b64 / --json-file / --payload-file 之一')
 
 
 def main(argv=None) -> int:
@@ -48,6 +50,7 @@ def main(argv=None) -> int:
     ap.add_argument('--json', default='', help='内联 JSON（短剧本可用）')
     ap.add_argument('--b64', default='', help='base64(JSON)（推荐：不会被 shell 引号拆坏）')
     ap.add_argument('--json-file', default='', help='从文件读 JSON')
+    ap.add_argument('--payload-file', default='', help='从文件读 JSON（run_script 的 payload 通道自动传这个）')
     ap.add_argument('--print', action='store_true', help='回显落盘内容')
     ap.add_argument('--no-lint', action='store_true', help='跳过预检')
     a = ap.parse_args(argv)

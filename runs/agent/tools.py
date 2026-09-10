@@ -100,6 +100,11 @@ class RunScript(BaseTool):
                 'type': 'string',
                 'description': '传给脚本的命令行参数，如 --stage t2v --seconds 10',
             },
+            'payload': {
+                'type': 'string',
+                'description': ('可选：大段结构化内容原文（如剧本 JSON）。工具会把它原样写成临时文件并自动追加 '
+                                '--payload-file <路径>，**不需要你手工 base64 或转义**（手工编码长文本极易出错）。'),
+            },
         },
         'required': ['script_name'],
     }
@@ -121,6 +126,18 @@ class RunScript(BaseTool):
             return f'错误：脚本不存在 {script_name}'
 
         cmd = [sys.executable, script_path]
+        # 2026-09-10：payload 通道——模型手写长 base64 会退化成乱码（实测 27B 产出重复串），
+        # 改为把原文落成临时文件、自动追加 --payload-file，模型只需正常输出 JSON。
+        _payload = params.get('payload')
+        if isinstance(_payload, str) and _payload.strip():
+            try:
+                import tempfile as _tf
+                _fd, _pf = _tf.mkstemp(prefix='agent_payload_', suffix='.json')
+                with os.fdopen(_fd, 'w', encoding='utf-8') as _f:
+                    _f.write(_payload)
+                extra_args = ('%s --payload-file %s' % (extra_args or '', _pf)).strip()
+            except Exception as _e:  # noqa: BLE001
+                return '错误：payload 落盘失败: %s' % str(_e)[:120]
         if extra_args:
             try:
                 from runs.agent.toolcall_parse import _split_args
