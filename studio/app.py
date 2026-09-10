@@ -309,7 +309,7 @@ def build_app(show: dict):
                         with gr.Row():
                             voice_src = gr.Radio(choices=["模型原生语音（推荐·自适应音色）", "指定本地 TTS 音色"],
                                                  value="模型原生语音（推荐·自适应音色）", label="语音来源")
-                            subtitle = gr.Checkbox(value=True, label="烧录字幕")
+                            subtitle = gr.Checkbox(value=False, label="额外烧录后期字幕（模型自带画面字幕，一般不用勾）")
                         with gr.Accordion("高级：本地 TTS 音色（仅当上面选择「指定本地 TTS 音色」时生效）", open=False):
                             voice = gr.Dropdown(choices=[v[0] for v in show["voices"][1:]],
                                                 value=show["voices"][1][0], label="TTS 音色")

@@ -24,7 +24,18 @@ def test_augment_speech_clause_injects_both_sides():
     pos, neg, added = P.augment_speech_clause("cinematic shot", "low quality", True)
     assert "clear articulate speech" in pos and "cinematic shot" in pos
     assert "mumbled speech" in neg and "low quality" in neg
-    assert added == ["positive:speech", "negative:audio"]
+    assert added == ["positive:speech", "positive:text-clarity", "negative:audio", "negative:text"]
+
+
+def test_text_clarity_clause_for_h3_own_subtitles():
+    """H3 会自己把台词画成画面字幕（2026-09-10 实测）→ 提示词侧要求大/锐/笔画对/不重影。"""
+    pos, neg, _ = P.augment_speech_clause("the father says: hello", "", True)
+    assert "any on-screen subtitle or sign text" in pos
+    assert "large, sharp, correctly spelled" in pos
+    assert "garbled characters" in neg and "doubled subtitles" in neg
+    # 无台词段不加文字条款（避免诱导模型画字）
+    pos2, _, _ = P.augment_speech_clause("empty street, rain", "", False)
+    assert "any on-screen subtitle" not in pos2 and "ambient sound only" in pos2
 
 
 def test_augment_no_speech_segment_gets_ambient_only():

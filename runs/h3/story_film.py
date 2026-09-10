@@ -261,6 +261,17 @@ def line_ph(line: dict) -> str:
 ASR_PY = str(Path.home() / 'ai' / 'asr-venv' / 'bin' / 'python3')
 
 
+def probe_duration(path) -> float:
+    """ffprobe 读时长（原生模式只做验收、不动音轨，故自带一个轻量实现）。"""
+    try:
+        r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                            '-of', 'default=noprint_wrappers=1:nokey=1', str(path)],
+                           capture_output=True, text=True, timeout=60)
+        return float((r.stdout or '0').strip() or 0)
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
 def _asr_score(video: Path, start: float, dur: float, cmp_txt: str) -> float:
     """ASR 双窗验真（发音回环）：返回比例分；失败=-1。"""
     try:
@@ -337,30 +348,44 @@ def run_line(idx: int, seg_file: str, line: dict, args, work: Path, st: dict) ->
     return seg_file  # 兜底：保留源段（画面片）并报告
 
 
-def run_line_native(idx: int, seg_file: str, line: dict, out: Path, work: Path, st: dict) -> str:
-    """原生配音：台词已写进提示词→H3 自己说。这里只烧字幕 + ASR 回环验收（不替换音轨）。"""
+def run_line_native(idx: int, seg_file: str, line: dict, out: Path, work: Path, st: dict,
+                    burn_subtitle: bool = False) -> str:
+    """原生配音：台词写进提示词 → H3 自己说 + **H3 自己把台词画成字幕**。
+
+    2026-09-10 用户纠正：「H3 都自己生成字幕了，不要画蛇添足后期再加字幕」。
+    实测（同一帧对比）：原始段底部已有 H3 自绘字幕（白字黑边、笔画正确），
+    我们再用 render_subtitle 叠一层 → 两条字幕重叠。故默认**不再烧录、也不再二次编码**
+    （二次编码还会损失画质），只对原生音轨做 ASR 回环验收。需要后期字幕时用 --burn-subtitle。
+    """
     text = str((line or {}).get('text') or '').strip()
     if not text:
         return seg_file
-    import sys as _s
-    if str(PROJECT_ROOT / 'runs') not in _s.path:
-        _s.path.insert(0, str(PROJECT_ROOT / 'runs'))
-    import h3.tts as _tts
+    target = Path(seg_file)
+    if burn_subtitle:
+        import sys as _s
+        if str(PROJECT_ROOT / 'runs') not in _s.path:
+            _s.path.insert(0, str(PROJECT_ROOT / 'runs'))
+        import h3.tts as _tts
+        try:
+            _tts.attach_speech_and_subtitle(
+                Path(seg_file), text, out=out, audio_mode='keep', subtitle_source='text',
+                burn_subtitle=True, subtitle_style='harmony', subtitle_font='auto',
+                subtitle_color='auto')
+            target = Path(out)
+        except Exception as e:  # noqa: BLE001
+            print('[错误] seg%d 后期字幕失败(保留原段): %s' % (idx, str(e)[:200]), file=sys.stderr)
+    dur = 0.0
     try:
-        res = _tts.attach_speech_and_subtitle(
-            Path(seg_file), text, out=out, audio_mode='keep', subtitle_source='text',
-            burn_subtitle=True, subtitle_style='harmony', subtitle_font='auto',
-            subtitle_color='auto')
-        spd = float(res.get('speech_dur') or 0)
-    except Exception as e:  # noqa: BLE001
-        print('[错误] seg%d 原生台词字幕失败: %s' % (idx, str(e)[:200]), file=sys.stderr)
-        return seg_file
-    score = _asr_score(out, 0.0, spd + 0.30, text) if spd else -1.0
-    syn_seg(st, idx, {'file': str(out), 'line': text, 'mode': 'native',
+        dur = float(probe_duration(target))
+    except Exception:  # noqa: BLE001
+        dur = 0.0
+    score = _asr_score(target, 0.0, (dur or 0.0) + 0.30, text) if dur else -1.0
+    syn_seg(st, idx, {'file': str(target), 'line': text, 'mode': 'native',
                       'score': score, 'line_ph': line_ph(line)})
     save_state(work, st)
-    print('seg%d 原生台词 ASR=%.2f（H3 自己说，仅烧字幕不求替换音轨）' % (idx, score), flush=True)
-    return str(out)
+    print('seg%d 原生台词 ASR=%.2f（H3 自己说 + 自带字幕；未做后期字幕/未替换音轨）' % (idx, score),
+          flush=True)
+    return str(target)
 
 
 def cmd_run(args) -> int:
@@ -439,7 +464,8 @@ def cmd_run(args) -> int:
             if line:
                 out_seg = work / ('seg_%02d_v.mp4' % idx)
                 if str(getattr(args, 'voice_mode', 'native')) == 'native':
-                    file = run_line_native(idx, file, line, out_seg, work, st)
+                    file = run_line_native(idx, file, line, out_seg, work, st,
+                                           burn_subtitle=bool(getattr(args, 'burn_subtitle', False)))
                 else:
                     file = run_line(idx, file, line, args, work, st)
                 segs[idx] = file
@@ -495,6 +521,8 @@ def main(argv=None) -> int:
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--work-dir', default='/tmp/story_film')
     ap.add_argument('--stitch', action='store_true')
+    ap.add_argument('--burn-subtitle', action='store_true',
+                    help='原生模式下额外烧录后期字幕（默认关：H3 自带字幕，再烧会变成两条叠字）')
     ap.add_argument('--voice-mode', default='native', choices=['native', 'tts'],
                     help='native(默认)=台词写进提示词由 H3 自己说+字幕原文(不重新配音)；tts=旧行为(CosyVoice 配音替换原轨)')
     ap.add_argument('--ambience', default='room', choices=['room', 'rain', 'none'],

@@ -140,6 +140,16 @@ SPEECH_NEG = ('mumbled speech, slurred words, garbled unintelligible voice, robo
               'muffled distorted voice, overlapping voices, background chatter, inaudible whispering')
 NO_SPEECH_POS = 'ambient sound only, no spoken words, no human speech'
 
+# H3 原生字幕/画面文字的清晰度条款（2026-09-10 用户要求"增加 H3 原生生成的文字的清晰度"）：
+# 实测 H3 会把提示词里的台词**自己画成画面字幕**（白字黑边、笔画正确）；但分辨率越低越糊，
+# 且背景招牌容易变乱码。这里从提示词侧把"大、锐、笔画对、高对比、不重影"写死。
+TEXT_CLARITY_POS = ('any on-screen subtitle or sign text is rendered as large, sharp, correctly spelled '
+                    'simplified Chinese characters with accurate strokes and clean edges, high contrast '
+                    'against the background, steady and perfectly legible, sitting in the lower third, '
+                    'never doubled or overlapping')
+TEXT_NEG = ('blurry text, garbled characters, wrong or missing strokes, ghosted or doubled subtitles, '
+            'jittering letters, overlapping captions, mirrored text, tiny illegible lettering')
+
 _SPEECH_HINTS = ('says', 'say:', 'speaks', 'speaking', 'dialogue', 'monologue', 'narrator',
                  '\u8bf4\u8bdd', '\u53f0\u8bcd', '\u5bf9\u8bdd', '\u72ec\u767d', '\u8bf4\u9053', '\u558a', '\u4f4e\u8bed')
 
@@ -164,6 +174,9 @@ def augment_speech_clause(positive: str, negative: str, want_speech: bool, enabl
         if 'clear articulate speech' not in pos.lower():
             pos = (pos + ', ' + SPEECH_POS).strip(', ')
             added.append('positive:speech')
+        if 'any on-screen subtitle or sign text' not in pos.lower():
+            pos = (pos + ', ' + TEXT_CLARITY_POS).strip(', ')
+            added.append('positive:text-clarity')
     else:
         if 'ambient sound only' not in pos.lower():
             pos = (pos + ', ' + NO_SPEECH_POS).strip(', ')
@@ -171,6 +184,9 @@ def augment_speech_clause(positive: str, negative: str, want_speech: bool, enabl
     if 'mumbled speech' not in neg.lower():
         neg = (neg + ', ' + SPEECH_NEG).strip(', ')
         added.append('negative:audio')
+    if want_speech and 'garbled characters' not in neg.lower():
+        neg = (neg + ', ' + TEXT_NEG).strip(', ')
+        added.append('negative:text')
     return pos, neg, added
 
 
