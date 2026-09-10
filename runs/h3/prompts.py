@@ -144,8 +144,19 @@ NO_SPEECH_POS = 'ambient sound only, no spoken words, no human speech'
 # 实测 H3 会把提示词里的台词**自己画成画面字幕**（白字黑边、笔画正确）；但分辨率越低越糊，
 # 且背景招牌容易变乱码。这里从提示词侧把"大、锐、笔画对、高对比、不重影"写死。
 # 用户给的四维描述法（2026-09-10）：字体风格 / 字号层级 / 颜色对比 / 动态行为 + 前缀
-TEXT_PREFIX_CN = '超高清摄影，8K文字渲染，矢量级笔画锐度，无抗锯齿失真'
-TEXT_RENDER_POS = (TEXT_PREFIX_CN + '; on-screen lettering is rendered as clean professional type: '
+# ⚠️ 2026-09-10 实测：**中文指令文本会被 H3 直接画进画面**——把用户给的
+# "超高清摄影，8K文字渲染，矢量级笔画锐度，无抗锯齿失真" 写进提示词后，成片里除了正确的
+# 招牌"修表"之外，还多出一行乱码"无抗锡纹九锐朱度"（正是这句前缀被渲染的结果）。
+# 故：指令性文本一律用英文；提示词里出现的中文只应该是**确实要出现在画面上的字**（招牌原文）。
+TEXT_PREFIX_CN = '超高清摄影，8K文字渲染，矢量级笔画锐度，无抗锯齿失真（⚠️仅存档语义；不要写进提示词，会被画成画面文字）'
+# ⚠️ 2026-09-10 二次实测：**独立成句的风格前缀（中英文都会）被 H3 画进画面**——
+# 中文前缀 → 画面多出乱码"无抗锡纹九锐朱度"；改英文前缀 → 又多出一行 "Ultra-high-devi-gtifics"。
+# 结论：短小、独立、像"标题/字幕"的字符串会被当作画面文字渲染；
+# 故清晰度要求不再单独成句，而是**融进下面的长描述句**（描述性长句不会被画出来，实测招牌段只出"修表"）。
+TEXT_PREFIX_EN = ''   # 保留常量名以免旧调用报错；已不再注入（见上）
+TEXT_RENDER_POS = ('the on-screen lettering is rendered with ultra-high-definition photographic quality and '
+                   '8K-grade text transfer, at vector-grade stroke sharpness with zero anti-aliasing artifacts; '
+                   'it is clean professional type: '
                    '(1) font style: modern sans-serif (Heiti) with uniform stroke width and straight terminals, '
                    'no decorative or calligraphic flourishes; (2) size hierarchy: the primary line is the largest '
                    'and clearly dominant, any secondary text is at most 60% of that size and sits on the same '
@@ -202,9 +213,7 @@ def augment_speech_clause(positive: str, negative: str, want_speech: bool,
         pos = (pos + ', ' + SPEECH_POS).strip(', ')
         added.append('positive:speech')
     if want_text:                      # 明确要字：四维描述法 + 前缀 + 禁"艺术化/手写感"
-        if TEXT_PREFIX_CN not in pos:
-            pos = (TEXT_PREFIX_CN + ', ' + pos).strip(', ')
-            added.append('positive:text-prefix')
+        # 不再注入独立前缀（会被模型画进画面）；清晰度已并入 TEXT_RENDER_POS 长句
         if '(1) font style' not in pos:
             pos = (pos + ', ' + TEXT_RENDER_POS).strip(', ')
             added.append('positive:text-4d')

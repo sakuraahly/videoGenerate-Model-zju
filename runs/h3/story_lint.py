@@ -64,6 +64,12 @@ def lint(story: dict) -> tuple:
             warn.append('seg%d: 一个镜头里动作太多（then/然后 ≥3）→ 建议拆段' % i)
         if len(p) > 1600:
             warn.append('seg%d: prompt 过长（%d 字符）→ 模型容易漏动作' % (i, len(p)))
+        # 3.5) 中文指令文本会被 H3 画进画面（实测：前缀"无抗锯齿失真"被渲染成乱码叠字）
+        cjk = re.findall(r'[一-鿿]{2,}', p)
+        wants_text = bool(re.search(r'sign reads|招牌上写着|字样是', p, re.I))
+        if cjk and not wants_text:
+            warn.append('seg%d: prompt 里有中文文本 %s —— H3 会把中文指令文本直接画进画面，'
+                        '除"确实要出现在画面上的字"外请一律用英文' % (i, '/'.join(cjk[:3])))
         # 4) style 与 prompt 自相矛盾：本镜头要画面文字，整体却禁字
         if re.search(r'sign reads|招牌上写着|字样是', p, re.I) \
            and re.search(r'no (on-screen )?(text|lettering|subtitles)', str(story.get('style') or ''), re.I):

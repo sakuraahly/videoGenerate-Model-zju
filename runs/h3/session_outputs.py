@@ -19,6 +19,11 @@ from pathlib import Path
 
 ENV_CID = 'VIDEOGEN_SESSION_CID'
 KEEP = 10
+# 「成品」标记（2026-09-10 用户要求：UI 回传/下载的必须是成品，不是队列原始产物）：
+# 会话产物目录里同时会落入"队列直出"和"成品（配音/字幕/后期后的终版）"两类文件，
+# 过去结果区取的是"最新 mtime"，容易被二次后期或补跑的文件顶掉。现在成品显式打标，
+# UI 优先预览/下载它。
+FINAL_MARKER = '_final.json'
 VIDEO_EXTS = ('.mp4', '.webm', '.mov', '.mkv', '.gif')
 
 
@@ -60,9 +65,53 @@ def session_files(repo: Path, cid: str) -> list:
     return _list_dir(repo, cid, None)
 
 
+def mark_final(repo: Path, cid: str, path) -> bool:
+    """把某个产物标记为「成品」（写 _final.json）——UI 优先预览/下载它。"""
+    d = session_out_dir(repo, cid)
+    if d is None:
+        return False
+    try:
+        import json as _json
+        d.mkdir(parents=True, exist_ok=True)
+        (d / FINAL_MARKER).write_text(
+            _json.dumps({'name': Path(path).name, 'ts': _tm.time()}, ensure_ascii=False),
+            encoding='utf-8')
+        return True
+    except OSError:
+        return False
+
+
+def latest_final(repo: Path, cid: str):
+    """最近一次标记的成品文件；没有标记时退化为按命名猜（*_final/_pp/_mix*），再没有返回 None。"""
+    d = session_out_dir(repo, cid)
+    if d is None or not d.is_dir():
+        return None
+    try:
+        import json as _json
+        m = d / FINAL_MARKER
+        if m.is_file():
+            name = str((_json.loads(m.read_text(encoding='utf-8')) or {}).get('name') or '')
+            p = d / name
+            if name and p.is_file():
+                return p
+    except Exception:  # noqa: BLE001
+        pass
+    # 命名兜底只看**媒体文件**（否则会把 _final.json 标记自己当成成品；单测抓到过）
+    for p in _list_dir(repo, cid, VIDEO_EXTS):
+        stem = p.stem.lower()
+        if any(k in stem for k in ('_final', '_pp', '_mix', 'tts')):
+            return p
+    return None
+
+
 def session_videos(repo: Path, cid: str) -> list:
-    """会话产物视频，最新在前（供 gr.Video 预览 / 跳过非媒体文件）。"""
-    return _list_dir(repo, cid, VIDEO_EXTS)
+    """会话产物视频，**成品在前**，其后按 mtime 倒序（供 gr.Video 预览 / 跳过非媒体文件）。"""
+    vids = _list_dir(repo, cid, VIDEO_EXTS)
+    f = latest_final(repo, cid)
+    if f is not None and f in vids:
+        vids.remove(f)
+        vids.insert(0, f)
+    return vids
 
 
 def prune_dir(d: Path, keep: int = KEEP) -> None:
@@ -80,7 +129,7 @@ def prune_dir(d: Path, keep: int = KEEP) -> None:
 
 
 def place_output(repo: Path, cid: str, src: Path,
-                 name: str | None = None, keep: int = KEEP) -> Path | None:
+                 name: str | None = None, keep: int = KEEP, final: bool = False) -> Path | None:
     """把最终产物复制到会话产物目录（mtime 刷新为当前，修剪旧文件）。
 
     失败（无会话上下文/IO 异常）返回 None，调用方按警告处理、不得中断主流程。
@@ -93,6 +142,8 @@ def place_output(repo: Path, cid: str, src: Path,
         dst = d / (name or Path(src).name)
         shutil.copy2(str(src), str(dst))
         os.utime(dst, (_tm.time(), _tm.time()))
+        if final:
+            mark_final(repo, cid, dst)
         prune_dir(d, keep)
         return dst
     except OSError:

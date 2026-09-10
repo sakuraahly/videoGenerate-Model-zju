@@ -86,11 +86,43 @@ def test_long_line_warns_about_duration():
     assert any("约需" in w for w in warn)
 
 
+def test_story_new_writes_and_lints(tmp_path, monkeypatch, capsys):
+    """agent 没有写文件工具 → 剧本落盘通道是 story_new（base64 传 JSON，避开引号）。"""
+    import base64
+    from runs.h3 import story_new as S
+
+    monkeypatch.setattr(S, "ROOT", tmp_path)
+    (tmp_path / "config").mkdir()
+    payload = base64.b64encode(json.dumps(_story(), ensure_ascii=False).encode()).decode()
+    assert S.main(["--name", "demo", "--b64", payload]) == 0
+    out = capsys.readouterr().out
+    assert "STORY_NEW_OK" in out and "LINT_SUMMARY: errors=0" in out
+    assert (tmp_path / "config" / "story_demo.json").is_file()
+    bad = _story()
+    bad["segments"][1]["prompt"] = 'x says: "hello"'
+    p2 = base64.b64encode(json.dumps(bad, ensure_ascii=False).encode()).decode()
+    assert S.main(["--name", "bad", "--b64", p2]) == 1
+    assert "LINT_ERROR" in capsys.readouterr().out
+    assert S.main(["--name", "x", "--json", "{not json"]) == 2
+
+
 def test_too_many_actions_warns():
     s = _story()
     s["segments"][0]["prompt"] = "he walks in, then sits, then opens the box, then smiles"
     _, warn = L.lint(s)
     assert any("动作太多" in w for w in warn)
+
+
+def test_chinese_instruction_text_in_prompt_warns():
+    """中文指令文本会被 H3 画进画面（实测"无抗锯齿失真"变成乱码叠字）→ 必须告警。"""
+    s = _story()
+    s["segments"][0]["prompt"] = "close-up of the desk, 超高清摄影 矢量级笔画锐度"
+    _, warn = L.lint(s)
+    assert any("中文" in w for w in warn)
+    # 确实要画面文字时（招牌原文）不告警
+    s["segments"][0]["prompt"] = 'a shop sign reads 修表 in Chinese characters'
+    _, warn2 = L.lint(s)
+    assert not any("中文" in w for w in warn2)
 
 
 def test_prompt_asking_for_text_conflicts_with_style_ban():

@@ -65,8 +65,8 @@ SYSTEM_MESSAGE = """
 待做/夜间清单：用户说"待做/夜间清单/开始夜间"→run_script(night_runner.py, --list) 查看；引擎类(engine)=cron 会自动执行或可现跑；对话类(agent)（口型/RIFE/4x 叠加等）=你提出执行计划并经用户确认后逐项执行，每项完成后 run_script(night_runner.py, --done <id> --result <注记>)。
 提示词规则：英文撰写，具体物理动作；始终含音频描述；**画面文字默认不要**（字幕由我们后期烧）——负面统一收尾 No on-screen text, no subtitles, no watermark, no cuts.；**不要**再写 no dialogue（那会和要求说话自相矛盾，历史事故）。
 剧本与提示词（故事片/多镜头必读，2026-09-10 定案；全文规范见 docs/agent-reading/08-story-film.md）：
-1) 先写剧本 JSON 到 config/story_<名>.json：{title, setting, style, characters{名:形象卡}, segments[{prompt, cast}], lines{段号:{text, speaker, voice, speed}}, resolution/seconds/lora/seed}；模板 config/story_template.json。
-2) 写完**先预检**：run_script(h3/story_lint.py, --story config/story_xxx.json)；LINT_ERROR 必须清零再生成。
+1) 剧本 JSON 结构：{title, setting, style, characters{名:形象卡}, segments[{prompt, cast}], lines{段号:{text, speaker, voice, speed}}, resolution/seconds/lora/seed}；模板 config/story_template.json、现成示例 config/story_radio.json。
+2) **落盘只能用 run_script(h3/story_new.py, --name <名> --b64 <base64(JSON)>)**（你没有写文件的工具；用 base64 可避免 JSON 里的引号被 shell 拆坏）——它写到 config/story_<名>.json 并**自动跑预检**，返回 STORY_NEW_OK / LINT_ERROR / LINT_SUMMARY。也可单跑 run_script(h3/story_lint.py, --story config/story_xxx.json)。**LINT_ERROR 未清零、剧本未落盘 = 任务未完成**，不得汇报完成。
 3) 台词铁律：**prompt 里绝对不许出现引号**——引号会让 H3 把台词自己画成画面字幕，成片就变成「模型字幕+后期字幕」两条叠字（用户已定性为错误）；台词只写进 lines（必须带 speaker），story_film 会以 audio only / never appear as written text 的形式注入。
 4) 字幕：story_film 默认后期烧录并贴底；不要要求模型画字。确实需要画面内文字（招牌/标语）时按四维描述法：字体风格（现代无衬线、等宽笔画）/字号层级（主行最大、次级≤60%、同基线）/颜色对比（纯白字+细黑描边+微压暗底）/动态行为（静态、不抖、不重绘），句首加「超高清摄影，8K文字渲染，矢量级笔画锐度，无抗锯齿失真」，并禁掉艺术化/手写感/书法。
 5) 结构：一个镜头只做一个主要动作；cast 只能用 characters 里已有的名字；台词长度与段时长匹配（0.36s/字+1s，story_film 自动抬时长）。

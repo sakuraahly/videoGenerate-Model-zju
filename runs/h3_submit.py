@@ -109,12 +109,15 @@ def _probe_diff(probe_lines: str, width, height, length, seconds) -> str:
     return ""
 
 
-def _session_place(project_dir, dst) -> None:
+def _session_place(project_dir, dst, final: bool = False) -> None:
     """§15d 会话结果区落盘：VIDEOGEN_SESSION_CID env → logs/agent_chats/<cid>/outputs/。
 
     普通生成（非链）的终版产物由此进入 7860 页面结果区（gr.Video 预览 + gr.File 下载）；
     无会话上下文（纯 CLI/编排层）时不落盘；失败仅告警不阻断主产物。
+    final=True 表示这是**成品**（配音/字幕/后期后的终版）——UI 优先回传/给下载的就是它；
+    队列直出产物 final=False（仍可在结果区文件列表里找到，但不作为回传视频）。
     """
+    globals()['_SESSION_FINAL'] = bool(final)
     cid = (os.environ.get('VIDEOGEN_SESSION_CID') or '').strip()
     if not cid:
         return
@@ -123,7 +126,8 @@ def _session_place(project_dir, dst) -> None:
         if not dst.is_file():
             return
         from h3 import session_outputs as _soc
-        placed = _soc.place_output(Path(project_dir), cid, dst)
+        _is_final = bool(globals().get('_SESSION_FINAL'))   # 成品标记（由 _session_place(...,final=True) 设置）
+        placed = _soc.place_output(Path(project_dir), cid, dst, final=_is_final)
         if placed:
             print('SESSION_OUT: logs/agent_chats/%s/outputs/%s（会话结果区，页面可预览/下载）'
                   % (cid, placed.name), flush=True)
@@ -348,6 +352,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="S6 字幕字号(像素; 0/缺省=自适应比例 0.05x高; 建议不传)")
     p.add_argument("--audio-mode", type=str, default="keep", choices=["keep", "replace"],
                         help="keep=保留角色原声+台词字幕(默认)；replace=台词合成语音替换原轨")
+    p.add_argument("--no-subtitle", action="store_true",
+                help="成品不烧字幕（默认烧：字幕=台词原文；注意模型也可能自带画面字幕, 见 --prompt/剧本侧策略）")
     p.add_argument("--subtitle-source", type=str, default="asr", choices=["asr", "text"],
                         help="keep 模式下台词字幕来源：asr=识别角色原声(默认)；text=用 --tts-text 文本")
     p.add_argument("--narration", type=str, default="", help="keep 模式下旁白文本（合成语音 -15dB 垫轨，不影响角色话语）")
@@ -805,7 +811,8 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
                                         out_dir=(Path(project_dir) / "workflows"
                                                  / (task_folder.name if task_folder else "tts_prep")))
             _dst = _tts_src.with_name(_tts_src.stem + "_pp.mp4")
-            _pp.process(_tts_src, _dst, srt=_prep["srt"],
+            _pp.process(_tts_src, _dst,
+                      srt=(None if getattr(args, "no_subtitle", False) else _prep["srt"]),
                       fontsize=int(getattr(args, "font_size", 0) or 0),
                       sub_style=getattr(args, "subtitle_style", "harmony"),
                       sub_font=getattr(args, "subtitle_font", "auto"),
@@ -813,7 +820,7 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
             _tts.replace_audio_only(_dst, _prep["speech"], _dst, dur=_src_dur)
             print(f"TTS_OUT: outputs/{_dst.name} speech_s={_prep['speech_dur']:.2f} srt=yes", flush=True)
             print(f"POSTPROCESS_OUT: outputs/{_dst.name}", flush=True)
-            _session_place(project_dir, _dst)
+            _session_place(project_dir, _dst, final=True)
             _FINAL_PRODUCT = Path(_dst)
             _log_event(f"tts_done file={_dst.name} voice={_voice} "
                        f"speech={_prep['speech_dur']:.2f}s srt=yes merged_encode=1 backend={_backend}")
@@ -829,10 +836,11 @@ def _run_tts_hook(project_dir: Path, task_folder: Optional[Path], args: argparse
                 subtitle_color=getattr(args, "subtitle_color", "auto"),
                 audio_mode=getattr(args, "audio_mode", "keep"),
                 subtitle_source=getattr(args, "subtitle_source", "asr"),
-                narration=getattr(args, "narration", ""))
+                narration=getattr(args, "narration", ""),
+                burn_subtitle=not getattr(args, "no_subtitle", False))
             print(f"TTS_OUT: outputs/{_res['path'].name} speech_s={_res['speech_dur']:.2f} "
                   f"srt={'yes' if _res.get('srt') else 'no'}", flush=True)
-            _session_place(project_dir, _res["path"])
+            _session_place(project_dir, _res["path"], final=True)
             _FINAL_PRODUCT = Path(_res["path"])
             _log_event(f"tts_done file={_res['path'].name} voice={_voice} "
                        f"speech={_res['speech_dur']:.2f}s srt={bool(_res.get('srt'))} backend={_backend}")
@@ -942,7 +950,7 @@ def _post_tts_checks(project_dir: Path, args: argparse.Namespace,
                             main_db=0.0, bed_db=-12.0)
             _FINAL_PRODUCT = Path(_mixed)
             print(f"MIX_OUT: outputs/{_mixed.name} (ref-audio bed -12dB + TTS main)", flush=True)
-            _session_place(project_dir, _mixed)
+            _session_place(project_dir, _mixed, final=True)
             _log_event(f"mix_ref_done file={_mixed.name} bed={Path(_mix_src).name}")
         except Exception as _me:  # noqa: BLE001
             _log_event(f"mix_ref_skip err={type(_me).__name__}")
@@ -1300,7 +1308,7 @@ def main(argv: Optional[list] = None) -> int:
                         _dst = _src.with_name(_src.stem + "_pp.mp4")
                         _pp.run_fast(_src, _dst)
                         print(f"POSTPROCESS_OUT: outputs/{_dst.name}", flush=True)
-                        _session_place(project_dir, _dst)
+                        _session_place(project_dir, _dst, final=True)
                         _log_event(f"postprocess_done file={_dst.name}")
                     else:
                         _log_event("postprocess_skip (no local output)")

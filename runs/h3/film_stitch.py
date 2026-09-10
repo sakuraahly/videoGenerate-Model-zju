@@ -40,6 +40,18 @@ SPEECH_CLARITY_AF_STITCH = ('highpass=f=75,equalizer=f=280:t=q:w=1.0:g=-1.5,'
                             'loudnorm=I=-15:TP=-1.5:LRA=11')
 
 
+def _probe_wh(path: Path) -> tuple:
+    """读第一段的真实宽高（拼接默认沿用，避免把高分辨率段降采样）。"""
+    try:
+        r = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                            '-show_entries', 'stream=width,height', '-of', 'csv=p=0', str(path)],
+                           capture_output=True, text=True, timeout=60)
+        w, h = (r.stdout or '').strip().split(',')[:2]
+        return int(w), int(h)
+    except Exception:  # noqa: BLE001
+        return 0, 0
+
+
 def _probe_duration(path: Path) -> float:
     try:
         r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
@@ -121,11 +133,17 @@ def normalize(src: Path, dst: Path, width: int, height: int, fps: int, strip_aud
     return
 
 
-def stitch(segments: list, out: Path, width: int = 864, height: int = 480,
+def stitch(segments: list, out: Path, width: int = 0, height: int = 0,
            fps: int = 24, keep_norm: bool = False, strip_audio: bool = False,
            keep_segs: set | None = None, ambience: str = 'room',
            ambience_db: float = -32.0, mix_ambience: bool = False) -> Path:
     keep_segs = keep_segs or set()
+    # 2026-09-10 实测 bug 修复：默认尺寸过去写死 864×480，会把 720p/1080p 分段**降采样**成 480p
+    # （用户要 720p 版时成片仍是 480p）。现在 width/height=0 表示"跟随第一段真实分辨率"。
+    if not width or not height:
+        w0, h0 = _probe_wh(Path(segments[0]))
+        width = width or w0 or 864
+        height = height or h0 or 480
     work = Path(tempfile.mkdtemp(prefix='film_stitch_'))
     try:
         norm_paths = []
@@ -159,8 +177,8 @@ def main() -> int:
     ap = argparse.ArgumentParser('多段成片拼接')
     ap.add_argument('--segments', required=True, help='逗号分隔的段文件路径（按顺序）')
     ap.add_argument('--out', default='/tmp/film_stitched.mp4')
-    ap.add_argument('--width', type=int, default=864)
-    ap.add_argument('--height', type=int, default=480)
+    ap.add_argument('--width', type=int, default=0, help='默认 0=跟随第一段分辨率（不再写死 480p）')
+    ap.add_argument('--height', type=int, default=0, help='默认 0=跟随第一段分辨率')
     ap.add_argument('--fps', type=int, default=24)
     ap.add_argument('--keep-norm', action='store_true')
     ap.add_argument('--strip-audio', action='store_true', help='剔除各段原生音轨（H3 伪语音=乱码级）')

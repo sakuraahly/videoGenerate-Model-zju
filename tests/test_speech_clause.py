@@ -41,11 +41,13 @@ def test_four_dimension_text_spec_when_text_is_wanted():
     """明确要画面内文字时（招牌/字样）：中文前缀 + 字体风格/字号层级/颜色对比/动态行为 四维 + 禁艺术化手写。"""
     pos, neg, added = P.augment_speech_clause(
         "a shop sign reads: 修表 in Chinese characters", "", True)
-    assert "超高清摄影，8K文字渲染，矢量级笔画锐度，无抗锯齿失真" in pos
+    # 前缀已被移除：独立成句的风格字符串（中/英文都试过）会被 H3 画进画面
+    assert "超高清摄影" not in pos and "ultra-high-definition photography," not in pos
+    assert "vector-grade stroke sharpness" in pos      # 清晰度要求已并入长描述句
     for dim in ("(1) font style", "(2) size hierarchy", "(3) colour contrast", "(4) motion"):
         assert dim in pos
     assert "artistic lettering" in neg and "calligraphy" in neg
-    assert "positive:text-prefix" in added and "positive:text-4d" in added
+    assert "positive:text-4d" in added and "positive:text-prefix" not in added
     assert P.detect_text_wanted('a shop sign reads: "修表"') is True
     assert P.detect_text_wanted("招牌上写着“修表”两个字") is True
     assert P.detect_text_wanted("the father speaks slowly") is False

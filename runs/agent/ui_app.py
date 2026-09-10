@@ -1008,11 +1008,20 @@ def _results_update(cid: str):
     """
     import gradio as _gr
     try:
-        vids = _soc_session_videos(Path(PROJECT_ROOT), cid)
+        from runs.h3.session_outputs import latest_final as _soc_latest_final
+        vids = _soc_session_videos(Path(PROJECT_ROOT), cid)      # 成品在前
         if not vids:
             return (_gr.update(value=None, label='本轮结果视频（暂无结果）'),
                     _gr.update(value=None, label='本轮结果文件（暂无）'))
         files = _soc_session_files(Path(PROJECT_ROOT), cid)
+        _final = _soc_latest_final(Path(PROJECT_ROOT), cid)
+        # 2026-09-10 用户要求：回传/下载给用户的必须是**成品**（配音/字幕/后期后的终版），
+        # 不是队列直出产物；成品由 session_outputs.mark_final 打标，此处优先展示。
+        if _final is not None and Path(_final).is_file():
+            _rest = [p for p in files if Path(p).resolve() != Path(_final).resolve()]
+            _downloads = [str(_final)] + [str(p) for p in _rest]
+            return (_gr.update(value=str(_final), label='本轮结果视频（成品 · 含配音/字幕）'),
+                    _gr.update(value=_downloads, label='本轮结果文件（成品在第一个）'))
         return (_gr.update(value=str(vids[0]), label='本轮结果视频（预览 · 最新）'),
                 _gr.update(value=[str(p) for p in files],
                            label='本轮结果文件（下载）'))
@@ -1377,6 +1386,22 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                             final_text = ('⚠️ 本轮未发现真实提交：系统未检测到任何生成/提交工具调用成功，'
                                          '刚刚出现的 TASK_SUBMITTED 串不可信，请不要等待。'
                                          '请重新描述需求或直接点「继续」。')
+                            phase = 'error'
+
+                    # 2026-09-10 现场：**剧本任务的"假完成"拦截**——agent 曾回复"任务已完成"却没有落盘剧本
+                    # （它没有写文件的工具，必须走 run_script(h3/story_new.py ...)）。与提交真实性校验同模式：
+                    # 声称完成但本轮没有任何 story_new/story_lint/剧本类工具调用 → 作废该回复并给出下一步。
+                    if final_text and any(k in final_text for k in ('任务已完成', '已完成', '完成：'))                     and any(k in str(user_text or '') for k in ('剧本', '故事片', 'story_film', 'story_new')):
+                        _real_story = any(
+                            n in ('run_script', 'call_comfyui')
+                            and any(k in str(o) for k in ('STORY_NEW_OK', 'LINT_SUMMARY', 'SESSION_OUT',
+                                                          'ALL_SEGMENTS_DONE', 'STITCH_OUT'))
+                            for n, o in _TURN_TOOL_LOGS)
+                        if not _real_story:
+                            final_text = ('⚠️ 本轮未发现真实的剧本产出：写剧本必须调用 '
+                                          'run_script(h3/story_new.py, --name <名> --b64 <base64(JSON)>) '
+                                          '落盘并跑预检（返回 STORY_NEW_OK / LINT_SUMMARY 才算完成）。'
+                                          '请现在调用它；如需规范先 read_doc 读 docs/agent-reading/08-story-film.md。')
                             phase = 'error'
 
                     if aborted or phase == 'error':
