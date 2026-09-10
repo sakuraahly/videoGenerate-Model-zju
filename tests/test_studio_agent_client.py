@@ -264,6 +264,21 @@ def test_prune_outputs_keeps_latest(tmp_path):
 
 # ---------- 大脑自创键名 / 抖动：实测问题对应的回归测试 ----------
 
+def test_non_url_values_never_become_addresses(monkeypatch):
+    """任何非 http(s) 的脏值(实测平台把中文占位编码成了 '???')都不能被当成接口地址。"""
+    os.environ["ENGINE_BASE_URL"] = "???"
+    os.environ["LLM_BASE_URL"] = "???"
+    os.environ["LLM_API_KEY"] = "k"
+    try:
+        c = ac.AgentClient()
+        assert c.engine_url == "" and c.llm_base == ""
+        out = c.run_tool({"tool": "generate_video", "args": {"prompt": "雨夜"}})
+        assert out["kind"] == "demo" and out["ok"] is True     # 不允许出现 "unknown url type"
+    finally:
+        for k in ("ENGINE_BASE_URL", "LLM_BASE_URL", "LLM_API_KEY"):
+            os.environ.pop(k, None)
+
+
 def test_placeholder_values_are_treated_as_unset(monkeypatch):
     """空间变量不能为空(平台必填校验),所以先占位;占位符绝不能被当成真实地址。"""
     os.environ["ENGINE_BASE_URL"] = "未配置"

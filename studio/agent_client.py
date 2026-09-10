@@ -91,7 +91,7 @@ DEFAULT_SYSTEM = """你是 H3 视频生成工坊的创作 Agent,部署在魔搭�
 
 # 平台不接受空值变量(必填校验),所以允许先占位;占位符一律视为"未配置"——
 # 好处:变量可以先建好放在那儿,填什么都不会被误当成真实地址去调用。
-PLACEHOLDERS = {'', '-', '--', 'none', 'null', 'n/a', 'na', 'todo', 'tbd', 'xxx',
+PLACEHOLDERS = {'', '-', '--', 'none', 'null', 'n/a', 'na', 'todo', 'tbd', 'xxx', '???',
                 'changeme', 'placeholder', 'unset', '未配置', '未设置', '待填', '待配置'}
 
 
@@ -106,13 +106,20 @@ def _env(*names, default: str = '') -> str:
 class AgentClient:
     """Agent = 外置大脑(LLM 接口) + 工具集(HTTP 接口执行)。"""
 
+    @staticmethod
+    def _url(v: str) -> str:
+        """只认 http(s) 开头的地址;其余(占位符/脏值)返回空串 = 未配置。"""
+        v = (v or '').strip().rstrip('/')
+        return v if v.startswith(('http://', 'https://')) else ''
+
     def __init__(self):
-        self.llm_base = _env('LLM_BASE_URL').rstrip('/')
+        self.llm_base = self._url(_env('LLM_BASE_URL'))
         self.llm_key = _env('LLM_API_KEY')
         self.llm_model = _env('LLM_MODEL', default='qwen-plus')
-        self.engine_url = _env('ENGINE_BASE_URL', 'VIDEO_API_URL').rstrip('/')
+        # 只接受合法 http(s) 地址:占位符/脏值(如平台编码问题产生的 '???')一律当作未配置
+        self.engine_url = self._url(_env('ENGINE_BASE_URL', 'VIDEO_API_URL'))
         self.engine_key = _env('ENGINE_API_KEY', 'VIDEO_API_KEY')
-        self.engine_status = _env('ENGINE_STATUS_URL', 'VIDEO_API_STATUS_URL').rstrip('/')
+        self.engine_status = self._url(_env('ENGINE_STATUS_URL', 'VIDEO_API_STATUS_URL'))
         self.toolset = [t.strip() for t in _env('TOOLSET', default='all').split(',') if t.strip()]
         self.llm_extra = {}
         raw_extra = _env('LLM_EXTRA_JSON')      # 例:{"chat_template_kwargs":{"enable_thinking":false}}
