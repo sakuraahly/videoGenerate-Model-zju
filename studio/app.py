@@ -540,7 +540,7 @@ _{show['footer']}_""")
 
                 _probe.click(_probe_click, [sess_id] + BYOK_IN, [_probe_out])
 
-        gr.Markdown(f"\n---\n_空间版本 v3.3（2026-09-10 · Agent=工具集+外置大脑；服务商预设 + BYOK + 零信任单页 + 会话密钥 TTL 回收 等安全加固）_")
+        gr.Markdown(f"\n---\n_空间版本 v3.4（2026-09-10 · Agent=工具集+外置大脑；服务商预设 + BYOK + 零信任单页 + 密钥 TTL 回收 + 大脑调用限流）_")
     return demo
 
 

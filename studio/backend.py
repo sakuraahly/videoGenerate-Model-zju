@@ -2,6 +2,10 @@
 
 设计（2026-09-10 v2.0）：
   前端（app.py）只调用本层；换后端不改前端。
+
+  2026-09-10 说明：`RemoteBackend`（REMOTE_API + STUDIO_TOKEN，路径 /v1/jobs）是**早期形态**；
+  现在 Agent 走的是 `ENGINE_BASE_URL/ENGINE_STATUS_URL/ENGINE_API_KEY` 契约（见 接口说明.md）。
+  两者可并存：创作台表单走本层，Agent 对话走契约接口。
   · demo  ：默认（免费 CPU 档）。不产生任务：校验参数 + 返回规格卡与匹配样片。
   · remote：配置 REMOTE_API + STUDIO_TOKEN 后，真实提交到外部引擎网关
             （POST /v1/jobs、GET /v1/jobs/<id>、GET /v1/jobs/<id>/download）。
@@ -77,6 +81,13 @@ class RemoteBackend:
         self.api = api.rstrip('/')
         self.token = token
 
+    @staticmethod
+    def _safe_id(job_id) -> str:
+        """任务号白名单：避免被拼进 URL 造成路径穿越（与 agent_client 同口径）。"""
+        import re as _re
+        s = str(job_id or '').strip()
+        return s if _re.fullmatch(r'[A-Za-z0-9._:-]{1,64}', s) else ''
+
     def _req(self, method: str, path: str, payload: dict | None = None, raw: bool = False):
         import json as _json
         import urllib.request
@@ -101,7 +112,11 @@ class RemoteBackend:
                 'spec': '远程引擎（本机 GPU 推理）', 'echo': payload}
 
     def poll(self, job_id: str) -> dict:
-        d = self._req('GET', '/v1/jobs/' + str(job_id))
+        jid = self._safe_id(job_id)
+        if not jid:
+            return {'state': 'error', 'progress': 0, 'video': None, 'files': [],
+                    'error': '任务号不合法'}
+        d = self._req('GET', '/v1/jobs/' + jid)
         st = d.get('status')
         out = {'state': st, 'progress': 100 if st == 'completed' else (d.get('progress') or 10),
                'video': None, 'files': []}

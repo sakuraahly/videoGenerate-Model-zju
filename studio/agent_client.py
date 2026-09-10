@@ -151,6 +151,7 @@ class AgentClient:
         self.apply_overrides(overrides)
         self.toolset = [t.strip() for t in self._cfg('TOOLSET', default='all').split(',') if t.strip()]
         self.job_log = []                # 本会话作业台账（供 查/重试/续跑 工具使用）
+        self._brain_calls = []           # 大脑调用时间戳（限流用；仅当用的是运营方 key 时计数）
         import threading as _threading
         self._lock = _threading.Lock()   # 台账并发保护（Gradio 可能并发处理请求）
         self.engine_resume = bool(self._cfg('ENGINE_RESUME'))
@@ -465,7 +466,36 @@ class AgentClient:
             start = t.find('{', start + 1)
         return {}
 
+    def brain_quota_ok(self) -> bool:
+        """大脑调用限流：**只有当使用的是空间默认（运营方）凭据时才计数**。
+
+        背景：空间变量里若填了运营方的 key，公开空间等于把额度借给所有访客；
+        单个会话每小时调用上限（`BRAIN_CALLS_PER_HOUR`，默认 60，0=不限）能挡住滥用；
+        访客自带 key（BYOK）时不限流——花的是他自己的额度。
+        """
+        if getattr(self, 'byok', False):
+            return True
+        try:
+            limit = int(float(_env('BRAIN_CALLS_PER_HOUR', default='60') or 60))
+        except Exception:  # noqa: BLE001
+            limit = 60
+        if limit <= 0:
+            return True
+        now = time.time()
+        self._brain_calls = [t for t in self._brain_calls if now - t < 3600]
+        if len(self._brain_calls) >= limit:
+            return False
+        self._brain_calls.append(now)
+        return True
+
     def plan(self, user_msg: str, history: list) -> dict:
+        if not self.brain_quota_ok():
+            return {'tool': 'answer',
+                    'args': {'text': ('本会话的**免费体验额度已用完**（每小时调用次数上限）。\n\n'
+                                      '两个办法继续用：① 在「🔑 我的密钥」里填你自己的 API Key'
+                                      '（自带 key 不受限）；② 用零信任单页版（Agent 跑在你浏览器里）：\n'
+                                      'https://sakuraahly.github.io/videoGenerate-Model-zju/web/agent.html')},
+                    'say': '本会话的免费体验额度用完了。'}
         if self.brain == 'agent-url':
             return self._plan_agent_url(user_msg, history)
         if not self.llm_key:

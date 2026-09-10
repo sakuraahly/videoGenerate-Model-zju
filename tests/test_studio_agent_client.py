@@ -810,3 +810,53 @@ def test_static_page_escapes_quotes():
     html = (ROOT / 'web' / 'agent.html').read_text(encoding='utf-8')
     line = [l for l in html.splitlines() if 'function esc' in l][0]
     assert "&quot;" in line and "&#39;" in line
+
+
+# ---------- 大脑调用限流 + 旧后端校验（2026-09-10 加固续二） ----------
+
+def test_brain_quota_limits_operator_key_only(monkeypatch):
+    """空间里若填了运营方 key，必须限流；访客自带 key（BYOK）不限制。"""
+    monkeypatch.setenv("BRAIN_CALLS_PER_HOUR", "2")
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setenv("LLM_API_KEY", "env-key")          # 运营方默认凭据
+    c = ac.AgentClient()
+    assert c.brain_quota_ok() and c.brain_quota_ok()      # 用掉 2 次
+    assert c.brain_quota_ok() is False                    # 第 3 次被挡
+    b = ac.AgentClient(overrides={'LLM_API_KEY': 'sk-user', 'LLM_BASE_URL': 'https://api.deepseek.com'})
+    for _ in range(5):
+        assert b.brain_quota_ok() is True                 # 自带 key：不限
+
+
+def test_brain_quota_zero_means_unlimited(monkeypatch):
+    monkeypatch.setenv("BRAIN_CALLS_PER_HOUR", "0")
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setenv("LLM_API_KEY", "env-key")
+    c = ac.AgentClient()
+    for _ in range(10):
+        assert c.brain_quota_ok() is True
+
+
+def test_plan_reports_quota_exhausted_honestly(monkeypatch):
+    """额度用完要如实说清楚并给出路（填自己的 key / 用零信任单页），不能假装是模型问题。"""
+    monkeypatch.setenv("BRAIN_CALLS_PER_HOUR", "1")
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setenv("LLM_API_KEY", "env-key")
+    c = ac.AgentClient()
+    assert c.brain_quota_ok() is True
+    plan = c.plan('做一段 5 秒镜头', [])
+    assert plan["tool"] == "answer" and "免费体验额度" in plan["args"]["text"]
+    assert "我的密钥" in plan["args"]["text"]
+
+
+def test_remote_backend_rejects_bad_job_id(monkeypatch):
+    """旧后端（REMOTE_API）把任务号拼进 URL —— 必须白名单校验。"""
+    sys.path.insert(0, str(ROOT / 'studio'))
+    import importlib
+    import backend as bk
+    importlib.reload(bk)
+    rb = bk.RemoteBackend("https://engine.example", "tok")
+    called = []
+    monkeypatch.setattr(rb, "_req", lambda *a, **k: called.append(a) or {})
+    out = rb.poll("../../admin")
+    assert out["state"] == "error" and called == []
+    assert bk.RemoteBackend._safe_id("abc-123_4:5") == "abc-123_4:5"
