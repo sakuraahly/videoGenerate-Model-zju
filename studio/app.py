@@ -1,27 +1,30 @@
 #!/usr/bin/env python3
-"""H3 视频生成工坊 — 魔搭创空间静态展示版（M1）。
+"""H3 视频生成工坊 — 魔搭创空间应用（v2.0 创作台前端）。
 
-设计（docs/guides/studio-porting.md §3 M1）：
-  - 片墙：本机生成样片（assets/*.mp4 + 封面），可播放；
-  - 流程：灵感→提示词→生成→成品链→验收 五步说明；
-  - 演示表单：剧情/台词/音色/风格 → 演示模式结果卡（M2 远程调度上线前不产生真实任务）；
-  - 配置驱动：同目录 config.yaml（创空间 sdk 配置 + 展示元数据；缺失时用内建默认）。
-
-运行：python app.py [--port 7860]（Gradio；本地/创空间一致）。
+结构（2026-09-10 重构：v1.x 的展示页 → 专业创作台）：
+  Tab1 创作台：任务类型 / 提示词 / 参考图上传 / 参数（分辨率·时长·音色·字幕）→ 提交 → 任务区（状态·预览·下载·历史）
+  Tab2 样片墙：本机生成样片（可播放）
+  Tab3 能力与部署：能力点、制作流程、部署与"真实生成"说明
+后端（studio/backend.py）三实现：demo（默认，免费 CPU）/ remote（引擎网关）/ local（空间内 GPU 模型）。
+环境变量：STUDIO_BACKEND=demo|remote|local（默认 auto）；REMOTE_API + STUDIO_TOKEN 走远程。
 """
 from __future__ import annotations
 
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ASSETS = HERE / "assets"
+sys.path.insert(0, str(HERE))
+
+from backend import pick_backend  # noqa: E402
 
 DEFAULT_SHOW = {
     "title": "H3 视频生成工坊",
-    "tagline": "一句创意 → 参考图/提示词 → 本地大模型生成 → 真台词/字幕/旁白/口型成品链 → ASR 验收交付",
+    "tagline": "一句创意 / 一张参考图 / 一句台词 → 本地大模型生成 → 台词·字幕·口型成品链 → ASR 验收交付",
     "hero_points": [
         "文生视频 / 图生视频 / 多参考图连贯 / 首末帧转场",
         "说话镜头：一句台词→H3 自适应音色亲口说出（音画同时长）+ ASR 验收",
@@ -30,10 +33,10 @@ DEFAULT_SHOW = {
     ],
     "flow_steps": [
         "① 灵感：一句话剧情；也可上传参考图锁定场景/角色/道具",
-        "② 提示词：英文提示词+参考图契约（<Picture N> 全片锁定）",
+        "② 提示词：英文提示词+参考图契约（<Picture N> 全片锁定）+故事背景/角色形象卡自动注入",
         "③ 生成：ComfyUI + MiniMax H3 本地推理（本机 GPU，日间≤768p，夜间 1080p 档）",
-        "④ 成品链：角色真台词（CosyVoice2）→ 口型同步 → 字幕烧录 → 旁白垫轨（错开不叠）→ 整脸无框修复",
-        "⑤ 验收：SenseVoice ASR 双轨验真（台词窗/旁白窗）→ 交付命名归档",
+        "④ 成品链：台词先行（剧本台词表）→ CosyVoice2 真台词 → 口型同步 → 字幕=台词原文烧录 → 旁白垫轨 → 整脸无框修复",
+        "⑤ 验收：SenseVoice ASR 双轨验真（台词窗/旁白窗；发音回环不达标自动用发音写法重试）→ 交付命名归档",
     ],
     "samples": [
         {"file": "01_direct_720p.mp4", "cover": "01_direct_720p_cover.jpg",
@@ -53,20 +56,20 @@ DEFAULT_SHOW = {
         {"file": "08_talk_one.mp4", "cover": "08_talk_one_cover.jpg",
          "title": "说话镜头（H3 自适应音色）", "desc": "一句台词→按语音时长生成→H3 自己选音色说话（音画同时长）+ ASR 验收 1.000", "style": "真实"},
     ],
-    "voices": [("yunxi（中文·男声）", "yunxi"), ("xiaoxiao（中文·女声）", "xiaoxiao"),
-               ("aria（英文·女声）", "aria"), ("daler（英文·男声）", "daler")],
-    "styles": ["电影感", "真实", "纪录片", "动漫"],
-    "footer": "演示模式说明：本页为静态展示（M1）。M2 远程调度上线后，「演示表单」将真实提交至引擎并回传成片；当前提交不产生任务。样片均为本机生成。",
+    "voices": [("H3 自适应（按人物形象）", "h3"), ("中文·男声 yunxi", "yunxi"),
+               ("中文·女声 xiaoxiao", "xiaoxiao"), ("英文·男声 daler", "daler"),
+               ("英文·女声 aria", "aria")],
+    "styles": ["电影感", "真实", "纪录片"],
+    "footer": "免费 CPU 档=演示模式（不产生任务）；真实生成需 GPU 硬件档或配置引擎网关（见「能力与部署」）。",
 }
 
 
 def load_show() -> dict:
-    """读 config.yaml（创空间 sdk 配置 + 展示元数据）；失败回退内建默认。"""
     try:
-        import yaml  # noqa: F401
-        cfg_file = HERE / "config.yaml"
-        if cfg_file.is_file():
-            data = yaml.safe_load(cfg_file.read_text(encoding="utf-8")) or {}
+        import yaml
+        cfg = HERE / "config.yaml"
+        if cfg.is_file():
+            data = yaml.safe_load(cfg.read_text(encoding="utf-8")) or {}
             show = {k: v for k, v in data.items() if k not in ("sdk", "app_file", "sdk_version")}
             show.update(data.get("showcase") or {})
             for k, v in DEFAULT_SHOW.items():
@@ -77,156 +80,148 @@ def load_show() -> dict:
     return dict(DEFAULT_SHOW)
 
 
-REMOTE_API = (os.environ.get('REMOTE_API') or '').strip()
-STUDIO_TOKEN = (os.environ.get('STUDIO_TOKEN') or '').strip()
-# 定位（2026-09-09 用户定案）：本空间=**创空间自包含**展示+交互（免费 CPU 档零依赖）；
-# REMOTE_API/STUDIO_TOKEN 仅实验机联调开关（非交付形态，配置缺失即自动演示模式）。
-
-
-def remote_submit(plot: str, line: str, voice_txt: str, style: str, res_val: str,
-                  remote_api: str, token: str) -> tuple:
-    """M2 远程提交：调 studio_gateway POST /v1/jobs；返回 (markdown, err)。"""
-    if not remote_api or not token:
-        return '', '未配置远程（REMOTE_API/STUDIO_TOKEN）'
-    try:
-        import requests
-    except Exception:  # noqa: BLE001
-        return '', '环境缺 requests'
-    try:
-        payload = {'prompt': ('A cinematic video scene: ' + (plot or '')).strip()[:1200],
-                   'resolution': '720p' if '720p' in str(res_val) else '360p',
-                   'seconds': 5}
-        r = requests.post(remote_api.rstrip('/') + '/v1/jobs', json=payload,
-                          headers={'Authorization': 'Bearer ' + token}, timeout=25)
-        d = r.json() if r.headers.get('content-type', '').startswith('application/json') else {}
-        if r.status_code == 200 and d.get('job_id'):
-            return ('### 🎬 已提交远程生成（M2 上线模式）\n\n'
-                    f'| 项 | 值 |\n|---|---|\n'
-                    f'| 剧情 | {plot or "（未填写）"} |\n'
-                    f'| 台词 | {line or "（未填写）"} |\n'
-                    f'| 音色 | {voice_txt} |\n'
-                    f'| 分辨率 | {res_val} |\n'
-                    f'| 任务 id | `{d["job_id"]}` |\n\n'
-                    '> M2 网关已接单；页面刷新后可下载成片（网关提供 /v1/jobs/<id>/download）。'), ''
-        return '', f'远程返回 {r.status_code}: {d.get("error", "")[:80]}'
-    except Exception as e:  # noqa: BLE001
-        return '', f'远程不可达: {type(e).__name__}'
-
-
-def build_demo(show: dict):
+def build_app(show: dict):
     import gradio as gr
 
-    def _asset(name: str) -> str | None:
-        p = ASSETS / name
-        return str(p) if p.is_file() else None
+    backend = pick_backend()
+    job_history: list = []
 
-    def demo_submit(plot, line, voice, style, res):
-        voice_txt = dict(show["voices"]).get(voice, voice)
-        rec = next((s for s in show["samples"] if s.get("style") == style), show["samples"][0])
-        if REMOTE_API and STUDIO_TOKEN:
-            rmd, err = remote_submit(plot, line, voice_txt, style, res, REMOTE_API, STUDIO_TOKEN)
-            if not err:
-                return rmd, _asset(rec["file"]) or None
-            note = f'> ⚠️ 远程提交失败（{err}），已降级为演示模式。'
-        else:
-            note = '> M2 远程调度未配置，演示模式。'
-        md = (
-            f"### 🎬 演示结果卡（M1 演示模式）\n\n"
-            f"| 项 | 值 |\n|---|---|\n"
-            f"| 剧情 | {plot or '（未填写）'} |\n"
-            f"| 台词 | {line or '（未填写；留空=按剧情设计）'} |\n"
-            f"| 音色 | {voice_txt} |\n"
-            f"| 风格 | {style} |\n"
-            f"| 分辨率 | {res} |\n\n"
-            f"> 正式版将提交至本机引擎（MiniMax H3，本页为静态展示）。该风格推荐样片：**{rec['title']}**。\n\n{note}"
-        )
-        return md, _asset(rec["file"]) or None
+    def _asset(name):
+        p = ASSETS / name
+        return str(p) if name and p.is_file() else None
+
+    def _sample_for(kind):
+        key = {"talk": "08_", "story": "07_", "t2v": "01_", "i2v": "02_"}.get(kind, "01_")
+        return next((s for s in show["samples"] if s["file"].startswith(key)), show["samples"][0])
+
+    # ---------------- 创作台 ----------------
+    def submit_job(kind, prompt, images, resolution, seconds, voice, subtitle, negative):
+        sel = {"文生视频": "t2v", "图生视频": "i2v", "说话镜头": "talk", "剧本故事片": "story"}
+        k = sel.get(kind, "t2v")
+        if not (prompt or "").strip() and k != "i2v":
+            return ("⚠️ 请先填写创意/提示词。", None, None,
+                    _hist_md(), gr.update())
+        imgs = [Path(f).name for f in (images or [])]
+        voice_key = dict(show["voices"]).get(voice, voice)
+        task = {"kind": k, "prompt": prompt, "images": ", ".join(imgs) or None,
+                "resolution": resolution, "seconds": seconds, "voice": voice_key,
+                "subtitle": bool(subtitle), "negative": negative}
+        t0 = time.time()
+        try:
+            res = backend.submit(task)
+        except Exception as e:  # noqa: BLE001
+            return ("❌ 提交失败：%s" % str(e)[:300], None, None, _hist_md(), gr.update())
+        dt = time.time() - t0
+        rec = _sample_for(k)
+        job_history.append({"id": res.get("job_id"), "kind": sel.get(kind, k),
+                            "state": res.get("state"), "ts": time.strftime("%H:%M:%S")})
+        echo = res.get("echo") or {}
+        rows = "\n".join("| %s | %s |" % (kk, vv) for kk, vv in echo.items())
+        md = (f"### {'🧪 演示结果' if backend.name == 'demo' else '🚀 已提交'}\n\n"
+              f"**任务类型**：{res.get('title')}　**任务号**：`{res.get('job_id')}`\n\n"
+              f"| 参数 | 值 |\n|---|---|\n{rows}\n\n"
+              f"**规格**：{res.get('spec')}\n\n"
+              f"> {backend.note if backend.name == 'demo' else '任务已交给引擎；下方可查看状态与成片。'}\n\n"
+              f"_耗时 {dt:.2f}s_")
+        video = _asset(rec["file"]) if backend.name != 'remote' else None
+        files = None
+        if backend.name != 'demo':
+            try:
+                st = backend.poll(res['job_id'])
+                video = st.get('video') or video
+            except Exception:  # noqa: BLE001
+                pass
+        return md, video, files, _hist_md(), gr.update(value="")
+
+    def _hist_md():
+        if not job_history:
+            return "_（暂无任务记录）_"
+        return "\n".join("| %s | %s | %s |" % (h["ts"], h["kind"], h["state"]) for h in job_history[-10:])
 
     with gr.Blocks(title=show["title"], theme=gr.themes.Soft()) as demo:
         gr.Markdown(f"## 🎬 {show['title']}\n\n{show['tagline']}")
-        with gr.Row():
-            for pt in show["hero_points"]:
-                gr.Markdown(f"**▸ {pt}**")
-        gr.Markdown("---\n### 🎞 成品片墙（样片均为本机生成）")
-        rows = [show["samples"][i:i + 3] for i in range(0, len(show["samples"]), 3)]
-        for row in rows:
-            with gr.Row():
-                for s in row:
-                    with gr.Column():
-                        gr.Image(value=_asset(s["cover"]), label=s["title"], show_label=True,
-                                 interactive=False)
-                        gr.Markdown(f"**{s['title']}** — {s['desc']}")
-                        gr.Video(value=_asset(s["file"]), label=s["title"], interactive=False)
-        gr.Markdown("\n### 🧭 制作流程")
-        for t in show["flow_steps"]:
-            gr.Markdown(f"**{t.split('：')[0]}**：{t.split('：', 1)[-1]}")
-        gr.Markdown("\n### 🗣 说话镜头（一句台词→人物亲口说出）\n"
-                    "_输入一句台词、选音色与字幕开关→演示卡展示对应样片与生成规格。_")
-        with gr.Row():
-            talk_text = gr.Textbox(label="台词", lines=2, scale=2,
-                                   placeholder="例如：天冷了,快进屋坐坐吧,外面风大。")
-            talk_voice = gr.Dropdown(choices=["H3 自适应（按人物形象）", "中文·男声 yunxi",
-                                              "中文·女声 xiaoxiao", "英文·男声 daler",
-                                              "英文·女声 aria"],
-                                     value="H3 自适应（按人物形象）", label="音色", scale=1)
-            talk_sub = gr.Checkbox(value=False, label="烧录字幕")
-        talk_btn = gr.Button("生成说话镜头（演示）", variant="primary")
 
-        def talk_demo(text, voice, sub):
-            rec = next((s for s in show["samples"] if s.get("file", "").startswith("08_")),
-                       show["samples"][0])
-            secs = max(2.0, round(len(text or "") * 0.36 + 0.4, 2)) if text else 3.0
-            return (f"### 🗣 说话镜头演示\n\n"
-                    f"| 项 | 值 |\n|---|---|\n"
-                    f"| 台词 | {text or '（未填写）'} |\n"
-                    f"| 音色 | {voice} |\n"
-                    f"| 字幕 | {'烧录' if sub else '不烧录'} |\n"
-                    f"| 预计时长 | ≈{secs}s（按语音时长匹配，不虚长） |\n"
-                    f"| 语音来源 | H3 自适应音色（模型按人物形象自选）｜备选本地 TTS |\n\n"
-                    f"> 真实生成规格：本地 TTS 先定台词时长 → H3 帧档匹配生成 → 队列内成品（配音/字幕可选）+ ASR 验收；"
-                    f"本页为自包含演示，展示同规格样片。")
+        with gr.Tabs():
+            with gr.Tab("🎛 创作台"):
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        kind = gr.Radio(choices=["文生视频", "图生视频", "说话镜头", "剧本故事片"],
+                                        value="文生视频", label="任务类型")
+                        prompt = gr.Textbox(label="创意 / 提示词 / 台词", lines=4,
+                                            placeholder="例：雨夜老屋门口，一只猫望着门内的暖光；"
+                                                        "或（说话镜头）天冷了，快进屋坐坐吧，外面风大。")
+                        images = gr.Files(label="参考图（可选，多张；图生视频必填）",
+                                          file_types=["image"])
+                        with gr.Row():
+                            resolution = gr.Dropdown(choices=["360p", "480p", "720p", "768p"],
+                                                     value="480p", label="分辨率")
+                            seconds = gr.Slider(2, 15, value=5, step=1, label="时长（秒）")
+                        with gr.Row():
+                            voice = gr.Dropdown(choices=[v[0] for v in show["voices"]],
+                                                value=show["voices"][0][0], label="音色")
+                            subtitle = gr.Checkbox(value=True, label="烧录字幕")
+                        negative = gr.Textbox(label="负面词（可选）", lines=2,
+                                              placeholder="no text, no watermark, no distortion …")
+                        with gr.Row():
+                            submit = gr.Button("🚀 生成", variant="primary", scale=3)
+                            clear = gr.Button("清空", scale=1)
+                    with gr.Column(scale=2):
+                        status = gr.Markdown("_等待提交…_")
+                        out_video = gr.Video(label="成片预览", interactive=False)
+                        out_files = gr.File(label="下载", file_count="multiple")
+                        hist = gr.Markdown("_（暂无任务记录）_", label="最近任务")
+                submit.click(submit_job,
+                             [kind, prompt, images, resolution, seconds, voice, subtitle, negative],
+                             [status, out_video, out_files, hist, prompt])
+                clear.click(lambda: ("", None, "480p", 5, show["voices"][0][0], True, ""),
+                            None, [prompt, images, resolution, seconds, voice, subtitle, negative])
 
-        talk_out = gr.Markdown()
-        talk_btn.click(talk_demo, [talk_text, talk_voice, talk_sub], [talk_out])
+            with gr.Tab("🎞 样片墙"):
+                gr.Markdown("### 本机生成样片（点击播放）")
+                rows = [show["samples"][i:i + 3] for i in range(0, len(show["samples"]), 3)]
+                for row in rows:
+                    with gr.Row():
+                        for s in row:
+                            with gr.Column():
+                                gr.Image(value=_asset(s["cover"]), label=s["title"],
+                                         show_label=True, interactive=False)
+                                gr.Markdown(f"**{s['title']}** — {s['desc']}")
+                                gr.Video(value=_asset(s["file"]), label=s["title"], interactive=False)
 
-        gr.Markdown("\n### ✍️ 演示表单\n_本空间为**自包含演示**：选择参数→提交→展示匹配样片与格式说明；不产生真实生成任务（完整生成能力见项目文档）。_")
-        with gr.Row():
-            plot = gr.Textbox(label="剧情描述", lines=3, max_lines=6,
-                              placeholder="例如：雨夜便利店前，一只猫望着暖光；或你的一句话创意…", scale=2)
-            line = gr.Textbox(label="角色台词（可选）", lines=2, placeholder="例如：路上小心。", scale=1)
-        with gr.Row():
-            voice = gr.Dropdown(choices=[v[0] for v in show["voices"]], value=show["voices"][0][0], label="音色")
-            style = gr.Radio(choices=show["styles"], value=show["styles"][0], label="风格")
-            res = gr.Radio(choices=["360p 验证档", "720p 交付档"], value="720p 交付档", label="分辨率")
-        with gr.Row():
-            demo_btn = gr.Button("填入示例", size="sm")
-            clear_btn = gr.Button("清空", size="sm")
-            submit = gr.Button("提交演示（不产生真实任务）", variant="primary", scale=2)
+            with gr.Tab("🧭 能力与部署"):
+                gr.Markdown("### 能力")
+                for pt in show["hero_points"]:
+                    gr.Markdown(f"- {pt}")
+                gr.Markdown("### 制作流程")
+                for t in show["flow_steps"]:
+                    gr.Markdown(f"- {t}")
+                gr.Markdown(f"""### 部署与「真实生成」
+| 档位 | 能做什么 |
+|---|---|
+| **免费 CPU（2vCPU/16G，本页默认）** | 展示与参数化演示（本页表单）；不产生真实生成任务 |
+| **GPU 硬件档（如 A10 24G）** | 空间内跑**轻量视频模型**（Wan2.1-1.3B / CogVideoX-2B 等）→ 页面上真实出片 |
+| **引擎网关（REMOTE_API）** | 表单直连你的本地大模型引擎（H3 全链：生成→台词→字幕→口型→ASR） |
 
-        def _fill_example():
-            return ("雨夜，老站台的昏黄站灯下，绿衣老人拖着行李箱望向驶来的绿皮火车，雾气弥漫。",
-                    "路上小心。")
-        demo_btn.click(_fill_example, None, [plot, line])
-        clear_btn.click(lambda: ("", ""), None, [plot, line])
-        result_md = gr.Markdown()
-        rec_video = gr.Video(label="风格匹配样片", interactive=False)
-        submit.click(demo_submit, [plot, line, voice, style, res], [result_md, rec_video])
-        gr.Markdown(f"\n---\n_{show['footer']}_\n\n_空间版本 v1.3（2026-09-09 · 故事片主控样片+台词先行/回环；样片与代码为本项目自有，参考素材自备。）_")
+当前后端：**{backend.name}**。切换方式：空间设置里换硬件档，或配置环境变量
+`REMOTE_API` + `STUDIO_TOKEN`（引擎网关）。
+
+_{show['footer']}_""")
+
+        gr.Markdown(f"\n---\n_空间版本 v2.0（2026-09-10 · 创作台前端重构）_")
     return demo
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser("H3 视频生成工坊（M1 静态展示版）")
+    ap = argparse.ArgumentParser("H3 视频生成工坊（创空间创作台 v2.0）")
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", "7860")))
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--share", action="store_true")
     args = ap.parse_args()
     show = load_show()
-    demo = build_demo(show)
-    demo.queue()
-    demo.launch(server_name=args.host, server_port=args.port, share=args.share,
-                show_error=True, quiet=True,
-                allowed_paths=[str(ASSETS)])
+    app = build_app(show)
+    app.queue()
+    app.launch(server_name=args.host, server_port=args.port, share=args.share,
+               show_error=True, quiet=True, allowed_paths=[str(ASSETS)])
     return 0
 
 
