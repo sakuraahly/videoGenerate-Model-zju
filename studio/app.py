@@ -221,8 +221,14 @@ def build_app(show: dict):
                 except Exception:  # noqa: BLE001
                     _st = {"mode": "demo-planner", "tools": [], "brain": False, "engine": False,
                            "model": "-", "system_prompt": "default"}
-                _mode_txt = ("✅ 已接入外部接口（可真实出片）" if (_st.get('brain') or _st.get('engine'))
-                             else "🧪 规划演示模式（未配置外部接口：仍完整展示工具决策 + 请求体预览）")
+                # 三态要说清楚：能不能出片只看视频接口，别拿"大脑已接"糊弄用户
+                if _st.get('engine'):
+                    _mode_txt = "✅ 已接入视频生成接口 —— 可以真实出片"
+                elif _st.get('brain'):
+                    _mode_txt = ("🧠 外置大脑已接入（决策由真实模型完成）；**视频生成接口未接** → "
+                                 "当前是演示预览，不做假动作")
+                else:
+                    _mode_txt = "🧪 规划演示模式（未配置外部接口：仍完整展示工具决策 + 请求体预览）"
                 gr.Markdown("**当前模式**：%s　|　**外置大脑**：%s　|　**视频生成接口**：%s"
                             % (_mode_txt,
                                ("已配置（%s）" % _st.get('model')) if _st.get('brain')
