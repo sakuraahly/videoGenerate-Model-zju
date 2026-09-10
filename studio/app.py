@@ -24,9 +24,9 @@ DEFAULT_SHOW = {
     "tagline": "一句创意 → 参考图/提示词 → 本地大模型生成 → 真台词/字幕/旁白/口型成品链 → ASR 验收交付",
     "hero_points": [
         "文生视频 / 图生视频 / 多参考图连贯 / 首末帧转场",
+        "说话镜头：一句台词→H3 自适应音色亲口说出（音画同时长）+ ASR 验收",
         "故事片主控：剧本→分镜→台词→成片 单命令出片（9 段连贯·可断点续跑）",
-        "台词先行+发音回环：台词表预置→TTS 生成→ASR 验真（字幕=台词原文）",
-        "角色真台词（TTS+口型同步）；ComfyUI 全链一体化；1280×736/4x 超分档",
+        "台词先行+发音回环；字幕可选；ComfyUI 全链一体化；1280×736/4x 超分档",
     ],
     "flow_steps": [
         "① 灵感：一句话剧情；也可上传参考图锁定场景/角色/道具",
@@ -50,6 +50,8 @@ DEFAULT_SHOW = {
          "title": "RIFE 48fps 插帧", "desc": "24fps→48fps 高帧率（插帧后画面顺滑）", "style": "纪录片"},
         {"file": "07_story_script.mp4", "cover": "07_story_script_cover.jpg",
          "title": "剧本→故事片（主控）", "desc": "希区柯克《油价涨了》短篇：剧本 JSON→9 段连贯+4 句真台词字幕；断点续跑", "style": "电影感"},
+        {"file": "08_talk_one.mp4", "cover": "08_talk_one_cover.jpg",
+         "title": "说话镜头（H3 自适应音色）", "desc": "一句台词→按语音时长生成→H3 自己选音色说话（音画同时长）+ ASR 验收 1.000", "style": "真实"},
     ],
     "voices": [("yunxi（中文·男声）", "yunxi"), ("xiaoxiao（中文·女声）", "xiaoxiao"),
                ("aria（英文·女声）", "aria"), ("daler（英文·男声）", "daler")],
@@ -158,6 +160,35 @@ def build_demo(show: dict):
         gr.Markdown("\n### 🧭 制作流程")
         for t in show["flow_steps"]:
             gr.Markdown(f"**{t.split('：')[0]}**：{t.split('：', 1)[-1]}")
+        gr.Markdown("\n### 🗣 说话镜头（一句台词→人物亲口说出）\n"
+                    "_输入一句台词、选音色与字幕开关→演示卡展示对应样片与生成规格。_")
+        with gr.Row():
+            talk_text = gr.Textbox(label="台词", lines=2, scale=2,
+                                   placeholder="例如：天冷了,快进屋坐坐吧,外面风大。")
+            talk_voice = gr.Dropdown(choices=["H3 自适应（按人物形象）", "中文·男声 yunxi",
+                                              "中文·女声 xiaoxiao", "英文·男声 daler",
+                                              "英文·女声 aria"],
+                                     value="H3 自适应（按人物形象）", label="音色", scale=1)
+            talk_sub = gr.Checkbox(value=False, label="烧录字幕")
+        talk_btn = gr.Button("生成说话镜头（演示）", variant="primary")
+
+        def talk_demo(text, voice, sub):
+            rec = next((s for s in show["samples"] if s.get("file", "").startswith("08_")),
+                       show["samples"][0])
+            secs = max(2.0, round(len(text or "") * 0.36 + 0.4, 2)) if text else 3.0
+            return (f"### 🗣 说话镜头演示\n\n"
+                    f"| 项 | 值 |\n|---|---|\n"
+                    f"| 台词 | {text or '（未填写）'} |\n"
+                    f"| 音色 | {voice} |\n"
+                    f"| 字幕 | {'烧录' if sub else '不烧录'} |\n"
+                    f"| 预计时长 | ≈{secs}s（按语音时长匹配，不虚长） |\n"
+                    f"| 语音来源 | H3 自适应音色（模型按人物形象自选）｜备选本地 TTS |\n\n"
+                    f"> 真实生成规格：本地 TTS 先定台词时长 → H3 帧档匹配生成 → 队列内成品（配音/字幕可选）+ ASR 验收；"
+                    f"本页为自包含演示，展示同规格样片。")
+
+        talk_out = gr.Markdown()
+        talk_btn.click(talk_demo, [talk_text, talk_voice, talk_sub], [talk_out])
+
         gr.Markdown("\n### ✍️ 演示表单\n_本空间为**自包含演示**：选择参数→提交→展示匹配样片与格式说明；不产生真实生成任务（完整生成能力见项目文档）。_")
         with gr.Row():
             plot = gr.Textbox(label="剧情描述", lines=3, max_lines=6,

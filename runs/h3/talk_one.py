@@ -74,20 +74,37 @@ def synth_line(text: str, wav: Path, voice: str, speed: float) -> float:
     return float(d or _tts.probe_duration(wav) or 0.0)
 
 
+def fit_frames_seconds(dur: float, margin: float = 0.15) -> float:
+    """H3 帧数网格（5 + 17k 帧 @24fps）中选**最小 ≥ dur+margin** 的档；返回秒数。
+
+    语音 2.76s → 3.042s（73 帧）而不是 4.458s（107 帧）——避免'说完话还在动嘴'。
+    """
+    need = max(0.5, float(dur) + float(margin))
+    frames = 5
+    while frames / 24.0 < need:
+        frames += 17
+        if frames > 3000:
+            break
+    return round(frames / 24.0, 3)
+
+
 def first_frame(video: Path, out_png: Path) -> bool:
     r = _sh(['ffmpeg', '-nostdin', '-y', '-v', 'error', '-i', str(video),
              '-vframes', '1', '-q:v', '2', str(out_png)], timeout=120)
     return r.returncode == 0 and out_png.is_file()
 
 
-def submit_generation(prompt: str, ref: Path, wav: Path, seconds: int, res: str,
-                      lora: str, seed: int, timeout: int = 2400) -> str:
+def submit_generation(prompt: str, ref: Path, wav: Path, seconds: float, res: str,
+                      lora: str, seed: int, timeout: int = 2400,
+                      no_audio_ref: bool = False) -> str:
     # r2v 模板 ref2v_8step 有 2 个参考图槽 → 契约要求 <Picture 1>/<Picture 2>；
     # 同一张人物参考图接两个槽（身份/环境锁定），提示词同时含两个 tag。
     cmd = ['python3', str(SUBMIT), '--stage', 'r2v', '--resolution', res,
-           '--seconds', str(int(seconds)), '--lora', lora, '--seed', str(seed),
-           '--image', str(ref), '--image', str(ref),
-           '--audios', str(wav), '--prompt', prompt, '--force-new']
+           '--seconds', str(float(seconds)), '--lora', lora, '--seed', str(seed),
+           '--image', str(ref), '--image', str(ref)]
+    if not no_audio_ref:
+        cmd += ['--audios', str(wav)]     # 音频参考=口型引导（H3 会说出近似内容）
+    cmd += ['--prompt', prompt, '--force-new']
     print('== 生成（H3 音频驱动, %ds, %s）' % (seconds, res), flush=True)
     r = _sh(cmd, timeout=timeout)
     log = (r.stdout or '') + (r.stderr or '')
@@ -101,11 +118,12 @@ def submit_generation(prompt: str, ref: Path, wav: Path, seconds: int, res: str,
 
 
 def queue_finalize(video: str, text: str, voice: str, burn_subtitle: bool,
-                   style: str = 'harmony', timeout: int = 1800) -> dict:
+                   style: str = 'harmony', timeout: int = 1800,
+                   audio_mode: str = 'replace') -> dict:
     wf = {
         '1': {'class_type': 'H3Finalize', 'inputs': {
             'video': str(video), 'text': text, 'voice': voice,
-            'audio_mode': 'replace', 'subtitle_source': 'text', 'backend': 'cosy',
+            'audio_mode': audio_mode, 'subtitle_source': 'text', 'backend': 'cosy',
             'subtitle_style': style,
             'burn_subtitle': 'on' if burn_subtitle else 'off'}},
         '2': {'class_type': 'H3AsrCheck', 'inputs': {
@@ -144,6 +162,11 @@ def main() -> int:
     ap.add_argument('--margin', type=float, default=0.6, help='视频比语音多的余量秒（默认 0.6）')
     ap.add_argument('--min-seconds', type=int, default=2, help='最短视频秒数')
     ap.add_argument('--no-subtitle', action='store_true', help='不烧字幕（默认烧）')
+    ap.add_argument('--audio-source', default='h3', choices=['h3', 'tts'],
+                    help='最终音轨来源：h3=保留 H3 自适应音色（口型/语音/时长天然一致，推荐）；'
+                         'tts=替换为本地 TTS 准确语音（音色固定，可能尾部还在动嘴）')
+    ap.add_argument('--no-audio-ref', action='store_true',
+                    help='生成时不给音频参考（让 H3 完全自适应音色；默认给 TTS 音频做口型引导）')
     ap.add_argument('--work-dir', default='/tmp/talk_one')
     ap.add_argument('--skip-generate', default='', help='跳过生成，直接对已有视频做队列内成品（调试）')
     args = ap.parse_args()
@@ -156,9 +179,12 @@ def main() -> int:
     # ① 台词音频（真实时长决定视频长度）
     dur = synth_line(text, wav, args.voice, args.speed)
     print('== 台词音频: %s (%.2fs)' % (wav, dur), flush=True)
-    seconds = max(int(args.min_seconds), int(math.ceil(dur + float(args.margin))))
-    print('== 视频秒数（按语音时长匹配）=%ds（语音 %.2fs + 余量 %.1fs）'
-          % (seconds, dur, args.margin), flush=True)
+    # 帧档匹配（5+17k 帧 @24fps）：选最小 ≥ 语音+余量 的档 → 视频不虚长
+    sec_fit = fit_frames_seconds(dur, margin=min(float(args.margin), 0.2))
+    seconds = max(int(args.min_seconds), sec_fit)
+    if seconds != sec_fit:  # min-seconds 保护
+        seconds = float(sec_fit)
+    print('== 视频秒数（帧档匹配语音）=%.3fs（语音 %.2fs）' % (seconds, dur), flush=True)
 
     # ② 参考图
     ref = None
@@ -178,18 +204,34 @@ def main() -> int:
         else:
             print('[错误] 需要 --ref-image 或 --from-video（H3 音频驱动仅 r2v 槽支持）', file=sys.stderr)
             return 3
-        prompt = ('<Picture 1> the same person shown in the reference image, looking straight into '
-                  'the camera and speaking the exact words heard in <Audio 1>, lips and expression '
-                  'moving naturally in sync with that voice, natural performance, gentle tone, '
-                  'cinematic lighting, shallow depth of field, film grain. <Picture 2> the same '
-                  'person and the same room/environment as the reference image, keep the look '
-                  'identical. The reference images are locked throughout the whole shot; they are '
-                  'NOT first-frame keyframes; keep every frame consistent. NO written characters, '
-                  'no text, no watermark, no cuts.')
-        video = submit_generation(prompt, ref, wav, seconds, args.resolution, args.lora, args.seed)
+        if args.no_audio_ref:
+            # 纯 H3 自适应：把台词写进提示词，让 H3 自己选音色并说话（音画天然同时长）
+            prompt = ('<Picture 1> the same person shown in the reference image, looking straight '
+                      'into the camera and speaking slowly in a low, weary, aged voice, saying '
+                      'exactly these words: "%s". His lips and expression move naturally with those '
+                      'words, gentle sad performance. <Picture 2> the same person and the same room/'
+                      'environment as the reference image, keep the look identical. The reference '
+                      'images are locked throughout the whole shot; they are NOT first-frame '
+                      'keyframes; keep every frame consistent. NO written characters, no text, '
+                      'no watermark, no cuts.' % text)
+        else:
+            prompt = ('<Picture 1> the same person shown in the reference image, looking straight '
+                      'into the camera and speaking the exact words heard in <Audio 1>, lips and '
+                      'expression moving naturally in sync with that voice, natural performance, '
+                      'gentle tone, cinematic lighting, shallow depth of field, film grain. '
+                      '<Picture 2> the same person and the same room/environment as the reference '
+                      'image, keep the look identical. The reference images are locked throughout '
+                      'the whole shot; they are NOT first-frame keyframes; keep every frame '
+                      'consistent. NO written characters, no text, no watermark, no cuts.')
+        video = submit_generation(prompt, ref, wav, seconds, args.resolution, args.lora, args.seed,
+                                  no_audio_ref=args.no_audio_ref)
 
-    # ③ 队列内成品（准确 TTS 音轨 + 可选字幕 + ASR）
-    queue_finalize(video, text, args.voice, burn_subtitle=not args.no_subtitle)
+    # ③ 队列内成品：h3=保留 H3 自适应音色（音画同时长）／tts=替换为本地 TTS 准确语音
+    mode = 'keep' if args.audio_source == 'h3' else 'replace'
+    print('== 音轨来源: %s（%s）' % (args.audio_source, 'H3 自适应音色' if mode == 'keep'
+                                    else '本地 TTS 替换'), flush=True)
+    queue_finalize(video, text, args.voice, burn_subtitle=not args.no_subtitle,
+                   audio_mode=mode)
     src = Path(video)
     out = src.with_name(src.stem + '_final.mp4')
     print('== 成品: %s (%s)' % (out, '存在' if out.is_file() else '缺失'), flush=True)
