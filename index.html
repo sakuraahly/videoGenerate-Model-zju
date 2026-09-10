@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>H3 视频 Agent · 工具发布入口</title>
+<style>body{margin:0;background:#0f1115;color:#e8eaed;font:16px/1.7 system-ui,"Microsoft YaHei",sans-serif}
+main{max-width:760px;margin:0 auto;padding:48px 20px}a{color:#4f8cff}code{background:#1b2029;padding:2px 6px;border-radius:6px}
+.card{background:#171a21;border:1px solid #262b36;border-radius:12px;padding:18px 20px;margin:16px 0}
+h1{font-size:24px;margin:0 0 8px}.mut{color:#9aa0a6;font-size:14px}</style></head><body><main>
+<h1>H3 视频 Agent · 工具发布入口</h1>
+<p class="mut">这里发布的是**工具**，不是服务：密钥、算力、模型额度都由使用者自己提供。</p>
+<div class="card"><h2>① 零信任单页 Agent（推荐）</h2>
+<p>打开 <a href="web/agent.html">web/agent.html</a>，在页面里填你自己的模型服务地址 / 模型名 / API Key。</p>
+<p class="mut">你的 Key 只在这个浏览器里使用：页面直接调用你填的服务（浏览器跨域直连），<b>不经过任何第三方服务器</b>。</p></div>
+<div class="card"><h2>② 创空间在线版（演示 + BYOK）</h2>
+<p><a href="https://www.modelscope.cn/studios/wumingyong0/Automated_video_generation">魔搭创空间</a>：可在页面「🔑 我的密钥」里填自己的 Key；也可只看演示（不填不发请求）。</p></div>
+<div class="card"><h2>③ 自己部署（最彻底）</h2>
+<p>把本仓库 <code>git clone</code> 到你的机器/服务器，用你自己的密钥运行，任何数据都不出你的环境。</p></div>
+<p class="mut">说明文档：<code>docs/guides/zero-trust-static-agent.md</code>、<code>studio/接口说明.md</code></p>
+</main></body></html>
