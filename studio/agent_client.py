@@ -89,10 +89,16 @@ DEFAULT_SYSTEM = """你是 H3 视频生成工坊的创作 Agent,部署在魔搭�
 """
 
 
+# 平台不接受空值变量(必填校验),所以允许先占位;占位符一律视为"未配置"——
+# 好处:变量可以先建好放在那儿,填什么都不会被误当成真实地址去调用。
+PLACEHOLDERS = {'', '-', '--', 'none', 'null', 'n/a', 'na', 'todo', 'tbd', 'xxx',
+                'changeme', 'placeholder', 'unset', '未配置', '未设置', '待填', '待配置'}
+
+
 def _env(*names, default: str = '') -> str:
     for n in names:
         v = (os.environ.get(n) or '').strip()
-        if v:
+        if v and v.lower() not in PLACEHOLDERS:
             return v
     return default
 

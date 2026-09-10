@@ -264,6 +264,23 @@ def test_prune_outputs_keeps_latest(tmp_path):
 
 # ---------- 大脑自创键名 / 抖动：实测问题对应的回归测试 ----------
 
+def test_placeholder_values_are_treated_as_unset(monkeypatch):
+    """空间变量不能为空(平台必填校验),所以先占位;占位符绝不能被当成真实地址。"""
+    os.environ["ENGINE_BASE_URL"] = "未配置"
+    os.environ["ENGINE_STATUS_URL"] = "TODO"
+    os.environ["ENGINE_API_KEY"] = "-"
+    os.environ["LLM_BASE_URL"] = "none"
+    try:
+        c = ac.AgentClient()
+        assert c.engine_url == "" and c.engine_status == "" and c.engine_key == ""
+        assert c.llm_base == "" and c.mode == "demo-planner"
+        out = c.run_tool({"tool": "generate_video", "args": {"prompt": "雨夜"}})
+        assert out["kind"] == "demo" and out["payload"]["kind"] == "t2v"
+    finally:
+        for k in ("ENGINE_BASE_URL", "ENGINE_STATUS_URL", "ENGINE_API_KEY", "LLM_BASE_URL"):
+            os.environ.pop(k, None)
+
+
 def test_llm_extra_json_is_passed_through(monkeypatch):
     """外置扩展字段(如关思考)必须原样进请求体，坏 JSON 不能把 Agent 弄崩。"""
     import os as _os
