@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>H3 视频 Agent · 零信任自带 Key 版</title>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a6;--card:#171a21;--acc:#4f8cff;--ok:#37b26a;--bad:#e5484d;}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,"Microsoft YaHei",sans-serif}
+  header{padding:18px 20px 8px} h1{margin:0 0 6px;font-size:20px} .sub{color:var(--mut);margin:0;font-size:13px}
+  main{max-width:980px;margin:0 auto;padding:0 16px 40px}
+  details{background:var(--card);border:1px solid #262b36;border-radius:10px;margin:12px 0;padding:10px 14px}
+  summary{cursor:pointer;font-weight:600} label{display:block;color:var(--mut);font-size:12px;margin:8px 0 2px}
+  input,textarea,select{width:100%;background:#0c0e13;color:var(--fg);border:1px solid #2b3140;border-radius:8px;padding:8px 10px;font:inherit}
+  textarea{min-height:70px;resize:vertical} .row{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+  button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:9px 14px;cursor:pointer;font:inherit}
+  button.ghost{background:#232936} button:disabled{opacity:.55;cursor:not-allowed}
+  #chat{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+  .msg{border:1px solid #262b36;border-radius:10px;padding:10px 12px;background:var(--card);white-space:pre-wrap;word-break:break-word}
+  .me{border-color:#2f4a7a} .ai{border-color:#2b3a2f} .sys{color:var(--mut);font-size:12px}
+  pre{background:#0c0e13;border:1px solid #2b3140;border-radius:8px;padding:10px;overflow:auto;font-size:12.5px}
+  .tag{display:inline-block;background:#232936;border-radius:999px;padding:1px 8px;font-size:12px;margin-right:6px}
+  .warn{color:#f5c451} .err{color:var(--bad)} .ok{color:var(--ok)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px} @media(max-width:640px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>H3 视频 Agent · 零信任自带 Key 版</h1>
+  <p class="sub">你的 API Key <b>只在这个浏览器里</b>：页面直接调用你填写的模型服务（浏览器跨域直连），<b>不经过任何第三方服务器</b>、不上传、不落盘（除非你主动勾选记住）。引擎调用同理，由你的浏览器直接发往你自己的视频接口。</p>
+</header>
+<main>
+  <details open>
+    <summary>⚙️ 我的密钥与接口（只在本页使用）</summary>
+    <div class="grid">
+      <div><label>模型服务地址（OpenAI 兼容）</label><input id="llmBase" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"></div>
+      <div><label>模型名</label><input id="llmModel" placeholder="qwen-plus / deepseek-chat / …"></div>
+    </div>
+    <label>模型服务 API Key</label><input id="llmKey" type="password" placeholder="sk-...（只在本浏览器）">
+    <details>
+      <summary>（可选）我自己的视频生成接口</summary>
+      <div class="grid">
+        <div><label>ENGINE_BASE_URL</label><input id="engBase" placeholder="https://你的网关/v1/jobs"></div>
+        <div><label>ENGINE_API_KEY</label><input id="engKey" type="password" placeholder="可选"></div>
+      </div>
+      <label>ENGINE_STATUS_URL（异步查询，可留空）</label><input id="engStatus" placeholder="https://你的网关/v1/jobs/status">
+      <div class="row"><button class="ghost" id="btnEngine">直接调用我的引擎（浏览器直发）</button><span class="sys">若你的网关不允许跨域，会失败——那就用下面的「复制 curl」在自己机器上跑。</span></div>
+    </details>
+    <div class="row"><label style="margin:0"><input type="checkbox" id="remember" style="width:auto"> 记住到本浏览器（localStorage，仅本机）</label><button class="ghost" id="btnSave">保存设置</button><button class="ghost" id="btnClearSet">清除</button><span id="setState" class="sys"></span></div>
+  </details>
+
+  <div id="chat"></div>
+  <div class="row" style="margin-top:12px">
+    <textarea id="msg" placeholder="例：让参考图里的老人说一句“天冷了，快进屋坐坐吧。”／做一段雨夜老屋门口有猫的 5 秒镜头"></textarea>
+  </div>
+  <div class="row">
+    <button id="send">发送（调用我的模型）</button>
+    <button class="ghost" id="ex1">示例·说话镜头</button>
+    <button class="ghost" id="ex2">示例·5 秒镜头</button>
+    <button class="ghost" id="ex3">示例·故事片</button>
+    <button class="ghost" id="clear">清空对话</button>
+  </div>
+
+  <details>
+    <summary>🧰 工具集与提示词契约（agent 会从这四个里选）</summary>
+    <ul class="sys">
+      <li><b>generate_video</b>：文生视频；带参考图则图生视频（prompt / resolution / seconds / image_b64）</li>
+      <li><b>generate_talk</b>：说话镜头——人物亲口说出台词（text / voice / image_b64）</li>
+      <li><b>make_story_film</b>：剧本 → 多段连贯短片（script / segments / resolution / seconds）</li>
+      <li><b>answer</b>：只答疑不生成（text）</li>
+    </ul>
+    <p class="sys">参考图契约（r2v 语义）：提示词写 &lt;Picture 1&gt;…&lt;Picture N&gt; 对应每张参考图，并写明“参考图贯穿全片、不是首末帧”。</p>
+  </details>
+</main>
+<script>
+"use strict";
+const TOOLS = [
+  {name:"generate_video", description:"文生视频；带参考图则图生视频", params:{prompt:"英文提示词", resolution:"360p|480p|540p|720p|768p", seconds:"秒数 2-15", image_b64:"参考图(可选)"}},
+  {name:"generate_talk", description:"说话镜头：人物亲口说出一句台词", params:{text:"台词原文(照抄)", voice:"native 或音色名", image_b64:"人物参考图(建议)"}},
+  {name:"make_story_film", description:"剧本/多段剧情 → 连贯短片", params:{script:"剧情", segments:"段数", resolution:"480p|720p", seconds:"每段秒数"}},
+  {name:"answer", description:"不生成，只解释/建议", params:{text:"回答内容"}}
+];
+
+const SYS = [
+  "你是 H3 视频生成工坊的创作 Agent（本页面在用户的浏览器里直接调用用户自己的模型服务）。",
+  "职责：理解用户创意 → 从工具集里选一个工具 → 给出可直接执行的参数。",
+  "规则：1) 要说话镜头/台词/口型 → generate_talk，台词原文照抄不要改写；",
+  "2) 要故事/短剧/多段/连贯 → make_story_film；3) 其他创意 → generate_video；只问不生成 → answer。",
+  "4) 默认 resolution=480p、seconds=5。",
+  "5) args 只用这些键名：generate_video: prompt,resolution,seconds；generate_talk: text,voice；",
+  "   make_story_film: script,segments；answer: text。不要自创键名。",
+  "6) 只输出一个 JSON：{\"tool\":\"<工具名>\",\"args\":{...},\"say\":\"给用户的一句中文说明\"}，不要输出多余文字。"
+].join("\n");
+
+const $ = (id) => document.getElementById(id);
+const state = { messages: [] };
+const FIELDS = ["llmBase","llmModel","llmKey","engBase","engKey","engStatus"];
+function cfg(){ const o={}; FIELDS.forEach(f=>o[f]=$(f).value.trim()); return o; }
+function loadCfg(){
+  try{
+    const raw = localStorage.getItem("h3agent_cfg");
+    if(!raw) return false;
+    const o = JSON.parse(raw); FIELDS.forEach(f=>{ if(o[f]) $(f).value = o[f]; });
+    $("remember").checked = true; $("setState").textContent = "已从本机 localStorage 读取"; return true;
+  }catch(e){ return false; }
+}
+function saveCfg(){
+  try{
+    if($("remember").checked){ localStorage.setItem("h3agent_cfg", JSON.stringify(cfg())); $("setState").textContent = "已记住到本浏览器（仅本机）"; }
+    else { localStorage.removeItem("h3agent_cfg"); $("setState").textContent = "未记住（仅本页有效）"; }
+  }catch(e){ $("setState").textContent = "保存失败：" + e.message; }
+}
+function addMsg(role, html){
+  const d = document.createElement("div");
+  d.className = "msg " + (role==="user" ? "me" : role==="assistant" ? "ai" : "sys");
+  d.innerHTML = html; $("chat").appendChild(d); window.scrollTo(0, document.body.scrollHeight); return d;
+}
+function esc(s){ return String(s==null?"":s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+function parsePlan(text){
+  let t = String(text||"").trim();
+  if(!t) return null;
+  if(t.indexOf("```")===0){ t = t.replace(/^```[a-zA-Z]*\n?/, "").replace(/```$/,"").trim(); }
+  try{ const d = JSON.parse(t); return (d && typeof d==="object") ? d : null; }catch(e){}
+  const i = t.indexOf("{");
+  if(i < 0) return null;
+  let depth=0, inStr=false, escp=false;
+  for(let j=i;j<t.length;j++){
+    const ch=t[j];
+    if(inStr){ if(escp) escp=false; else if(ch==="\\") escp=true; else if(ch==='"') inStr=false; continue; }
+    if(ch==='"') inStr=true; else if(ch==="{") depth++;
+    else if(ch==="}"){ depth--; if(depth===0){ try{ return JSON.parse(t.slice(i,j+1)); }catch(e){ break; } } }
+  }
+  return null;
+}
+function payloadFor(tool, args){
+  const a = args||{};
+  if(tool==="generate_talk"){ const p={kind:"talk", text:a.text||"", voice:a.voice||"native", resolution:a.resolution||"480p"}; if(a.image_b64) p.image_b64=a.image_b64; return p; }
+  if(tool==="make_story_film"){ return {kind:"story", script:a.script||"", segments:parseInt(a.segments||3,10)||3, resolution:a.resolution||"480p", seconds:parseFloat(a.seconds||5)||5}; }
+  const p={kind:"t2v", prompt:a.prompt||"", resolution:a.resolution||"480p", seconds:parseFloat(a.seconds||5)||5};
+  if(a.image_b64){ p.kind="i2v"; p.image_b64=a.image_b64; }
+  return p;
+}
+function curlFor(payload){
+  const c = cfg();
+  const url = c.engBase || "https://你的网关/v1/jobs";
+  const auth = c.engKey ? "-H \"Authorization: Bearer $ENGINE_API_KEY\" " : "";
+  return "curl -sS -X POST " + url + " " + auth + "-H \"Content-Type: application/json\" -d '" + JSON.stringify(payload) + "'";
+}
+
+async function askModel(userText){
+  const c = cfg();
+  if(!c.llmBase || !c.llmKey) throw new Error("请先填写模型服务地址与 API Key");
+  const msgs = [{role:"system", content: SYS + "\n可用工具(JSON 列表):" + JSON.stringify(TOOLS)}];
+  state.messages.slice(-6).forEach(m=>msgs.push({role:m.role, content:m.content}));
+  msgs.push({role:"user", content:userText});
+  const body = { model: c.llmModel || "qwen-plus", messages: msgs, temperature: 0.3, response_format:{type:"json_object"} };
+  const r = await fetch(c.llmBase.replace(/\/$/,"") + "/chat/completions", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + c.llmKey },
+    body: JSON.stringify(body)
+  });
+  const raw = await r.text();
+  if(!r.ok) throw new Error("模型服务返回 HTTP " + r.status + "：" + raw.slice(0,300));
+  let d; try{ d = JSON.parse(raw); }catch(e){ throw new Error("模型返回不是 JSON：" + raw.slice(0,200)); }
+  const ch = (d.choices && d.choices[0]) || {};
+  return ((ch.message && ch.message.content) || ch.text || "").trim();
+}
+
+async function send(text){
+  const t = (text||$("msg").value||"").trim(); if(!t) return;
+  $("msg").value = ""; state.messages.push({role:"user", content:t});
+  addMsg("user", esc(t));
+  const box = addMsg("assistant", "<span class=\"sys\">正在调用你的模型服务…</span>");
+  try{
+    const out = await askModel(t);
+    const plan = parsePlan(out);
+    if(!plan || !plan.tool){
+      box.innerHTML = esc(out || "(模型没有返回内容)");
+      state.messages.push({role:"assistant", content: out||""});
+      return;
+    }
+    const say = plan.say ? esc(plan.say) + "<br>" : "";
+    const payload = payloadFor(plan.tool, plan.args||{});
+    box.innerHTML = say + "<span class=\"tag\">工具 " + esc(plan.tool) + "</span>"
+      + "<div class=\"sys\">请求体（交给你的视频接口）：</div><pre>" + esc(JSON.stringify(payload,null,2)) + "</pre>"
+      + "<div class=\"row\"><button class=\"ghost\" data-copy=\"1\">复制 curl</button><button class=\"ghost\" data-eng=\"1\">用我的引擎直接跑</button></div>";
+    box.querySelector("[data-copy]").onclick = function(){ navigator.clipboard.writeText(curlFor(payload)); this.textContent = "已复制"; };
+    box.querySelector("[data-eng]").onclick = function(){ runEngine(payload, box); };
+    state.messages.push({role:"assistant", content: plan.say || plan.tool});
+  }catch(e){
+    box.innerHTML = "<span class=\"err\">调用失败：" + esc(e.message) + "</span><div class=\"sys\">排查：① 地址/Key 是否正确；② 该服务是否允许浏览器跨域（百炼、DeepSeek、魔搭均已实测允许）；③ 额度是否用尽。你的 Key 没有被发往除该服务之外的任何地方。</div>";
+  }
+}
+
+async function runEngine(payload, box){
+  const c = cfg();
+  if(!c.engBase){ box.insertAdjacentHTML("beforeend", "<div class=\"warn\">没填 ENGINE_BASE_URL。</div>"); return; }
+  const info = document.createElement("div"); info.className="sys"; info.textContent = "正在把请求直接发往你的引擎…"; box.appendChild(info);
+  try{
+    const headers = {"Content-Type":"application/json"};
+    if(c.engKey) headers["Authorization"] = "Bearer " + c.engKey;
+    const r = await fetch(c.engBase, {method:"POST", headers:headers, body: JSON.stringify(payload)});
+    const raw = await r.text();
+    if(!r.ok) throw new Error("HTTP " + r.status + "：" + raw.slice(0,200));
+    let d={}; try{ d=JSON.parse(raw); }catch(e){}
+    const job = d.job_id || d.task_id || d.id || "(无任务号)";
+    const vid = d.video_url || d.url;
+    info.innerHTML = "<span class=\"ok\">已提交</span> 任务 " + esc(job) + (vid ? " · 成片 " + esc(vid) : "") + (c.engStatus ? "<br>查询：" + esc(c.engStatus.replace(/\/$/,"") + "/" + job) : "");
+  }catch(e){
+    info.innerHTML = "<span class=\"err\">直连失败：" + esc(e.message) + "</span><div class=\"sys\">多半是你的网关没开 CORS（浏览器安全限制）。用上面的「复制 curl」在你自己的机器上执行即可——那台机器不受此限制。</div>";
+  }
+}
+
+$("send").onclick = function(){ send(); };
+$("msg").addEventListener("keydown", function(e){ if(e.key==="Enter" && (e.ctrlKey||e.metaKey)) send(); });
+$("ex1").onclick = function(){ send("让参考图里的老人说一句“天冷了，快进屋坐坐吧，外面风大。”"); };
+$("ex2").onclick = function(){ send("做一段雨夜老屋门口有猫望着门内暖光的 5 秒镜头"); };
+$("ex3").onclick = function(){ send("把“父子在病房道别”做成一段连贯的 3 段故事片"); };
+$("clear").onclick = function(){ state.messages = []; $("chat").innerHTML = ""; };
+$("btnSave").onclick = saveCfg;
+$("remember").onchange = saveCfg;
+$("btnClearSet").onclick = function(){ FIELDS.forEach(function(f){ $(f).value=""; }); try{ localStorage.removeItem("h3agent_cfg"); }catch(e){} $("remember").checked=false; $("setState").textContent = "已清除"; };
+$("btnEngine").onclick = function(){
+  const p = {kind:"t2v", prompt:"a cat by the window, warm light, cinematic", resolution:"480p", seconds:5};
+  const box = addMsg("sys", "连通性测试请求体：<pre>" + esc(JSON.stringify(p,null,2)) + "</pre>");
+  runEngine(p, box);
+};
+loadCfg();
+addMsg("sys", "准备好了：填好上面的模型服务地址 / 模型名 / API Key，然后在下面说一句需求。你的 Key 只在这个浏览器里使用。");
+</script>
+</body>
+</html>
