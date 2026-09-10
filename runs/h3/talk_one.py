@@ -165,8 +165,10 @@ def main() -> int:
     ap.add_argument('--audio-source', default='h3', choices=['h3', 'tts'],
                     help='最终音轨来源：h3=保留 H3 自适应音色（口型/语音/时长天然一致，推荐）；'
                          'tts=替换为本地 TTS 准确语音（音色固定，可能尾部还在动嘴）')
+    ap.add_argument('--with-audio-ref', action='store_true',
+                    help='给 TTS 音频参考做口型引导（默认**不给**：H3 自适应音色自己说台词）')
     ap.add_argument('--no-audio-ref', action='store_true',
-                    help='生成时不给音频参考（让 H3 完全自适应音色；默认给 TTS 音频做口型引导）')
+                    help='（兼容保留；默认即不给音频参考）')
     ap.add_argument('--work-dir', default='/tmp/talk_one')
     ap.add_argument('--skip-generate', default='', help='跳过生成，直接对已有视频做队列内成品（调试）')
     args = ap.parse_args()
@@ -204,8 +206,9 @@ def main() -> int:
         else:
             print('[错误] 需要 --ref-image 或 --from-video（H3 音频驱动仅 r2v 槽支持）', file=sys.stderr)
             return 3
-        if args.no_audio_ref:
-            # 纯 H3 自适应：把台词写进提示词，让 H3 自己选音色并说话（音画天然同时长）
+        no_audio_ref = not bool(getattr(args, 'with_audio_ref', False))  # 默认纯自适应
+        if no_audio_ref:
+            # 纯 H3 自适应（默认）：台词写进提示词，H3 自己选音色说话（音画天然同时长）
             prompt = ('<Picture 1> the same person shown in the reference image, looking straight '
                       'into the camera and speaking slowly in a low, weary, aged voice, saying '
                       'exactly these words: "%s". His lips and expression move naturally with those '
@@ -224,7 +227,7 @@ def main() -> int:
                       'the whole shot; they are NOT first-frame keyframes; keep every frame '
                       'consistent. NO written characters, no text, no watermark, no cuts.')
         video = submit_generation(prompt, ref, wav, seconds, args.resolution, args.lora, args.seed,
-                                  no_audio_ref=args.no_audio_ref)
+                                  no_audio_ref=(not bool(getattr(args, 'with_audio_ref', False))))
 
     # ③ 队列内成品：h3=保留 H3 自适应音色（音画同时长）／tts=替换为本地 TTS 准确语音
     mode = 'keep' if args.audio_source == 'h3' else 'replace'
