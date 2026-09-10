@@ -43,6 +43,21 @@ TOOLS = [
      "params": {"script": "剧情或剧本",
                 "segments": "段数(默认 3)",
                 "resolution": "480p|720p", "seconds": "每段秒数"}},
+    {"name": "list_jobs",
+     "description": "列出本会话提交过的任务及状态(默认最近 8 条;配了状态接口会顺手刷新)",
+     "params": {"limit": "条数(默认 8,最多 20)"}},
+    {"name": "query_job",
+     "description": "查询某个任务的详细状态/进度/成片链接(不给 job_id 默认查最近一次)",
+     "params": {"job_id": "任务 id(可省略=最近一次)"}},
+    {"name": "retry_job",
+     "description": "用原参数重新提交某个失败/不满意的任务(可覆盖 seed/seconds/resolution)",
+     "params": {"job_id": "任务 id(可省略=最近一次)",
+                "seed": "可选:换种子重试(整数)",
+                "seconds": "可选:覆盖时长",
+                "resolution": "可选:覆盖分辨率"}},
+    {"name": "resume_story",
+     "description": "故事片断点续跑(仅当生成接口声明支持 resume_from 时可用;否则明确告知只能整段重提)",
+     "params": {"job_id": "故事片任务 id(可省略=最近一次)"}},
     {"name": "answer",
      "description": "不生成,只解释/建议/答疑(架构、参数、怎么用)",
      "params": {"text": "回答内容"}},
@@ -57,6 +72,9 @@ ARG_ALIASES = {
     'voice': ('voice', 'speaker', 'timbre', '音色'),
     'segments': ('segments', 'parts', 'shots', '段数'),
     'image_b64': ('image_b64', 'image', 'ref_image', 'reference_image', 'img', '参考图'),
+    'job_id': ('job_id', 'jobid', 'task_id', 'taskid', 'id', '任务', '任务id'),
+    'limit': ('limit', 'count', 'n', '条数'),
+    'seed': ('seed', 'random_seed', '种子'),
 }
 
 
@@ -84,8 +102,15 @@ DEFAULT_SYSTEM = """你是 H3 视频生成工坊的创作 Agent,部署在魔搭�
 4) 默认 resolution=480p、seconds=5;说话镜头时长由接口按语音自动匹配。
 5) args 只能使用这些键名,不要自创(不要出现 dialogue/character/style 之类):
    generate_video: prompt, resolution, seconds;  generate_talk: text, voice;
-   make_story_film: script, segments;           answer: text。
+   make_story_film: script, segments;           answer: text;
+   list_jobs: limit;  query_job: job_id;  retry_job: job_id, seed, seconds, resolution;
+   resume_story: job_id。
 6) 只输出一个 JSON:{"tool":"<工具名>","args":{...},"say":"给用户的一句中文说明"},不要输出多余文本。
+7) 用户问"跑到哪了/好了没/刚才那个任务/第几个任务" -> query_job(不给 job_id 就是最近一次);
+   问"都有哪些任务/队列里有什么" -> list_jobs。
+8) 用户说"失败了重来/换个种子再试/不满意重做" -> retry_job。
+9) 用户说"接着上次没跑完的继续/断点续跑" -> resume_story;若接口不支持,工具会如实说明只能整段重提,
+   **不要**自己承诺续跑成功。
 """
 
 
@@ -127,6 +152,12 @@ class AgentClient:
         #   我们只做「工具集 + 前端」，与 LLM_* 通道并存，优先级 AGENT_URL > LLM_* > 规则规划器。
         self.agent_url = self._url(_env('AGENT_URL'))
         self.agent_token = _env('AGENT_TOKEN')
+        # 断点续跑能力声明：只有引擎显式声明支持 resume_from 时才真续跑（否则如实拒绝，不假装）
+        self.engine_resume = bool(_env('ENGINE_RESUME'))
+        self.job_log = []                # 本会话作业台账（供 查/重试/续跑 工具使用）
+        # 断点续跑能力声明：只有引擎显式声明支持 resume_from 时才真续跑（否则如实拒绝，不假装）
+        self.engine_resume = bool(_env('ENGINE_RESUME'))
+        self.job_log: list = []          # 本会话作业台账（供查/重试/续跑工具使用）
         try:
             self.agent_timeout = int(float(_env('AGENT_TIMEOUT', default='90') or 90))
         except Exception:  # noqa: BLE001
@@ -206,9 +237,28 @@ class AgentClient:
             return TOOLS
         return [t for t in TOOLS if t['name'] in self.toolset]
 
+    def warnings(self) -> list:
+        """自检告警（对齐《ModelScope-Agent 学习指南》QA6 的教训：勾了工具却没配 key 会报错）。
+
+        原则：**在页面上先说清缺什么**，而不是等用户点了才抛一句看不懂的错。
+        """
+        w = []
+        if not self.engine_url:
+            w.append('未配置 ENGINE_BASE_URL（视频生成接口）→ 只能出方案预览，点生成不会真出片。')
+        elif not self.engine_status:
+            w.append('未配置 ENGINE_STATUS_URL → 任务状态查询/查作业工具只能看本会话记录，')
+        if self.engine_url and not self.engine_key:
+            w.append('配置了 ENGINE_BASE_URL 但没有 ENGINE_API_KEY（若网关需要鉴权会 401）。')
+        if self.agent_url and not self.agent_token:
+            w.append('配置了 AGENT_URL 但没有 AGENT_TOKEN（平台 Agent 需要令牌时会被拒）。')
+        if self.engine_resume and not self.engine_status:
+            w.append('ENGLINE_RESUME 已开启但缺 ENGINE_STATUS_URL → 续跑起点只能从第 1 段算。'.replace('ENGLINE', 'ENGINE'))
+        return w
+
     def status(self) -> dict:
         """给 UI 用的自检信息(不泄露密钥,只表明是否已配置)。"""
         return {'mode': self.mode, 'brain': bool(self.llm_key or self.agent_url),
+                'warnings': self.warnings(),
                 'brain_channel': self.brain,
                 'agent_url': bool(self.agent_url),
                 'builder_config': bool(self.builder_cfg),
@@ -446,6 +496,42 @@ class AgentClient:
             out[k] = (str(v)[:48] + '...') if isinstance(v, str) and len(v) > 48 else v
         return out
 
+    def _run_job_tool(self, tool, args, trace):
+        '''查作业/重试/续跑：不经过生成工具，直接读台账 + 打状态接口。'''
+        if tool == 'list_jobs':
+            r = self.list_jobs(int(float(args.get('limit') or 8)))
+            jobs = r.get('jobs') or []
+            trace['result'] = 'list_jobs:%d' % len(jobs)
+            if not jobs:
+                return {'ok': True, 'kind': 'answer', 'trace': trace,
+                        'text': '本会话还没有提交过任务。' + (r.get('note') or '')}
+            lines = ['本会话最近 %d 个任务：' % len(jobs)]
+            for j in jobs:
+                tag = {'completed': '✅', 'failed': '❌', 'running': '⏳', 'queued': '🕐'}.get(str(j.get('status')), '•')
+                lines.append('- %s %s ｜ %s ｜ %s ｜ %s' % (tag, j.get('ts'), str(j.get('job_id'))[:8],
+                                                            j.get('tool'), j.get('status')))
+            if r.get('note'):
+                lines.append('（%s）' % r['note'])
+            return {'ok': True, 'kind': 'answer', 'trace': trace, 'text': '\n'.join(lines)}
+        if tool == 'query_job':
+            r = self.query_job(str(args.get('job_id') or ''))
+            trace['result'] = 'query_job:%s' % ('ok' if r.get('ok') else 'miss')
+            return {'ok': r.get('ok', False), 'kind': 'answer', 'trace': trace, 'text': r.get('text', '')}
+        if tool == 'retry_job':
+            r = self.retry_job(str(args.get('job_id') or ''), args.get('seed'),
+                               args.get('seconds'), args.get('resolution'))
+            trace['result'] = 'retry_job:%s' % ('ok' if r.get('ok') else 'no')
+            if not r.get('ok'):
+                return {'ok': False, 'kind': 'answer', 'trace': trace, 'text': r.get('text', '')}
+            return {'ok': True, 'kind': 'remote', 'task': r.get('task'), 'video': r.get('video'),
+                    'payload': r.get('payload'), 'trace': trace, 'text': r.get('text', '')}
+        r = self.resume_story(str(args.get('job_id') or ''))
+        trace['result'] = 'resume_story:%s' % ('ok' if r.get('ok') else 'no')
+        if not r.get('ok'):
+            return {'ok': False, 'kind': 'answer', 'trace': trace, 'text': r.get('text', '')}
+        return {'ok': True, 'kind': 'remote', 'task': r.get('task'), 'payload': r.get('payload'),
+                'trace': trace, 'text': r.get('text', '')}
+
     def run_tool(self, plan: dict) -> dict:
         tool = plan.get('tool')
         args = normalize_args(tool, plan.get('args') or {})
@@ -460,6 +546,8 @@ class AgentClient:
         if tool == 'answer':
             trace['result'] = 'answer'
             return {'ok': True, 'kind': 'answer', 'text': args.get('text', ''), 'trace': trace}
+        if tool in ('list_jobs', 'query_job', 'retry_job', 'resume_story'):
+            return self._run_job_tool(tool, args, trace)
         if not self.engine_url:
             trace['result'] = 'demo(未配置 ENGINE_BASE_URL)'
             payload = self.build_payload(tool, args)
@@ -487,6 +575,7 @@ class AgentClient:
                         break
                     if sd.get('status') in ('failed', 'error'):
                         raise RuntimeError(sd.get('error') or '外部服务返回失败')
+            self.record_job(tool, args, payload, job_id, video=video or '')
             return {'ok': True, 'kind': 'remote', 'task': job_id, 'video': video,
                     'payload': payload, 'trace': trace}
         except Exception as e:  # noqa: BLE001
@@ -522,6 +611,137 @@ class AgentClient:
         out['say'] = plan.get('say') or ''
         out['mode'] = self.mode
         return out
+
+    # ---------- 会话内作业台账 + 查/重试/续跑（2026-09-10 新增） ----------
+    MAX_JOBS = 20
+
+    def record_job(self, tool, args, payload, job_id, status='running', video='', error=''):
+        '''登记一次真实提交（重试/续跑要靠它拿到原始参数）。'''
+        rec = {'job_id': str(job_id or ''), 'tool': tool, 'args': self._brief(args or {}),
+               'payload': payload or {}, 'status': status, 'video': video or '',
+               'error': error or '', 'ts': time.strftime('%H:%M:%S'),
+               'time': time.strftime('%Y-%m-%d %H:%M:%S')}
+        self.job_log = [j for j in self.job_log if j.get('job_id') != rec['job_id']]
+        self.job_log.append(rec)
+        del self.job_log[:-self.MAX_JOBS]
+        return rec
+
+    def _find_job(self, job_id=''):
+        '''按 id 找（认前缀，方便只报前 8 位）；不给就返回最近一次。'''
+        if not self.job_log:
+            return {}
+        jid = str(job_id or '').strip()
+        if not jid:
+            return self.job_log[-1]
+        for r in reversed(self.job_log):
+            if r.get('job_id') == jid or (jid and str(r.get('job_id') or '').startswith(jid)):
+                return r
+        return {}
+
+    def list_jobs(self, limit=8, refresh=True):
+        '''列本会话任务；配了状态接口就顺手刷新（查不到保持原状态，不谎报）。'''
+        rows = self.job_log[-max(1, min(int(limit or 8), self.MAX_JOBS)):]
+        out = []
+        for r in rows:
+            st = dict(r)
+            if refresh and self.engine_status and r.get('status') in ('running', 'queued', 'unknown', ''):
+                p = self.poll_job(r.get('job_id'))
+                if p.get('status') and p.get('status') != 'unknown':
+                    st['status'] = p['status']
+                    st['video'] = p.get('video_url') or st.get('video') or ''
+                    r['status'] = st['status']
+            out.append(st)
+        return {'ok': True, 'jobs': out, 'status_api': bool(self.engine_status),
+                'note': '' if self.engine_status else '未配置 ENGINE_STATUS_URL：状态取自本会话记录，可能不是最新。'}
+
+    def query_job(self, job_id=''):
+        rec = self._find_job(job_id)
+        if not rec:
+            return {'ok': False, 'text': '没找到这个任务：本会话没有 %s 的记录（未配置状态接口时只能查本会话提交过的任务）。'
+                                         % (job_id or '任何任务')}
+        st = {'status': rec.get('status') or 'unknown', 'video_url': rec.get('video') or '',
+              'error': rec.get('error') or ''}
+        stale = False
+        if self.engine_status:
+            p = self.poll_job(rec['job_id'])
+            if p.get('status') and p.get('status') != 'unknown':
+                st['status'] = p['status']
+                st['video_url'] = p.get('video_url') or st['video_url']
+                st['error'] = p.get('error') or st['error']
+                rec['status'], rec['video'] = st['status'], st['video_url']
+            else:
+                stale = True       # 状态接口没答上来：沿用旧状态，但必须标注，不能让人以为是刚查到的
+        segs = st.get('segments') or []
+        line = '任务 %s（%s）：状态 %s' % (rec['job_id'], rec.get('tool'), st['status'])
+        if segs:
+            line += '，分段 %d/%d 完成' % (sum(1 for x in segs if x.get('status') == 'completed'), len(segs))
+        if st.get('video_url'):
+            line += '；成片：' + st['video_url']
+        if st.get('error'):
+            line += '；错误：' + st['error']
+        if not self.engine_status:
+            line += '（未配置 ENGINE_STATUS_URL，状态取自本会话记录）'
+        elif stale:
+            line += '（状态接口本次未返回结果，显示的是本会话记录）'
+        return {'ok': True, 'job': rec, 'status': st, 'text': line}
+
+    def retry_job(self, job_id='', seed=None, seconds=None, resolution=None):
+        '''用原 payload 重提（可覆盖 seed/seconds/resolution）；没有原 payload 就如实说不能重试。'''
+        rec = self._find_job(job_id)
+        if not rec:
+            return {'ok': False, 'text': '没法重试：本会话没有 %s 的记录。' % (job_id or '任何任务')}
+        if not rec.get('payload'):
+            return {'ok': False, 'text': '没法重试：任务 %s 没留下原始请求体。' % rec['job_id']}
+        if not self.engine_url:
+            return {'ok': False, 'text': '没法重试：还没配置 ENGINE_BASE_URL（视频生成接口）。'}
+        payload = dict(rec['payload'])
+        over = {}
+        if seed not in (None, ''):
+            try:
+                payload['seed'] = int(float(seed)); over['seed'] = payload['seed']
+            except Exception:
+                pass
+        if seconds not in (None, ''):
+            try:
+                payload['seconds'] = float(seconds); over['seconds'] = payload['seconds']
+            except Exception:
+                pass
+        if resolution:
+            payload['resolution'] = str(resolution); over['resolution'] = str(resolution)
+        try:
+            d = self._post_json(self.engine_url, payload, self.engine_key, timeout=180)
+        except Exception as e:
+            return {'ok': False, 'text': '重试失败（接口调用出错）：%s' % str(e)[:160]}
+        new_id = d.get('job_id') or d.get('task_id') or d.get('id') or ''
+        video = d.get('video_url') or d.get('url') or ''
+        self.record_job(rec.get('tool') or '-', {}, payload, new_id, video=video)
+        tail = ('，覆盖：' + json.dumps(over, ensure_ascii=False)) if over else ''
+        return {'ok': True, 'task': new_id, 'video': video, 'payload': payload,
+                'text': '已用原参数重新提交（新任务 %s）%s。' % (new_id, tail)}
+
+    def resume_story(self, job_id=''):
+        '''断点续跑：只有引擎声明支持才做，否则如实说明（绝不假称已续跑）。'''
+        rec = self._find_job(job_id)
+        if not rec:
+            return {'ok': False, 'text': '没法续跑：本会话没有 %s 的记录。' % (job_id or '任何任务')}
+        if not self.engine_resume:
+            return {'ok': False, 'text': '当前生成接口未提供断点续跑能力（契约里没有 resume_from），所以不能从中间接着跑；'
+                                         '只能整段重提——需要的话我用 retry_job 重发一次。'}
+        if not (rec.get('payload') and self.engine_url):
+            return {'ok': False, 'text': '没法续跑：任务 %s 没有原始请求体，或未配置 ENGINE_BASE_URL。' % rec['job_id']}
+        st = self.poll_job(rec['job_id'])
+        segs = st.get('segments') or []
+        done = sum(1 for x in segs if x.get('status') == 'completed')
+        payload = dict(rec['payload'])
+        payload['resume_from'] = int(done)
+        try:
+            d = self._post_json(self.engine_url, payload, self.engine_key, timeout=180)
+        except Exception as e:
+            return {'ok': False, 'text': '续跑请求失败：%s' % str(e)[:160]}
+        new_id = d.get('job_id') or d.get('task_id') or d.get('id') or ''
+        self.record_job(rec.get('tool') or '-', {}, payload, new_id)
+        return {'ok': True, 'task': new_id, 'payload': payload,
+                'text': '已从第 %d 段续跑（新任务 %s）。' % (int(done) + 1, new_id)}
 
     def poll_job(self, job_id: str) -> dict:
         """任务面板用:查询外部接口的作业状态(未配置状态接口时返回 unknown,不报错)。"""

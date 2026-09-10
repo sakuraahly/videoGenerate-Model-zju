@@ -33,10 +33,59 @@ def _client(**env):
 
 def test_toolset_names_and_schema():
     names = [t["name"] for t in ac.TOOLS]
-    assert names == ["generate_video", "generate_talk", "make_story_film", "answer"]
+    # 2026-09-10 扩充：查作业/重试/续跑（对齐《ModelScope-Agent 学习指南》的任务管理诉求）
+    assert names == ["generate_video", "generate_talk", "make_story_film",
+                     "list_jobs", "query_job", "retry_job", "resume_story", "answer"]
     for t in ac.TOOLS:
         assert t["description"] and isinstance(t["params"], dict)
 
+
+def test_job_tools_query_and_retry(tmp_path, monkeypatch):
+    """查作业/重试/续跑：台账 + 原始 payload，绝不谎报。"""
+    c = _client(ENGINE_BASE_URL="https://engine.example/v1/jobs",
+                ENGINE_API_KEY="k", ENGINE_STATUS_URL="https://engine.example/v1/jobs/status")
+    c.record_job("generate_talk", {"text": "天冷了"}, {"text": "天冷了", "kind": "talk"},
+                 "job-12345678", status="running")
+    # 未配置状态接口/接口不通时：状态取自本会话记录，不假装成功
+    monkeypatch.setattr(c, "poll_job", lambda jid: {"status": "unknown", "video_url": None})
+    q = c.query_job("job-12345")                      # 前缀也认
+    # 状态接口没答上来时必须标注（沿用旧状态但不能让人误以为是刚查到的）
+    assert q["ok"] and "job-12345678" in q["text"] and "本会话记录" in q["text"]
+    miss = c.query_job("not-exist")
+    assert miss["ok"] is False and "没找到" in miss["text"]
+    # 重试：用原 payload 重提，并可覆盖 seed
+    seen = {}
+    monkeypatch.setattr(c, "_post_json", lambda url, payload, key="", timeout=0: seen.update(payload) or {"job_id": "job-2"})
+    r = c.retry_job("job-1234", seed=42)
+    assert r["ok"] and r["task"] == "job-2" and seen["seed"] == 42 and seen["text"] == "天冷了"
+    assert any(j["job_id"] == "job-2" for j in c.job_log)
+
+
+def test_resume_story_refuses_honestly_when_contract_lacks_resume():
+    """接口没声明 resume_from 时，必须如实说“不能续跑”，不能假装已续跑。"""
+    c = _client(ENGINE_BASE_URL="https://engine.example/v1/jobs")
+    c.record_job("make_story_film", {"script": "x"}, {"script": "x"}, "job-a")
+    out = c.run_tool({"tool": "resume_story", "args": {}})
+    assert out["ok"] is False and "未提供断点续跑" in out["text"] and out["kind"] == "answer"
+
+
+def test_resume_story_sends_resume_from_when_declared(monkeypatch):
+    c = _client(ENGINE_BASE_URL="https://engine.example/v1/jobs", ENGINE_RESUME="1",
+                ENGINE_STATUS_URL="https://engine.example/v1/jobs/status")
+    c.record_job("make_story_film", {"script": "x"}, {"script": "x"}, "job-a")
+    monkeypatch.setattr(c, "poll_job", lambda jid: {"status": "failed", "video_url": None,
+                                                     "segments": [{"status": "completed"}, {"status": "failed"}]})
+    seen = {}
+    monkeypatch.setattr(c, "_post_json", lambda url, payload, key="", timeout=0: seen.update(payload) or {"job_id": "job-b"})
+    out = c.resume_story()
+    assert out["ok"] and seen["resume_from"] == 1 and "第 2 段" in out["text"]
+
+
+def test_list_jobs_formats_and_flags_missing_status_api():
+    c = _client()                                   # 什么都没配
+    c.record_job("generate_video", {"prompt": "p"}, {"prompt": "p"}, "j1", status="completed")
+    out = c.run_tool({"tool": "list_jobs", "args": {}})
+    assert out["ok"] and "j1"[:8] in out["text"] and "未配置 ENGINE_STATUS_URL" in out["text"]
 
 def test_toolset_filtering():
     c = _client(TOOLSET="generate_talk,answer")

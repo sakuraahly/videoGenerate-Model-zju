@@ -65,6 +65,24 @@ DEFAULT_SHOW = {
 }
 
 
+_SHARED = {}
+
+
+def _shared_client():
+    """进程级共享 AgentClient：**作业台账要跨轮次保留**（否则"查刚才那个任务"永远查不到）。
+
+    客户端的工具调用全部走 HTTP，无本地依赖；共享实例只用于记住本会话提交过的任务。
+    """
+    if 'c' not in _SHARED:
+        try:
+            from agent_client import AgentClient
+            _SHARED['c'] = AgentClient()
+        except Exception:  # noqa: BLE001
+            from agent_client import AgentClient
+            _SHARED['c'] = AgentClient()
+    return _SHARED['c']
+
+
 def load_show() -> dict:
     try:
         import yaml
@@ -93,7 +111,7 @@ def agent_step(user_text: str, history, image_path=None, client=None) -> dict:
         return {'history': history, 'trace': None, 'video': None, 'job': None}
     try:
         from agent_client import AgentClient
-        out = (client or AgentClient()).answer(user_text, history, image_path=image_path or '')
+        out = (client or _shared_client()).answer(user_text, history, image_path=image_path or '')
     except Exception as e:  # noqa: BLE001
         out = {'say': '（agent 层异常：%s）' % str(e)[:150], 'kind': 'error'}
     kind = out.get('kind')
@@ -229,13 +247,15 @@ def build_app(show: dict):
                                  "当前是演示预览，不做假动作")
                 else:
                     _mode_txt = "🧪 规划演示模式（未配置外部接口：仍完整展示工具决策 + 请求体预览）"
+                _warn = _st.get('warnings') or []
+                _warn_md = ("\n\n> ⚠️ **配置自检**：\n" + "\n".join("> - " + w for w in _warn)) if _warn else ""
                 _chan = _st.get('brain_channel') or 'rule'
                 _brain_txt = {'agent-url': "✅ 平台 Agent（AGENT_URL）",
                               'llm': "✅ 自建大脑（LLM_*：%s）" % _st.get('model'),
                               'rule': "内置规则规划器（未配置大脑接口）"}.get(_chan, _chan)
-                gr.Markdown("**当前模式**：%s　|　**外置大脑**：%s　|　**视频生成接口**：%s"
+                gr.Markdown("**当前模式**：%s　|　**外置大脑**：%s　|　**视频生成接口**：%s%s"
                             % (_mode_txt, _brain_txt,
-                               "已配置" if _st.get('engine') else "未配置"))
+                               "已配置" if _st.get('engine') else "未配置", _warn_md))
                 gr.Markdown("**工具集**（agent 的手脚，全部走接口）：%s\n\n"
                             "_本空间不部署模型：大脑由 `LLM_*` 接口控制，出片由 `ENGINE_*` 接口控制；"
                             "接口清单见「能力与部署」页与仓库 studio/接口说明.md。_"
@@ -376,7 +396,7 @@ def build_app(show: dict):
 
 _{show['footer']}_""")
 
-        gr.Markdown(f"\n---\n_空间版本 v2.5（2026-09-10 · Agent=工具集+外置大脑；支持平台 AGENT_URL 通道与 builder_config.json）_")
+        gr.Markdown(f"\n---\n_空间版本 v2.6（2026-09-10 · Agent=工具集+外置大脑；AGENT_URL 通道 + 任务查询/重试/续跑 + 配置自检）_")
     return demo
 
 
