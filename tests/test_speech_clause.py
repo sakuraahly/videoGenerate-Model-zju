@@ -41,6 +41,25 @@ def test_augment_is_idempotent_and_switchable():
     assert off == ("shot", "low quality", [])
 
 
+def test_ambience_source_room_and_rain():
+    """无台词段铺房间底噪（用户定案）：波形/电平/淡入淡出都要对，且默认远低于语音。"""
+    from runs.h3.film_stitch import ambience_source
+
+    room = ambience_source("room", -32.0, 4.5)
+    assert "anoisesrc=color=brown" in room and "lowpass=f=900" in room
+    assert "volume=-32.0dB" in room and "duration=4.500" in room
+    assert "afade=t=in" in room and "afade=t=out" in room
+    assert "aformat=channel_layouts=stereo" in room
+
+    rain = ambience_source("rain", -30.0, 3.0)
+    assert "anoisesrc=color=pink" in rain and "highpass=f=400" in rain and "volume=-30.0dB" in rain
+
+    assert ambience_source("none", -32.0, 4.0) == ""
+    assert ambience_source("", -32.0, 4.0) == ""
+    # 极短段也不能出现负的淡出起点
+    assert "afade=t=out:st=0.100" in ambience_source("room", -32.0, 0.2)
+
+
 def test_template_patcher_is_idempotent(tmp_path):
     """模板默认提示词补丁：写入一次即生效，重复跑不再叠加（用户要求写进工作流默认设置）。"""
     import json

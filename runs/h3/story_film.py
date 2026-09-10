@@ -405,7 +405,9 @@ def cmd_run(args) -> int:
         keep = [str(i) for i, seg in enumerate(story['segments'])
                 if (story.get('lines') or {}).get(str(i))]
         cmd = ['python3', str(STITCH), '--segments', ','.join(seg_paths), '--out', args.out,
-               '--strip-audio', '--keep-audio-segs', ','.join(keep)]
+               '--strip-audio', '--keep-audio-segs', ','.join(keep),
+               '--ambience', str(getattr(args, 'ambience', 'room') or 'room'),
+               '--ambience-under-speech']        # 故事片=叙事片，全片底噪连续更像成片
         print('== stitch keep-audio-segs=%s' % ','.join(keep), flush=True)
         r = _run(cmd, timeout=int(args.timeout))
         log = (r.stdout or '') + (r.stderr or '')
@@ -440,6 +442,8 @@ def main(argv=None) -> int:
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--work-dir', default='/tmp/story_film')
     ap.add_argument('--stitch', action='store_true')
+    ap.add_argument('--ambience', default='room', choices=['room', 'rain', 'none'],
+                    help='无台词段铺的底噪（默认 room=房间底噪；拼接时生效）')
     ap.add_argument('--out', default='/tmp/story_film.mp4')
     ap.add_argument('--timeout', type=int, default=7200,
                     help='每步子进程超时秒（默认 7200；单段生成/台词链/拼接都在内）')
