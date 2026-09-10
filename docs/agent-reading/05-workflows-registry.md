@@ -4,8 +4,9 @@
 
 ## video_t2v (stage=t2v)
 
-- 用途: text-to-video (official standard template)
-- 模板: `workflows/remote_workflows/video_minimax_h3_t2v.json`（format=ui）
+- 用途: text-to-video：**引擎默认用内置生成器 h3_t2v**（代码现场拼 API 工作流，不读模板文件）；同名的 video_minimax_h3_t2v.json 仍在镜像目录里但**未注册为 stage**，需要时用 --template 显式指定。运行日志会写 source=内置生成器/模板文件。
+- 生成器: **内置 h3_t2v**（代码现场构建 API 工作流，不读模板文件）
+- 备用模板: `（无；镜像目录里的同名文件未注册为 stage）`
 - 槽位: images=none; videos=0; audios=0
 - 参数: resolutions=360p,480p,540p,720p,768p; seconds=5..15; fps=24; steps=20
 - 特性: negative_support
@@ -77,6 +78,7 @@
 - `api_minimax_h3_t2v.json`（4280 B）
 - `h3_finalize_chain.json`（1533 B）
 - `sd_inpaint_fix.json`（7752 B）
+- `video_minimax_h3_t2v.json`（42234 B）
 
 ## 权威与自检
 

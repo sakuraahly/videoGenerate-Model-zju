@@ -151,7 +151,11 @@ def write_registry_doc(project_dir: Path) -> Path:
         lines.append(f"## {e.get('id')} (stage={e.get('stage')})")
         lines.append("")
         lines.append(f"- 用途: {e.get('purpose', '')}")
-        lines.append(f"- 模板: `{e.get('template')}`（format={e.get('format')}）")
+        if e.get("builtin"):
+            lines.append(f"- 生成器: **内置 {e.get('builtin')}**（代码现场构建 API 工作流，不读模板文件）")
+            lines.append(f"- 备用模板: `{e.get('template') or '（无；镜像目录里的同名文件未注册为 stage）'}`")
+        else:
+            lines.append(f"- 模板: `{e.get('template')}`（format={e.get('format')}）")
         slots = workflow_registry.slot_spec(e)
         img = ", ".join(f"{s.get('role')}x{s.get('count')}" for s in slots["images"]) or "none"
         lines.append(f"- 槽位: images={img}; videos={len(slots['videos'])}; audios={len(slots['audios'])}")

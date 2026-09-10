@@ -7,13 +7,56 @@
     "negative": "prompts/negative_prompts.txt"
   },
   "slots": {
-    "video_t2v":  { "label": "同事 video_minimax_h3_t2v（本地，子图，GUI）",      "positive": "prompts/workflows/video_t2v.positive.txt",  "negative": "prompts/workflows/video_t2v.negative.txt" },
-    "video_i2v":  { "label": "同事 video_minimax_h3_i2v（本地，子图，GUI）",      "positive": "prompts/workflows/video_i2v.positive.txt",  "negative": "prompts/workflows/video_i2v.negative.txt" },
-    "video_r2v":  { "label": "同事 video_minimax_h3_r2v（本地开放图，CLI 可跑）", "positive": "prompts/workflows/video_r2v.positive.txt",  "negative": "prompts/workflows/video_r2v.negative.txt" },
-    "video_flf2v": { "label": "本地 FLF2V（首帧+末帧；由 i2v 扩展的双帧变体，CLI 可跑）", "positive": "prompts/workflows/video_flf2v.positive.txt", "negative": "prompts/workflows/video_flf2v.negative.txt" },
-    "api_t2v":    { "label": "api_minimax_h3_t2v（Hailuo 封装）",                  "positive": "prompts/workflows/api_t2v.positive.txt",    "negative": "prompts/workflows/api_t2v.negative.txt" },
-    "api_r2v":    { "label": "api_minimax_h3_r2v（Hailuo 封装）",                  "positive": "prompts/workflows/api_r2v.positive.txt",    "negative": "prompts/workflows/api_r2v.negative.txt" },
-    "api_flf2v":  { "label": "api_minimax_h3_flf2v（Hailuo 封装）",                "positive": "prompts/workflows/api_flf2v.positive.txt",  "negative": "prompts/workflows/api_flf2v.negative.txt" }
+    "video_t2v": {
+      "label": "同事 video_minimax_h3_t2v（本地，子图，GUI）",
+      "positive": "prompts/workflows/video_t2v.positive.txt",
+      "negative": "prompts/workflows/video_t2v.negative.txt"
+    },
+    "video_i2v": {
+      "label": "同事 video_minimax_h3_i2v（本地，子图，GUI）",
+      "positive": "prompts/workflows/video_i2v.positive.txt",
+      "negative": "prompts/workflows/video_i2v.negative.txt"
+    },
+    "video_r2v": {
+      "label": "同事 video_minimax_h3_r2v（本地开放图，CLI 可跑）",
+      "positive": "prompts/workflows/video_r2v.positive.txt",
+      "negative": "prompts/workflows/video_r2v.negative.txt"
+    },
+    "video_flf2v": {
+      "label": "本地 FLF2V（首帧+末帧；由 i2v 扩展的双帧变体，CLI 可跑）",
+      "positive": "prompts/workflows/video_flf2v.positive.txt",
+      "negative": "prompts/workflows/video_flf2v.negative.txt"
+    },
+    "api_t2v": {
+      "label": "api_minimax_h3_t2v（Hailuo 封装）",
+      "positive": "prompts/workflows/api_t2v.positive.txt",
+      "negative": "prompts/workflows/api_t2v.negative.txt"
+    },
+    "api_r2v": {
+      "label": "api_minimax_h3_r2v（Hailuo 封装）",
+      "positive": "prompts/workflows/api_r2v.positive.txt",
+      "negative": "prompts/workflows/api_r2v.negative.txt"
+    },
+    "api_flf2v": {
+      "label": "api_minimax_h3_flf2v（Hailuo 封装）",
+      "positive": "prompts/workflows/api_flf2v.positive.txt",
+      "negative": "prompts/workflows/api_flf2v.negative.txt"
+    },
+    "video_r2v_finalize": {
+      "label": "成品链一体（生成→H3Finalize→H3AsrCheck，31 节点）",
+      "positive": "prompts/workflows/video_r2v.positive.txt",
+      "negative": "prompts/workflows/video_r2v.negative.txt"
+    },
+    "video_r2v_rife": {
+      "label": "成品链 + RIFE 插帧（35 节点）",
+      "positive": "prompts/workflows/video_r2v.positive.txt",
+      "negative": "prompts/workflows/video_r2v.negative.txt"
+    },
+    "video_r2v_restore": {
+      "label": "成品链 + 整脸修复 + RIFE（36 节点）",
+      "positive": "prompts/workflows/video_r2v.positive.txt",
+      "negative": "prompts/workflows/video_r2v.negative.txt"
+    }
   },
   "workflow_files": {
     "video_minimax_h3_t2v.json": "video_t2v",
@@ -22,6 +65,9 @@
     "video_minimax_h3_flf2v.json": "video_flf2v",
     "api_minimax_h3_t2v.json": "api_t2v",
     "api_minimax_h3_r2v.json": "api_r2v",
-    "api_minimax_h3_flf2v.json": "api_flf2v"
+    "api_minimax_h3_flf2v.json": "api_flf2v",
+    "video_minimax_h3_r2v_finalize.json": "video_r2v_finalize",
+    "video_minimax_h3_r2v_rife_finalize.json": "video_r2v_rife",
+    "video_minimax_h3_r2v_restore_finalize.json": "video_r2v_restore"
   }
 }
