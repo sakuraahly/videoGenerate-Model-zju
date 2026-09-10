@@ -137,35 +137,29 @@ class AgentClient:
         v = (v or '').strip().rstrip('/')
         return v if v.startswith(('http://', 'https://')) else ''
 
-    def __init__(self):
-        self.llm_base = self._url(_env('LLM_BASE_URL'))
-        self.llm_key = _env('LLM_API_KEY')
-        self.llm_model = _env('LLM_MODEL', default='qwen-plus')
-        # 只接受合法 http(s) 地址:占位符/脏值(如平台编码问题产生的 '???')一律当作未配置
-        self.engine_url = self._url(_env('ENGINE_BASE_URL', 'VIDEO_API_URL'))
-        self.engine_key = _env('ENGINE_API_KEY', 'VIDEO_API_KEY')
-        self.engine_status = self._url(_env('ENGINE_STATUS_URL', 'VIDEO_API_STATUS_URL'))
-        self.toolset = [t.strip() for t in _env('TOOLSET', default='all').split(',') if t.strip()]
-        # 平台标准通道（2026-09-10 按《ModelScope-Agent 学习指南》对齐）：
-        #   文档的做法是「零代码创建 Agent → 发布 → 只取 AGENT_URL → 在创空间里替换该环境变量 → 重启空间展示」。
-        #   所以 AGENT_URL 是**首选大脑**：平台上的 Agent（自带 prompt/tools/知识）负责决策；
-        #   我们只做「工具集 + 前端」，与 LLM_* 通道并存，优先级 AGENT_URL > LLM_* > 规则规划器。
-        self.agent_url = self._url(_env('AGENT_URL'))
-        self.agent_token = _env('AGENT_TOKEN')
-        # 断点续跑能力声明：只有引擎显式声明支持 resume_from 时才真续跑（否则如实拒绝，不假装）
-        self.engine_resume = bool(_env('ENGINE_RESUME'))
+    def __init__(self, overrides: dict = None):
+        """overrides：**用户自带的配置**（BYOK，来自页面表单，按会话隔离）。
+
+        取值优先级：用户 override >（可选）空间环境变量 > 内置默认。
+        空间可以用 ALLOW_ENV_FALLBACK=0 彻底不提供任何自带密钥——那时别人必须填自己的，
+        也就是「只发布工具、不发布算力与密钥」的形态。
+        """
+        self._ov = {str(k).upper(): str(v).strip() for k, v in (overrides or {}).items()
+                    if str(v or '').strip()}
+        self.env_fallback = str(_env('ALLOW_ENV_FALLBACK', default='1')).strip().lower() not in (
+            '0', 'false', 'no', 'off')
+        self.apply_overrides(overrides)
+        self.toolset = [t.strip() for t in self._cfg('TOOLSET', default='all').split(',') if t.strip()]
         self.job_log = []                # 本会话作业台账（供 查/重试/续跑 工具使用）
         import threading as _threading
         self._lock = _threading.Lock()   # 台账并发保护（Gradio 可能并发处理请求）
-        # 断点续跑能力声明：只有引擎显式声明支持 resume_from 时才真续跑（否则如实拒绝，不假装）
-        self.engine_resume = bool(_env('ENGINE_RESUME'))
-        self.job_log: list = []          # 本会话作业台账（供查/重试/续跑工具使用）
+        self.engine_resume = bool(self._cfg('ENGINE_RESUME'))
         try:
-            self.agent_timeout = int(float(_env('AGENT_TIMEOUT', default='90') or 90))
+            self.agent_timeout = int(float(self._cfg('AGENT_TIMEOUT', default='90') or 90))
         except Exception:  # noqa: BLE001
             self.agent_timeout = 90
         self.llm_extra = {}
-        raw_extra = _env('LLM_EXTRA_JSON')      # 例:{"chat_template_kwargs":{"enable_thinking":false}}
+        raw_extra = self._cfg('LLM_EXTRA_JSON')   # 例：{\"enable_thinking\": false}
         if raw_extra:
             try:
                 parsed = json.loads(raw_extra)
@@ -184,6 +178,40 @@ class AgentClient:
                 names = [n.strip() for n in names if n and n.strip()]
                 if names:
                     self.toolset = names
+
+    def apply_overrides(self, overrides: dict = None) -> None:
+        """设置/更新用户自带凭据（BYOK）。**只改凭据，不动作业台账**。
+
+        安全：这些值只在该会话的客户端实例内存里，不写盘、不进日志、不进请求体；
+        密钥只出现在 HTTP 请求头里，发往用户自己指定的服务。"""
+        if overrides is not None:
+            self._ov = {str(k).upper(): str(v).strip() for k, v in (overrides or {}).items()
+                        if str(v or '').strip()}
+        self.llm_base = self._url(self._cfg('LLM_BASE_URL'))
+        self.llm_key = self._cfg('LLM_API_KEY')
+        self.llm_model = self._cfg('LLM_MODEL', default='qwen-plus')
+        # 只接受合法 http(s) 地址：占位符/脏值一律当作未配置
+        self.engine_url = self._url(self._cfg('ENGINE_BASE_URL', 'VIDEO_API_URL'))
+        self.engine_key = self._cfg('ENGINE_API_KEY', 'VIDEO_API_KEY')
+        self.engine_status = self._url(self._cfg('ENGINE_STATUS_URL', 'VIDEO_API_STATUS_URL'))
+        # 平台标准通道：AGENT_URL（社区指南里的「发布 Agent 只取 AGENT_URL」）优先于 LLM_*
+        self.agent_url = self._url(self._cfg('AGENT_URL'))
+        self.agent_token = self._cfg('AGENT_TOKEN')
+        # 只有**真正可用**的用户凭据才算 BYOK：占位符（unset/无/…）等同没填，别误报"用的是你的密钥"
+        def _ov_ok(_name):
+            _v = self._ov.get(_name)
+            return bool(_v and _v.lower() not in PLACEHOLDERS)
+        self.byok = _ov_ok('LLM_API_KEY') or _ov_ok('AGENT_TOKEN') or _ov_ok('ENGINE_API_KEY')
+
+    def _cfg(self, name: str, *aliases, default: str = '') -> str:
+        """读配置：用户 override > 空间环境变量（可被 ALLOW_ENV_FALLBACK=0 关闭）> 默认。"""
+        for key in (name,) + tuple(aliases):
+            v = self._ov.get(key)
+            if v and v.lower() not in PLACEHOLDERS:
+                return v
+        if not getattr(self, 'env_fallback', True):
+            return default
+        return _env(name, *aliases, default=default)
 
     @staticmethod
     def _load_builder_config() -> dict:
@@ -248,6 +276,10 @@ class AgentClient:
         原则：**在页面上先说清缺什么**，而不是等用户点了才抛一句看不懂的错。
         """
         w = []
+        if getattr(self, 'byok', False):
+            w.append('本轮使用**你自己填写的密钥**（只在本会话内存里，不写盘、不进日志）。')
+        elif not getattr(self, 'env_fallback', True):
+            w.append('本空间不提供自带密钥：请在「🔑 我的密钥」里填你自己的 LLM_API_KEY 与模型服务地址。')
         if not self.engine_url:
             w.append('未配置 ENGINE_BASE_URL（视频生成接口）→ 只能出方案预览，点生成不会真出片。')
         elif not self.engine_status:
@@ -264,6 +296,8 @@ class AgentClient:
         """给 UI 用的自检信息(不泄露密钥,只表明是否已配置)。"""
         return {'mode': self.mode, 'brain': bool(self.llm_key or self.agent_url),
                 'warnings': self.warnings(),
+                'byok': bool(getattr(self, 'byok', False)),
+                'env_fallback': bool(getattr(self, 'env_fallback', True)),
                 'brain_channel': self.brain,
                 'agent_url': bool(self.agent_url),
                 'builder_config': bool(self.builder_cfg),

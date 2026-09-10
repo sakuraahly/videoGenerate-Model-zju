@@ -65,18 +65,36 @@ DEFAULT_SHOW = {
 }
 
 
-_SHARED = {}
-
-
 def _shared_client():
-    """进程级共享 AgentClient：**作业台账要跨轮次保留**（否则"查刚才那个任务"永远查不到）。
+    """进程级客户端（仅用于启动自检/无会话场景）。**不要用来处理用户请求**——
 
-    客户端的工具调用全部走 HTTP，无本地依赖；共享实例只用于记住本会话提交过的任务。
+    2026-09-10 BYOK 改造：用户密钥必须按会话隔离，处理请求一律走 _client_from()。
     """
-    if 'c' not in _SHARED:
+    global _SHARED_ONE
+    if _SHARED_ONE is None:
         from agent_client import AgentClient
-        _SHARED['c'] = AgentClient()
-    return _SHARED['c']
+        _SHARED_ONE = AgentClient()
+    return _SHARED_ONE
+
+
+_SHARED_ONE = None
+
+
+def _client_from(ov: dict = None, existing=None):
+    """按会话构建/更新 AgentClient（BYOK：用户自带密钥优先，且只跟着这个会话）。
+
+    - 同一个会话复用同一个实例 → 作业台账（"查刚才那个任务"）不丢；
+    - 用户在页面上改了密钥 → 就地更新凭据，台账仍保留；
+    - 不同会话各自一个实例 → 绝不会串用别人的 key。
+    """
+    from agent_client import AgentClient
+    if existing is None:
+        return AgentClient(overrides=ov or {})
+    try:
+        existing.apply_overrides(ov or {})
+        return existing
+    except Exception:  # noqa: BLE001
+        return AgentClient(overrides=ov or {})
 
 
 def load_show() -> dict:
@@ -257,10 +275,31 @@ def build_app(show: dict):
                 gr.Markdown("**当前模式**：%s　|　**外置大脑**：%s　|　**视频生成接口**：%s%s"
                             % (_mode_txt, _brain_txt,
                                "已配置" if _st.get('engine') else "未配置", _warn_md))
+                _byok_txt = ('本空间**不提供**自带密钥：请在下面「🔑 我的密钥」里填你自己的（模型服务地址 + 模型名 + API Key）。'
+                             if not _st.get('env_fallback', True) else
+                             '本空间有一个默认大脑配置；**你也可以在下面「🔑 我的密钥」填自己的**，你自己的优先、且只在本会话内存里。')
+                gr.Markdown("**密钥来源**：%s" % _byok_txt)
                 gr.Markdown("**工具集**（agent 的手脚，全部走接口）：%s\n\n"
                             "_本空间不部署模型：大脑由 `LLM_*` 接口控制，出片由 `ENGINE_*` 接口控制；"
                             "接口清单见「能力与部署」页与仓库 studio/接口说明.md。_"
                             % "、".join("`%s`" % t for t in (_st.get('tools') or [])))
+                with gr.Accordion("🔑 我的密钥（自带 API Key · 只在本会话·不上传不保存）", open=False):
+                    gr.Markdown(
+                        "填你自己的模型服务凭据即可用本工具；**本空间不代付、不共享任何密钥**。"
+                        " 密钥只随本次请求发到本进程内存里用于调用你指定的服务，"
+                        "**不写盘、不进日志**；换会话/刷新页面后请重填。留空则使用空间默认（若有）。")
+                    with gr.Row():
+                        byok_base = gr.Textbox(label="模型服务地址（OpenAI 兼容）", scale=3,
+                                               placeholder="例：https://dashscope.aliyuncs.com/compatible-mode/v1")
+                        byok_model = gr.Textbox(label="模型名", scale=1, placeholder="例：qwen-plus")
+                    byok_key = gr.Textbox(label="模型服务 API Key（你自己的）", type="password",
+                                          placeholder="sk-...（只在本会话内存里）")
+                    with gr.Accordion("（可选）视频生成接口 —— 你自己的", open=False):
+                        with gr.Row():
+                            byok_eng = gr.Textbox(label="ENGINE_BASE_URL", scale=3)
+                            byok_eng_key = gr.Textbox(label="ENGINE_API_KEY", type="password", scale=1)
+                        byok_eng_status = gr.Textbox(label="ENGINE_STATUS_URL（异步查询，可留空）")
+                    sess_client = gr.State(None)
                 with gr.Row():
                     with gr.Column(scale=3):
                         chatbot = gr.Chatbot(label="对话", height=330)  # Gradio 6.x 默认 messages 格式
@@ -285,33 +324,46 @@ def build_app(show: dict):
 
                 TRACE_IDLE = "_（这里会显示 agent 的工具调用轨迹）_"
                 JOBS_IDLE = "_（本会话还没有任务：在下面说一句需求即可）_"
-                STEP_OUT = [chatbot, trace_md, agent_video, msg, jobs_state, jobs_md]
+                BYOK_IN = [byok_base, byok_model, byok_key, byok_eng, byok_eng_status, byok_eng_key]
+                STEP_IN = [msg, chatbot, ref_img, jobs_state, sess_client] + BYOK_IN
+                STEP_OUT = [chatbot, trace_md, agent_video, msg, jobs_state, jobs_md, sess_client]
 
-                def _step(user_text, history, ref, jobs):
-                    """UI 包装：调用模块级 agent_step（可单测）；输出 6 项，组件不重复。"""
-                    r = agent_step(user_text, history, image_path=ref)
+                def _ov_of(base, model, key, eng, eng_status, eng_key):
+                    """页面上的「我的密钥」→ 客户端 override（BYOK）。"""
+                    return {'LLM_BASE_URL': base, 'LLM_MODEL': model, 'LLM_API_KEY': key,
+                            'ENGINE_BASE_URL': eng, 'ENGINE_STATUS_URL': eng_status,
+                            'ENGINE_API_KEY': eng_key}
+
+                def _step(user_text, history, ref, jobs, sess, *byok):
+                    """UI 包装：调用模块级 agent_step（可单测）；输出 7 项，组件不重复。
+
+                    BYOK：用**本会话**的客户端跑（用户自带密钥优先），并把实例存回 State——
+                    这样既不会串用别人的 key，也能保住会话内的作业台账。"""
+                    cli = _client_from(_ov_of(*byok), sess)
+                    r = agent_step(user_text, history, image_path=ref, client=cli)
                     jobs = list(jobs or [])
                     if r.get('job'):
                         jobs.append(r['job'])
                     return (r['history'], r.get('trace') or TRACE_IDLE, r.get('video') or None,
-                            gr.update(value=""), jobs, jobs_table(jobs))
+                            gr.update(value=""), jobs, jobs_table(jobs, cli), cli)
 
-                def _refresh(jobs):
+                def _refresh(jobs, sess, *byok):
                     try:
-                        from agent_client import AgentClient as _AC2
-                        return jobs_table(jobs, _AC2(), refresh=True), jobs
+                        cli = _client_from(_ov_of(*byok), sess)
+                        return jobs_table(jobs, cli, refresh=True), jobs, cli
                     except Exception:  # noqa: BLE001
-                        return jobs_table(jobs), jobs
+                        return jobs_table(jobs), jobs, sess
 
-                send.click(_step, [msg, chatbot, ref_img, jobs_state], STEP_OUT)
-                msg.submit(_step, [msg, chatbot, ref_img, jobs_state], STEP_OUT)
-                ex1.click(lambda h, r, j: _step('让参考图里的老人说一句“天冷了，快进屋坐坐吧，外面风大。”', h, r, j),
-                          [chatbot, ref_img, jobs_state], STEP_OUT)
-                ex2.click(lambda h, r, j: _step('做一段雨夜老屋门口有猫望着门内暖光的 5 秒镜头', h, r, j),
-                          [chatbot, ref_img, jobs_state], STEP_OUT)
-                ex3.click(lambda h, r, j: _step('把“父子在病房道别”做成一段连贯的 3 段故事片', h, r, j),
-                          [chatbot, ref_img, jobs_state], STEP_OUT)
-                refresh.click(_refresh, [jobs_state], [jobs_md, jobs_state])
+                send.click(_step, STEP_IN, STEP_OUT)
+                msg.submit(_step, STEP_IN, STEP_OUT)
+                ex1.click(lambda h, r, j, s, *b: _step('让参考图里的老人说一句“天冷了，快进屋坐坐吧，外面风大。”',
+                                                       h, r, j, s, *b),
+                          [chatbot, ref_img, jobs_state, sess_client] + BYOK_IN, STEP_OUT)
+                ex2.click(lambda h, r, j, s, *b: _step('做一段雨夜老屋门口有猫望着门内暖光的 5 秒镜头', h, r, j, s, *b),
+                          [chatbot, ref_img, jobs_state, sess_client] + BYOK_IN, STEP_OUT)
+                ex3.click(lambda h, r, j, s, *b: _step('把“父子在病房道别”做成一段连贯的 3 段故事片', h, r, j, s, *b),
+                          [chatbot, ref_img, jobs_state, sess_client] + BYOK_IN, STEP_OUT)
+                refresh.click(_refresh, [jobs_state, sess_client] + BYOK_IN, [jobs_md, jobs_state, sess_client])
                 clr.click(lambda: ([], TRACE_IDLE, None, JOBS_IDLE, []), None,
                           [chatbot, trace_md, agent_video, jobs_md, jobs_state])
 
@@ -402,16 +454,17 @@ _{show['footer']}_""")
                     _probe = gr.Button("🔌 测试外置大脑连接", size="sm")
                 _probe_out = gr.Markdown("_点上面的按钮验证「外置大脑」是否真的可用（只发一条极小请求，不触发生成）。_")
 
-                def _probe_click():
-                    """一键自测：验证大脑通道（DeepSeek / 平台 AGENT_URL / 自建 LLM 通用）。"""
+                def _probe_click(sess, *byok):
+                    """一键自测：用**你自己填的密钥**验证大脑通道（百炼/DeepSeek/平台 Agent/自建 LLM 通用）。"""
                     try:
-                        return _shared_client().selftest_text()
+                        cli = _client_from(_ov_of(*byok), sess)
+                        return cli.selftest_text()
                     except Exception as e:  # noqa: BLE001
                         return "❌ 自测失败：%s" % str(e)[:200]
 
-                _probe.click(_probe_click, [], [_probe_out])
+                _probe.click(_probe_click, [sess_client] + BYOK_IN, [_probe_out])
 
-        gr.Markdown(f"\n---\n_空间版本 v2.9（2026-09-10 · Agent=工具集+外置大脑；安全：SSRF/任务号/文件名/内存限流/产物目录随机化 + 可配置等待 + 连接自测）_")
+        gr.Markdown(f"\n---\n_空间版本 v3.0（2026-09-10 · Agent=工具集+外置大脑；**BYOK 用户自带密钥（按会话隔离）** + 安全加固 + 连接自测）_")
     return demo
 
 

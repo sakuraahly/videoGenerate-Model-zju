@@ -695,6 +695,51 @@ def test_plan_agent_url_failure_degrades_honestly(monkeypatch):
         os.environ.pop("AGENT_URL", None)
 
 
+# ---------- BYOK：用户自带密钥（2026-09-10） ----------
+
+def test_overrides_beat_env_and_are_marked_byok(monkeypatch):
+    """用户自带 key 优先于空间环境变量，并标记 byok（便于页面提示）。"""
+    monkeypatch.setenv("LLM_BASE_URL", "https://env.example/v1")
+    monkeypatch.setenv("LLM_API_KEY", "env-key")
+    monkeypatch.setenv("LLM_MODEL", "env-model")
+    c = ac.AgentClient(overrides={"LLM_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                                  "LLM_API_KEY": "sk-user", "LLM_MODEL": "qwen-plus"})
+    assert c.llm_base.startswith("https://dashscope") and c.llm_key == "sk-user"
+    assert c.llm_model == "qwen-plus" and c.byok is True
+    st = c.status()
+    assert st["byok"] is True and "sk-user" not in json.dumps(st, ensure_ascii=False)
+
+
+def test_env_fallback_can_be_disabled(monkeypatch):
+    """ALLOW_ENV_FALLBACK=0：空间彻底不提供密钥，别人必须填自己的（只发布工具）。"""
+    monkeypatch.setenv("LLM_BASE_URL", "https://env.example/v1")
+    monkeypatch.setenv("LLM_API_KEY", "env-key")
+    monkeypatch.setenv("ALLOW_ENV_FALLBACK", "0")
+    c = ac.AgentClient()
+    assert c.brain == "rule" and c.byok is False and c.env_fallback is False
+    assert any("不提供自带密钥" in w for w in c.warnings())
+    # 填上自己的立刻可用
+    c.apply_overrides({"LLM_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                       "LLM_API_KEY": "sk-user", "LLM_MODEL": "qwen-plus"})
+    assert c.brain == "llm" and c.byok is True
+
+
+def test_apply_overrides_keeps_job_ledger():
+    """改密钥不能把会话台账清掉（否则"查刚才那个任务"会丢）。"""
+    c = _client(ENGINE_BASE_URL="https://engine.example/v1/jobs")
+    c.record_job("generate_video", {"prompt": "p"}, {"prompt": "p"}, "job-1", status="completed")
+    c.apply_overrides({"LLM_API_KEY": "sk-user", "LLM_BASE_URL": "https://api.deepseek.com",
+                       "LLM_MODEL": "deepseek-chat"})
+    assert len(c.job_log) == 1 and c.job_log[0]["job_id"] == "job-1"
+
+
+def test_placeholder_override_is_ignored(monkeypatch):
+    """用户在页面填 unset/占位符，等同于没填（不能拿占位符去调用）。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    c = ac.AgentClient(overrides={"LLM_API_KEY": "unset", "LLM_MODEL": "unset"})
+    assert c.llm_key == "" and c.byok is False and c.llm_model == "qwen-plus"
+
+
 def test_status_reports_brain_channel():
     os.environ["AGENT_URL"] = "https://agent.example.com/api/agent"
     try:
