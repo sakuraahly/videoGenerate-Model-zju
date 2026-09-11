@@ -211,3 +211,36 @@ def latest_final(repo: Path, cid: str):  # noqa: F811 —— 带反查兜底的�
     except Exception:  # noqa: BLE001
         pass
     return None
+
+# ---------- 反查兜底·补丁（2026-09-11）：产物在 outputs/，任务目录里往往没有 mp4 ----------
+# 实测：job.json 的 videos 常为 []，任务目录里也没有 mp4；真正的产物路径只出现在任务日志的
+# `LOCAL_OUTPUT: outputs/video_N.mp4` 行里。这里覆盖 _product_of_task，按 视频字段 → 日志 → 任务目录 依次找。
+_product_of_task_v1 = _product_of_task
+
+
+def _product_of_task(repo: Path, task_dir: Path):  # noqa: F811
+    import json as _json, re as _re
+    p = _product_of_task_v1(repo, task_dir)
+    if p is not None:
+        return p
+    log_name = ''
+    try:
+        job = _json.loads((task_dir / 'job.json').read_text(encoding='utf-8-sig')) or {}
+        log_name = str(job.get('log_file') or '')
+    except Exception:  # noqa: BLE001
+        pass
+    cands = []
+    logs = [task_dir / log_name] if log_name else []
+    logs += sorted((Path(repo) / 'logs').glob('run_*.log'), key=lambda x: x.stat().st_mtime, reverse=True)[:20]
+    for lf in logs:
+        try:
+            if not lf.is_file():
+                continue
+            for m in _re.finditer(r'LOCAL_OUTPUT:\s*(\S+\.mp4)', lf.read_text(encoding='utf-8', errors='replace')):
+                cands.append((Path(repo) / m.group(1)).resolve())
+        except Exception:  # noqa: BLE001
+            continue
+    for c in reversed(cands):
+        if c.is_file():
+            return c
+    return None
