@@ -94,11 +94,28 @@ def test_talking_segment_keeps_line_out_of_visual_prompt():
     """台词铁律：台词原文进 lines/line，**不进画面提示词**。"""
     s = tp.build_storyboard("陪伴机器人永远同意你", target_seconds=30, cast_mode="solo")
     assert s["lines"], "应至少安排一句台词"
-    line_text = s["lines"][0]["text"]
+    assert isinstance(s["lines"], dict), "lines 必须是 {段索引: 行} 的 dict（对齐 story_template）"
+    line_text = list(s["lines"].values())[0]["text"]
     for seg in s["segments"]:
         assert line_text not in seg["prompt"], "台词不得写进画面提示词"
     talking = [x for x in s["segments"] if x["line"]]
     assert talking and talking[0]["line"]["text"] == line_text
+
+
+def test_silent_cast_segments_declare_no_speech():
+    """有角色但不说话的段落必须显式声明静默，否则模型自己让人物开口 → 成片唇动无声。"""
+    s = tp.build_storyboard("最后一个人在废墟里等信号", target_seconds=45, cast_mode="solo")
+    silent = [x for x in s["segments"] if x["line"] is None and x["cast"]]
+    assert silent, "应存在「有角色但无台词」的段落"
+    for seg in silent:
+        assert "silent" in seg["prompt"].lower() or "no speech" in seg["prompt"].lower()
+    # 且这种声明能让预检豁免"有角色没台词"告警
+    try:
+        from studio.rules import lint as _lint
+    except ImportError:  # pragma: no cover
+        return
+    rep = _lint.lint_story(s)
+    assert not [w for w in rep["warnings"] if "唇动无声" in w], rep["warnings"]
 
 
 def test_positive_prompt_never_contains_on_screen_text_instruction():

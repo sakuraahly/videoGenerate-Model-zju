@@ -14,6 +14,8 @@
   · style 里同时要字又不要字 → 自相矛盾；
   · prompt 里塞中文指令文本 → 被画成乱码叠字（除非确实要画面文字）；
   · 有角色、没台词 → 模型自己让人物说话，剔掉乱语音轨后成片"唇动无声"；
+    **（创空间新增豁免）** 但 prompt 里显式写了 "the character stays silent here: mouth closed,
+    no speech" 时不再告警 —— 静默是设计，不是疏漏；
   · **（创空间新增）** 出现已知影视 IP 的专有名词/角色名/台词特征词 → 版权风险，必须改写为原创设定；
   · **（创空间新增）** 声明了参考图/素材却没有授权标记 → 素材来源不明，平台合规风险。
 
@@ -54,6 +56,10 @@ _WANT_TEXT_RE = re.compile(r'sign reads|招牌上写着|字样是', re.I)
 _BAN_TEXT_RE = re.compile(r'no (on-screen )?(text|lettering|subtitles)', re.I)
 # 中文指令文本（会被画进画面）
 _CJK_RE = re.compile(r'[\u4e00-\u9fff]{2,}')
+# 5.6) 新增：静默镜的**显式不说话声明**（有它才算"本镜就该没声音"，否则才报警）
+_SILENCE_RE = re.compile(
+    r'(no speech|stays? silent|remain[s]? silent|does not speak|do not speak|mouth closed|'
+    r'silent here|no dialogue|no lip movement)', re.I)
 
 # ── 版权/IP 词表（可扩展：加词条即可） ─────────────────────────────────────────
 # 命中即 **error**：这些是受版权保护的影视 IP 的专有名词 / 角色名 / 台词特征词，
@@ -391,9 +397,12 @@ def lint_story(story: dict) -> dict:
                 warn.append('seg%d: prompt 里有中文文本 %s —— 模型会把中文指令文本直接画进画面，'
                             '除"确实要出现在画面上的字"外请一律用英文' % (i, '/'.join(cjk[:3])))
             # 3.6) 有角色、没台词 → 模型可能自己让人物说话，剔掉乱语音轨后成片"有口型没声音"
-            if str(i) not in line_keys and _as_list(seg.get('cast')):
+            #      5.6) 新增豁免：prompt 里已显式声明"本镜不说话"就不必再报（静默是设计而非疏漏）
+            if (str(i) not in line_keys and _as_list(seg.get('cast'))
+                    and not _SILENCE_RE.search(p)):
                 warn.append('seg%d: 有角色、没有台词 —— 模型可能自己让人物说话，成片会出现"唇动无声"；'
-                            '建议该镜改为无人定场，或给它一句台词' % i)
+                            '建议该镜改为无人定场、给它一句台词，或在 prompt 里显式写 '
+                            '"the character stays silent here: mouth closed, no speech"（推荐）' % i)
             # 4) style 与 prompt 自相矛盾：本镜头要画面文字，整体却禁字
             if wants_text and _BAN_TEXT_RE.search(style):
                 warn.append('seg%d: 本镜头要画面文字，但 style 里禁字 → 自相矛盾, 二选一' % i)

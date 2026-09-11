@@ -25,6 +25,9 @@ from . import frames as _fr
 
 # ---------------------------------------------------------------- 母题库
 
+# 有角色但本镜不说话的段落必须显式声明（否则模型会自己让人物开口，成片"唇动无声"）
+SILENCE_CLAUSE = "the character stays silent here: mouth closed, no speech, no lip movement"
+
 MOTIFS = {
     "false_reality": {
         "label": "分不清 · 真实的最后一道防线",
@@ -251,9 +254,10 @@ def build_storyboard(brief: str, *, style: str = "cinematic", target_seconds: fl
     """一句话 → 分镜表（剧本 JSON）。
 
     返回结构与 spark 侧 story JSON 对齐，可直接给 lint / 生产包使用：
-      {"title", "style", "theme", "motif", "characters": {NAME: desc}, "segments": [...],
-       "lines": [...], "assets_licensed", "anchor", "resolution", "target_seconds"}
-    （characters 用 dict 与 spark story JSON / studio.rules.lint 口径一致）
+      {"title", "setting", "style", "theme", "motif", "characters": {NAME: desc},
+       "segments": [...], "lines": {段索引: 行}, "assets_licensed", "anchor",
+       "resolution", "seconds", "target_seconds"}
+    （characters / lines 都用 dict，与 config/story_template.json 及 lint 口径一致）
 
     每段 segment：
       {"idx", "beat", "subject", "environment", "light", "style", "camera", "audio",
@@ -283,7 +287,7 @@ def build_storyboard(brief: str, *, style: str = "cinematic", target_seconds: fl
     line_text = str(motif.get("line_hint") or "").strip()
     line_idx = (n - 2) if (line_text and n >= 2) else -1
 
-    segments, lines = [], []
+    segments, lines = [], {}
     for i, (beat_en, camera, light, mood) in enumerate(chosen):
         sec = float(secs[i])
         frm = _fr.frames_of(sec)
@@ -294,11 +298,14 @@ def build_storyboard(brief: str, *, style: str = "cinematic", target_seconds: fl
             # 台词铁律：原文照抄、不翻译；由模型原声说出；**不写进画面提示词**
             seg_line = {"text": line_text, "voice": "auto", "spoken": True,
                         "speaker": cast[0] if cast else "P1"}
-            lines.append({"idx": i, "text": line_text, "voice": "auto", "spoken": True,
-                          "speaker": seg_line["speaker"]})
+            # lines 用 dict {段索引: 行}（对齐 config/story_template.json 与 lint._iter_lines）
+            lines[str(i)] = {"text": line_text, "voice": "auto", "spoken": True,
+                             "speaker": seg_line["speaker"]}
         env = f"environment: {motif['theme_en']}, single location, continuous lighting logic"
+        # 静默镜必须显式声明不说话（spark 实测：有角色无台词 → 模型自己让人物说话+唇动无声）
         audio = f"audio: {motif.get('audio_en', 'room tone')}" + (
-            ", spoken line is audio only, never written on screen" if seg_line else "")
+            ", spoken line is audio only, never written on screen" if seg_line
+            else f", {SILENCE_CLAUSE}")
         parts = {
             "subject": subject,
             "environment": env,
@@ -331,7 +338,10 @@ def build_storyboard(brief: str, *, style: str = "cinematic", target_seconds: fl
     title = (str(brief or "").strip()[:24] or motif["label"])
     return {
         "title": title,
+        "source": "原创（规则引擎生成，未引用任何受版权保护的既有作品设定）",
+        "setting": motif["theme_en"],
         "style": style,
+        "seconds": int(round(float(secs[0]))) if secs else 4,
         "theme": motif["theme_en"],
         "motif": motif_key,
         "motif_label": motif["label"],
