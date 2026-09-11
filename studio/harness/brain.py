@@ -150,13 +150,3 @@ def make_brain(cfg: dict = None) -> Brain:
                         extra=cfg.get('extra') or {})
     return RuleBrain()
 
-
-def brain_from_env(env=None) -> Brain:
-    """从环境变量挑大脑（创空间部署时用；页面 BYOK 面板优先于环境变量）。"""
-    import os
-    env = os.environ if env is None else env
-    return make_brain({
-        'agent_url': env.get('AGENT_URL', ''), 'agent_token': env.get('AGENT_TOKEN', ''),
-        'llm_base': env.get('LLM_BASE_URL', ''), 'llm_key': env.get('LLM_API_KEY', ''),
-        'llm_model': env.get('LLM_MODEL', ''),
-    })

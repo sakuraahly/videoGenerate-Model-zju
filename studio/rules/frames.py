@@ -110,7 +110,3 @@ def allocate_segments(total_seconds: float, n: int, *, min_seg: float = 2.0) -> 
         counts[i] = nxt
     return [round(f / FPS, 3) for f in counts]
 
-
-def valid_lengths() -> dict:
-    """常用时长 → 帧数对照（给页面/文档展示）。"""
-    return {("%ss" % round(f / FPS, 2)): f for f in frame_grid(400)}

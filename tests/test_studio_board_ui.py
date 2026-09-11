@@ -235,18 +235,6 @@ def test_notice_switches_when_key_filled():
                                                              'https://engine.example.com/v1'))
     assert '出片' in eng and '已配置' in eng
 
-
-def test_cfg_memory_is_session_scoped():
-    """页面填的值只缓存在进程内存、只认自己的会话 id（不落盘、不串会话）。"""
-    sid = studio_app.remember_cfg('', {'llm_key': 'sk-a', 'llm_base': 'https://a.example/v1'})
-    assert sid and len(sid) == 16
-    assert studio_app.recall_cfg(sid)['llm_key'] == 'sk-a'
-    sid2 = studio_app.remember_cfg('', {'llm_key': 'sk-b'})
-    assert sid2 != sid and studio_app.recall_cfg(sid2)['llm_key'] == 'sk-b'
-    assert studio_app.recall_cfg(sid)['llm_key'] == 'sk-a'
-    assert studio_app.recall_cfg('nope') == {}
-
-
 # ── 7) 连通性：失败必须分类说明（opener 注入假实现，不联网）───────────────────
 def test_llm_probe_requires_all_three_fields():
     res = studio_app.test_llm_connection('', '', '')
@@ -334,16 +322,6 @@ def test_delivery_panel_states_the_boundary(board):
                                                     'must_not_say': ['不要说已出片']}}}})
     assert '不要说已出片' in fake and '可以这样说' in fake and studio_app.BOUNDARY_NOTE in fake
 
-
-def test_capability_page_texts():
-    b = studio_app.boundary_diagram_md()
-    for needle in ('本空间', '契约', '访客自带', '不推理', '不连任何本机 GPU', 'jobs.jsonl'):
-        assert needle in b
-    m = studio_app.mode_explain_md()
-    for needle in ('仅生产计划', '真出片', 'ENGINE_BASE_URL', '规则引擎'):
-        assert needle in m
-
-
 # ── 9) 编排入口端到端（仍然是纯函数层）──────────────────────────────────────
 def test_plan_board_returns_full_renderable_board():
     board = studio_app.plan_board({'brief': BRIEF, 'style': 'cinematic', 'target_seconds': 45,
@@ -415,7 +393,7 @@ def test_board_stream_without_engine_does_not_pretend():
     """没配引擎时：照常出规划看板，但必须明说"本次只出生产计划"，不假装出片。"""
     out = list(studio_app.board_stream({'brief': BRIEF, 'target_seconds': 20}, cfg={}))
     assert out and isinstance(out[0][0], dict)
-    assert any(x[2] and '还没有配置引擎' in x[2] for x in out)
+    assert any(x[1] and '还没有配置引擎' in x[1] for x in out)
 
 
 def test_board_stream_with_engine_runs_segments():

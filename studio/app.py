@@ -114,12 +114,6 @@ def _session_client(sid: str, ov: dict):
     return sid, cli
 
 
-def session_count() -> int:
-    """当前活跃会话数（给运维/自检用）。"""
-    with _SESS_LOCK if _SESS_LOCK else __import__('contextlib').nullcontext():
-        return len(_SESS)
-
-
 def _shared_client():
     """进程级客户端（仅用于启动自检/无会话场景）。**不要用来处理用户请求**——
 
@@ -914,7 +908,7 @@ def board_html(board, model: str = '') -> str:
         _fold('角色分工与决策轨迹（5 个 Agent 分别做了什么）',
               board_roles_html(b) + board_trace_html(b)),
         _fold('剧本与台词', board_script_html(b)),
-        _fold('质检明细', board_critic_html(b)),
+        _fold('预检与质检明细', board_prelint_html(b) + board_critic_html(b)),
         _fold('生产包与交付', board_delivery_html(b)),
     ])
 
@@ -1107,13 +1101,13 @@ def board_stream(form: dict, cfg: dict = None, limit: int = 0, model: str = '',
         # （看板里只放 JSON 安全摘要：zip 字节进看板会把组件打挂）
         hold['board'] = out.get('board') if isinstance(out.get('board'), dict) else {}
         hold['kit_blob'] = out.get('kit_blob') if isinstance(out.get('kit_blob'), dict) else {}
-    yield out.get('board'), None, None                # None = 不改会话/提示
+    yield out.get('board'), None                      # None = 不改提示行
     if st is None:
         return
     eng = engine if engine is not None else build_engine(cfg)
     if eng is None or not eng.available():
-        yield st.board(), None, ('⚠️ 还没有配置引擎（ENGINE_BASE_URL）→ 本次只出'
-                                 '**生产计划 + 生产包**。填上引擎地址后再点「🚀 出片」即可逐段出片。')
+        yield st.board(), ('⚠️ 还没有配置引擎（ENGINE_BASE_URL）→ 本次只出'
+                           '**生产计划 + 生产包**。填上引擎地址后再点「🚀 出片」即可逐段出片。')
         return
     box = _queue.Queue()
 
@@ -1131,7 +1125,7 @@ def board_stream(form: dict, cfg: dict = None, limit: int = 0, model: str = '',
         try:
             kind, msg = box.get(timeout=2.0)
         except _queue.Empty:
-            yield st.board(), None, None                      # 心跳：让页面知道还在跑
+            yield st.board(), None                            # 心跳：让页面知道还在跑
             continue
         if kind == 'done':
             break
@@ -1140,7 +1134,7 @@ def board_stream(form: dict, cfg: dict = None, limit: int = 0, model: str = '',
                 st.log('orchestrator', 'engine_error', status='error', detail=msg)
             except Exception:                                 # noqa: BLE001
                 pass
-        yield st.board(), None, None
+        yield st.board(), None
 
     # 出片结束后**重打一次生产包**：包里 trace.json 必须含 engine 步骤与成片结果，
     # 否则下载到的 zip 只有"规划证据"，评审看不到"真出片"这一段（诚实性优先于省一次打包）。
@@ -1162,7 +1156,7 @@ def board_stream(form: dict, cfg: dict = None, limit: int = 0, model: str = '',
                           % type(e).__name__)
     if isinstance(hold, dict):
         hold['board'] = st.board()
-    yield st.board(), None, None
+    yield st.board(), None
 
 
 def plan_board(form: dict, cfg: dict = None, brain=None, engine=None) -> dict:
@@ -1187,21 +1181,6 @@ HARNESS_PROVIDER_PRESETS = {
         ('https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus'),
     '自定义(OpenAI 兼容)': ('', ''),
 }
-CFG_FIELDS = ('llm_base', 'llm_model', 'llm_key',
-              'engine_base', 'engine_status', 'engine_key', 'engine_model')
-
-_CFG_MEM = {}                       # sid -> {字段..., 'ts': float}（只在进程内存里）
-_CFG_LOCK = threading.Lock()
-_CFG_CAP = 200
-
-
-def _cfg_ttl() -> float:
-    try:
-        return max(60.0, float(os.environ.get('SESSION_TTL_SEC') or 7200))
-    except Exception:                                        # noqa: BLE001
-        return 7200.0
-
-
 def harness_provider_choices() -> list:
     return list(HARNESS_PROVIDER_PRESETS.keys())
 
@@ -1217,36 +1196,6 @@ def cfg_of_form(base, model, key, eng_base='', eng_status='', eng_key='', engine
     return {'llm_base': base or '', 'llm_model': model or '', 'llm_key': key or '',
             'engine_base': eng_base or '', 'engine_status': eng_status or '',
             'engine_key': eng_key or '', 'engine_model': engine_model or ''}
-
-
-def remember_cfg(sid: str, cfg: dict) -> str:
-    """把面板填的值（**含 key**）缓存进进程内存，只认这个会话 id；过期/超量自动回收。
-
-    sid 为空就新发一个不透明随机 id（和 agent_client 的会话登记同一套路数）。
-    这里**不落盘、不打印**：密钥的生命周期 = 这次会话。
-    """
-    import secrets
-    now = time.time()
-    sid = str(sid or '')
-    with _CFG_LOCK:
-        for k in [k for k, v in _CFG_MEM.items() if now - float(v.get('ts') or 0) > _cfg_ttl()]:
-            _CFG_MEM.pop(k, None)
-        if not sid:
-            sid = secrets.token_hex(8)
-        elif sid not in _CFG_MEM and len(_CFG_MEM) >= _CFG_CAP:
-            oldest = min(_CFG_MEM.items(), key=lambda kv: float(kv[1].get('ts') or 0))[0]
-            _CFG_MEM.pop(oldest, None)
-        rec = {'ts': now}
-        rec.update({k: ('' if cfg.get(k) is None else str(cfg.get(k))) for k in CFG_FIELDS})
-        _CFG_MEM[sid] = rec
-    return sid
-
-
-def recall_cfg(sid: str) -> dict:
-    """取回本会话缓存的配置（不含 ts；取不到就是空配置=规则引擎档）。"""
-    with _CFG_LOCK:
-        rec = _CFG_MEM.get(str(sid or ''))
-        return {k: v for k, v in (rec or {}).items() if k in CFG_FIELDS}
 
 
 def config_notice_md(cfg: dict = None) -> str:
@@ -1396,46 +1345,6 @@ def format_conn_result(res) -> str:
     return '❌ 失败：%s' % res.get('message')
 
 
-# ── 能力与部署页新增两段（纯文本，可单测）────────────────────────────────────
-def boundary_diagram_md() -> str:
-    """边界图：左「本空间」→ 中「契约」→ 右「访客自带」。"""
-    return """### 边界图：空间内**不推理**，模型全在访客侧
-```text
-┌────────────────────────────────┐   ┌────────────────────────────┐   ┌──────────────────────────────┐
-│ 左：本空间（魔搭免费 CPU）      │   │ 中：契约（唯一接口）        │   │ 右：访客自带（BYOK）          │
-│ · 0 个模型 / 0 权重 / 0 GPU     │   │ · ENGINE_* 请求体（一段一单）│   │ · 🤖 大脑：通用大模型 API     │
-│ · 只做编排/预检/质检/生产包      │──▶│ · jobs.jsonl（一行一段）    │──▶│   决定"怎么拍"（可选）        │
-│ · 密钥只在内存、随会话回收       │   │ · trace.json / accept.md    │   │ · 🎥 引擎：视频生成模型 API   │
-│ · 不连任何本机 GPU、不下载权重   │◀──│ · ENGINE_STATUS_URL 回执     │◀──│   真正出片（可选）            │
-└────────────────────────────────┘   └────────────────────────────┘   └──────────────────────────────┘
-```
-
-| 位置 | 有什么 | 没有什么（红线） |
-|---|---|---|
-| 本空间（免费 CPU） | 5 个 Agent 角色的编排、规则引擎、预检闸门、质检打分、可执行生产包、决策轨迹 | **不跑视频模型**、不下载权重、**不连任何本机 GPU**、不代付、不共享任何密钥 |
-| 契约（接口） | `ENGINE_BASE_URL` 的请求体（每段一单）、`jobs.jsonl`、`ENGINE_STATUS_URL` 回执、`trace.json` | 不规定你用什么模型、什么算力、什么云；契约之下完全自由 |
-| 访客自带 | 大脑（通用大模型 API，BYOK，页面可填）+ 引擎（视频生成模型 API，BYOK） | 空间不保存你的 key：只在内存里用一次，随会话回收 |"""
-
-
-def mode_explain_md() -> str:
-    """MODE 说明：未配引擎 = 仅生产计划；配了引擎 = 真出片。"""
-    return """### MODE：配了引擎才是「真出片」
-| MODE | 触发条件 | 交付物 | 可以怎么说（话术边界） |
-|---|---|---|---|
-| **仅生产计划**（默认） | 未填 `ENGINE_BASE_URL` | plan.json / jobs.jsonl / commands.md / accept.md / trace.json —— 复制即用 | "交付**可执行的生产包**，由你的引擎复现" |
-| **真出片** | 填了 `ENGINE_BASE_URL`（可选 `ENGINE_STATUS_URL` / `ENGINE_API_KEY`） | 上面全部 + 每段成片 | "分镜由本空间规划并质检，**成片由访客自带引擎生成**" |
-
-**三档大脑**（页面「🎛 模型配置」随时可切；规则引擎档永远可用，不需要任何 key）：
-
-| 档 | 条件 | 作用 |
-|---|---|---|
-| 平台 Agent | `AGENT_URL` + `AGENT_TOKEN` | 魔搭平台 Agent 扮演 5 个角色 |
-| 访客自带模型 | 页面填 Base URL + 模型名 + API Key（或 `LLM_*` 环境变量） | 任意 OpenAI 兼容大模型扮演 5 个角色；规则档同时出一版，Critic 判分择优 |
-| **内置规则引擎（默认）** | 什么都不填 | 零 key 跑完整条状态机：剧本 / 分镜 / 预检 / 质检 / 轨迹 / 生产包 |
-
-> **红线**：%s
-> 免费 CPU 档下，本页的"出片"一律指**在你的引擎上出片**；空间侧只产出可执行方案与验收判据。""" % BOUNDARY_NOTE
-
 def build_app(show: dict):
     import gradio as gr
 
@@ -1507,7 +1416,6 @@ def build_app(show: dict):
                 # 作用域只有一条：仅本会话内存（模块级 _CFG_MEM + 锁；不落盘、不进日志、不 print）。
                 # 未配置时这一行必须显眼：让评审第一眼就知道"没有 key 也拿得到完整产出"。
                 hcfg_notice = gr.Markdown(config_notice_md({}))
-                hcfg_sid = gr.State("")     # 只放不透明会话 id；key 只在服务端内存
                 with gr.Accordion("🎛 模型配置（可选）—— 大脑 / 引擎", open=False):
                     gr.Markdown("_都不填也能用：内置规则引擎会给出完整剧本 / 分镜 / 生产包。_"
                                 "凭据只在本次会话内存里，不落盘、不进日志。")
@@ -1540,7 +1448,7 @@ def build_app(show: dict):
 
                 # 配置面板的控件顺序 = cfg_of_form 的参数顺序（少一层翻译，少一处出错）
                 HCFG_IN = [hbase, hmodel, hkey, heng_base, heng_status, heng_key, heng_model]
-                HFULL_IN = HCFG_IN + [hcfg_sid]
+                HFULL_IN = HCFG_IN
 
                 def _apply_hpreset(name):
                     """选服务商 → 自动填 Base URL 与模型名（Key 永远要用户自己填）。"""
@@ -1549,32 +1457,29 @@ def build_app(show: dict):
 
                 hpreset.change(_apply_hpreset, [hpreset], [hbase, hmodel])
 
-                def _do_brain_test(base, model, key, eng_base, eng_status, eng_key, eng_model, sid):
+                def _do_brain_test(base, model, key, eng_base, eng_status, eng_key, eng_model):
                     """测试大脑：POST <base>/chat/completions（分类报错，绝不把 UI 打挂）。"""
                     cfg = cfg_of_form(base, model, key, eng_base, eng_status, eng_key, eng_model)
-                    sid = remember_cfg(sid, cfg)
                     return (format_conn_result(test_llm_connection(base, model, key)),
-                            config_notice_md(cfg), sid)
+                            config_notice_md(cfg))
 
-                htest_brain.click(_do_brain_test, HFULL_IN, [hbrain_out, hcfg_notice, hcfg_sid])
+                htest_brain.click(_do_brain_test, HFULL_IN, [hbrain_out, hcfg_notice])
 
-                def _do_engine_test(base, model, key, eng_base, eng_status, eng_key, eng_model, sid):
+                def _do_engine_test(base, model, key, eng_base, eng_status, eng_key, eng_model):
                     """测试引擎：有 ENGINE_STATUS_URL 就 GET 它，否则 POST ENGINE_BASE_URL。"""
                     cfg = cfg_of_form(base, model, key, eng_base, eng_status, eng_key, eng_model)
-                    sid = remember_cfg(sid, cfg)
                     return (format_conn_result(test_engine_connection(eng_base, eng_status, eng_key,
                                                                       eng_model)),
-                            config_notice_md(cfg), sid)
+                            config_notice_md(cfg))
 
-                htest_eng.click(_do_engine_test, HFULL_IN, [heng_out, hcfg_notice, hcfg_sid])
+                htest_eng.click(_do_engine_test, HFULL_IN, [heng_out, hcfg_notice])
 
-                def _do_apply_cfg(base, model, key, eng_base, eng_status, eng_key, eng_model, sid):
+                def _do_apply_cfg(base, model, key, eng_base, eng_status, eng_key, eng_model):
                     cfg = cfg_of_form(base, model, key, eng_base, eng_status, eng_key, eng_model)
-                    sid = remember_cfg(sid, cfg)
-                    return (config_notice_md(cfg), sid,
-                            "✅ 已应用到本会话（只在本进程内存里；换会话/刷新请重填）")
+                    return (config_notice_md(cfg),
+                            "✅ 已应用（凭据只在本次请求内存里用一次，不保存）")
 
-                happly.click(_do_apply_cfg, HFULL_IN, [hcfg_notice, hcfg_sid, happly_out])
+                happly.click(_do_apply_cfg, HFULL_IN, [hcfg_notice, happly_out])
                 # ── 🎬 一句话出片（多 Agent Harness）──────────────────────────────
                 with gr.Row():
                     hbrief = gr.Textbox(label="一句话", scale=4,
@@ -1599,10 +1504,9 @@ def build_app(show: dict):
                 hboard = gr.HTML(board_html(None))
 
                 def _run_board(brief, style, sec, cast, res, anchor, lic,
-                               base, model, key, eng_base, eng_status, eng_key, eng_model, sid):
+                               base, model, key, eng_base, eng_status, eng_key, eng_model):
                     """UI 包装：表单 + 面板配置 → 看板 + 可下载的生产包（纯函数层可单测）。"""
                     cfg = cfg_of_form(base, model, key, eng_base, eng_status, eng_key, eng_model)
-                    sid = remember_cfg(sid, cfg)
                     out = plan_board_full({'brief': brief, 'style': style, 'target_seconds': sec,
                                            'cast_mode': cast, 'resolution': res,
                                            'anchor': bool(anchor), 'assets_licensed': bool(lic)},
@@ -1612,41 +1516,40 @@ def build_app(show: dict):
                     # （它已在 launch(allowed_paths) 里，写别处 gradio 会把下载拦掉）
                     zip_path = save_kit_blob(out.get('kit_blob') or {})
                     return (board_html(board, model=str(cfg.get('llm_model') or '')),
-                            sid, config_notice_md(cfg), (zip_path or None), kit_note_md(board, zip_path))
+                            config_notice_md(cfg), (zip_path or None), kit_note_md(board, zip_path))
 
                 hrun.click(_run_board, [hbrief, hstyle, hsec, hcast, hres, hanchor, hlic] + HFULL_IN,
-                           [hboard, hcfg_sid, hcfg_notice, hkit_dl, hkit_note])
+                           [hboard, hcfg_notice, hkit_dl, hkit_note])
 
                 def _run_board_engine(brief, style, sec, cast, res, anchor, lic, limit,
                                       base, model, key, eng_base, eng_status, eng_key,
-                                      eng_model, sid):
+                                      eng_model):
                     """流式出片：先出规划看板，再逐段提交到访客自己的引擎，每段刷新一次。
 
                     生产包在**规划阶段**就已生成（引擎跑完不重打包），所以第一轮刷新起就能下载；
                     这里通过 board_stream(hold=...) 把它的全量字节取回来落盘。
                     """
                     cfg = cfg_of_form(base, model, key, eng_base, eng_status, eng_key, eng_model)
-                    sid = remember_cfg(sid, cfg)
                     mname = str(cfg.get('llm_model') or '')
                     form = {'brief': brief, 'style': style, 'target_seconds': sec,
                             'cast_mode': cast, 'resolution': res,
                             'anchor': bool(anchor), 'assets_licensed': bool(lic)}
                     hold, note, last, zip_path = {}, '', board_html(None), ''
-                    for board, _sid, extra in board_stream(form, cfg=cfg, limit=limit,
-                                                           model=mname, hold=hold):
+                    for board, extra in board_stream(form, cfg=cfg, limit=limit,
+                                                       model=mname, hold=hold):
                         if extra:
                             note = extra
                         if isinstance(board, dict):
                             last = board_html(board, model=mname)
                         if not zip_path and hold.get('kit_blob'):
                             zip_path = save_kit_blob(hold.get('kit_blob') or {})
-                        yield last, sid, (note or config_notice_md(cfg)), (zip_path or None), \
+                        yield last, (note or config_notice_md(cfg)), (zip_path or None), \
                             kit_note_md(hold.get('board') or board, zip_path)
 
                 hrun_eng.click(_run_board_engine,
                                [hbrief, hstyle, hsec, hcast, hres, hanchor, hlic, hlimit]
                                + HFULL_IN,
-                               [hboard, hcfg_sid, hcfg_notice, hkit_dl, hkit_note])
+                               [hboard, hcfg_notice, hkit_dl, hkit_note])
 
                 def _clear_board():
                     return ('', HARNESS_STYLES[0], 45, HARNESS_CAST_MODES[0], '480p', True, False,

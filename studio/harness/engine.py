@@ -249,27 +249,6 @@ class Engine:
             on_event("done", rec)
         return rec
 
-    def run_batch(self, directives, *, on_event=None, stop_on_fail: bool = False,
-                  limit: int = 0) -> dict:
-        """逐段跑完（段与段无依赖，但空间是 CPU 档：顺序跑更好观测、也更好续跑）。"""
-        rows = []
-        items = list(directives or [])
-        if limit:
-            items = items[:int(limit)]
-        for d in items:
-            rows.append(self.run(d, on_event=on_event))
-            if stop_on_fail and not rows[-1]["ok"]:
-                break
-        done = [r for r in rows if r["ok"]]
-        failed = [r for r in rows if not r["ok"]]
-        return {
-            "rows": rows, "done": len(done), "failed": len(failed),
-            "ok": bool(rows) and not failed,
-            "files": [r["file"] for r in done if r.get("file")],
-            "summary": "引擎出片：成功 %d 段 / 失败 %d 段（共 %d 段）"
-                       % (len(done), len(failed), len(rows)),
-        }
-
     def fetch(self, url: str) -> str:
         """取回成片到本地（复用 agent_client 的 SSRF 与文件名、大小上限加固）。失败返回空串。"""
         if not url or not str(url).startswith(("http://", "https://")):
