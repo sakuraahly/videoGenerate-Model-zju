@@ -108,8 +108,12 @@ class Engine:
                    env.get('ENGINE_API_KEY', ''), **kw)
 
     def available(self) -> bool:
-        """提交地址 + 状态地址都配了才算可用（缺状态地址只能提交、看不到结果）。"""
-        return bool(self.base_url and self.status_url)
+        """有**提交地址**就算可用。
+
+        只配提交地址 = 同步直返型引擎（POST 直接回 video_url，见 接口说明.md 协议 B）；
+        两样都配 = 异步作业型（推荐，长任务必须有地方查进度）。
+        """
+        return bool(self.base_url)
 
     def describe(self) -> str:
         if not self.base_url:
@@ -167,7 +171,7 @@ class Engine:
         if not jid:
             return self._fail("任务号不合法（只允许字母数字与 . _ : -，长度不超过 64）")
         if not self.status_url:
-            return self._fail("没有配置状态查询地址（ENGINE_STATUS_URL），无法得知进度")
+            return self._fail("没有配置状态查询地址（ENGINE_STATUS_URL），无法得知进度")  # 同步直返型不需要轮询
         try:
             d = self._get(self.status_url.rstrip("/") + "/" + jid)
         except urllib.error.HTTPError as e:
@@ -205,6 +209,9 @@ class Engine:
             rec["status"] = "completed"
             if not rec["ok"]:
                 rec["error"] = "引擎同步返回里没有成片地址"
+        elif not self.status_url:
+            rec["error"] = ("只配了提交地址，缺状态查询地址（ENGINE_STATUS_URL）→ 无法轮询成片；"
+                            "若你的引擎是同步直返，请让 POST 直接返回 video_url")
         else:
             deadline = time.time() + self.timeout
             while True:

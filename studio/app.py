@@ -821,7 +821,7 @@ def board_delivery_html(board) -> str:
                     % (_ST_MUTED, _esc(kit.get('name') or kit.get('zip_name') or '—'),
                        len(files), kit.get('bytes', 0), kit.get('shots', '—'), kit.get('seconds', '—'),
                        flist or '<li>（空）</li>', _ST_MUTED,
-                       _esc('用右边的「⬇️ 下载生产包」取走 zip：里面是 plan.json / jobs.jsonl / '
+                       _esc('点「⬇️ 下载生产包」取走 zip：里面是 plan.json / jobs.jsonl / '
                             'run_plan.py / accept.md / trace.json，复制即用。')))
     engine = dl.get('engine') if isinstance(dl.get('engine'), dict) else {}
     engine_html = ''
