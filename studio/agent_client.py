@@ -120,6 +120,32 @@ PLACEHOLDERS = {'', '-', '--', 'none', 'null', 'n/a', 'na', 'todo', 'tbd', 'xxx'
                 'changeme', 'placeholder', 'unset', '未配置', '未设置', '待填', '待配置'}
 
 
+
+# ---------- 本地运行便利：自动读取 .env（2026-09-10） ----------
+# 老师/同学下载后本地跑，只需要在 studio/ 下建一个 .env 填两个 key 即可，不必手动 export 环境变量。
+# 注意：.env 已在 .gitignore 里，**不会**被提交到空间仓库。
+def _load_dotenv():
+    import os as _os
+    here = Path(__file__).resolve().parent
+    for cand in (here / '.env', here.parent / '.env'):
+        try:
+            if not cand.is_file():
+                continue
+            for line in cand.read_text(encoding='utf-8-sig').splitlines():
+                s = line.strip()
+                if not s or s.startswith('#') or '=' not in s:
+                    continue
+                k, _, v = s.partition('=')
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
+                if k and v and not _os.environ.get(k):
+                    _os.environ[k] = v          # 已有的环境变量优先，不被 .env 覆盖
+        except Exception:  # noqa: BLE001
+            continue
+
+
+_load_dotenv()
+
 def _env(*names, default: str = '') -> str:
     for n in names:
         v = (os.environ.get(n) or '').strip()
@@ -192,9 +218,14 @@ class AgentClient:
         self.llm_key = self._cfg('LLM_API_KEY')
         self.llm_model = self._cfg('LLM_MODEL', default='qwen-plus')
         # 只接受合法 http(s) 地址：占位符/脏值一律当作未配置
-        self.engine_url = self._url(self._cfg('ENGINE_BASE_URL', 'VIDEO_API_URL'))
-        self.engine_key = self._cfg('ENGINE_API_KEY', 'VIDEO_API_KEY')
+        # 兼容三套命名（老用户/别的文档可能只配了其中一套）：
+        #   ENGINE_* = 现行契约；VIDEO_API_* = 更早的名字；REMOTE_API/STUDIO_TOKEN = 创作台后端那套
+        self.engine_url = self._url(self._cfg('ENGINE_BASE_URL', 'VIDEO_API_URL', 'REMOTE_API'))
+        self.engine_key = self._cfg('ENGINE_API_KEY', 'VIDEO_API_KEY', 'STUDIO_TOKEN')
         self.engine_status = self._url(self._cfg('ENGINE_STATUS_URL', 'VIDEO_API_STATUS_URL'))
+        if not self.engine_status and self.engine_url and self._cfg('REMOTE_API'):
+            # 旧后端契约：GET {REMOTE_API}/v1/jobs/{id} —— 自动补出状态地址，配一套变量就能用
+            self.engine_status = self.engine_url.rstrip('/') + '/v1/jobs'
         # 平台标准通道：AGENT_URL（社区指南里的「发布 Agent 只取 AGENT_URL」）优先于 LLM_*
         self.agent_url = self._url(self._cfg('AGENT_URL'))
         self.agent_token = self._cfg('AGENT_TOKEN')

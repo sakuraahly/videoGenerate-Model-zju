@@ -66,3 +66,8 @@ config/night-tasks.state.json
 .night.lock
   
 temp/  
+
+# 本地运行配置（含密钥，绝不入库）
+studio/.env
+.env
+
