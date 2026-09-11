@@ -413,7 +413,7 @@ MODE:     plan（默认）/ engine（探测到可用引擎）
 | **P1 生产包 + 质检闭环 + selfcheck** | ✅ 完成 | 生产包 9 个文件 zip（plan/jobs/commands/run_plan/accept/post.md/film.srt/trace/README）· Critic 规则轨判分（硬伤一票否决）→ 自动改写 → 有界重试 · `studio/selfcheck.py` 四段自检 → MODE · trace 导出 · **创作手记初版已写** |
 | **P2 引擎可选接入** | ✅ 完成（代码 + mock 引擎 L2） | `studio/harness/engine.py`：提交 → 轮询 → 取回；失败/超时如实上报；`run_harness(engine=…)` 走 ENGINE → DELIVER，成片回传 + 交付清单；`tests/e2e_studio_film.py --engine` 跑通 3 段全绿。**真机（真实引擎地址）尚未验证** —— 需要访客自带引擎或平台视频模型接口 |
 | **P3 超分/音频/字幕指令层** | ✅ 完成 | `studio/rules/post.py` + 生产包 post.md / film.srt；accept.md 增加后期与成片规格验收 |
-| **P4 交付物** | 🚧 进行中 | 创作手记已出初版（待补 P2/P3 实测结果）· README/接口说明/快速上手/config.yaml 待同步 · 页面制片看板与「模型配置」面板在改 · Notebook 可选 |
+| **P4 交付物** | ✅ 主体完成（Notebook 可选未做） | 创作手记 v2 · README/接口说明（新增协议 C）/快速上手/config.yaml 已同步 · 页面制片看板 + 「模型配置」面板 + 「🚀 出片」已上线 · **创空间 v3.5 已部署并 Running**（Space 仓库 67a94c4；线上实测看板 53389 字符 + 生产包 zip 18317B） |
 
 **测试事实（2026-09-11）**：`py -3 -m pytest tests -q` → **486 passed, 1 skipped**；
 `py -3 studio/selfcheck.py` → `SELFCHECK: OK ｜ RULES OK ｜ HARNESS OK ｜ KIT OK ｜ ENGINE OK ｜ MODE plan`；
