@@ -148,3 +148,66 @@ def place_output(repo: Path, cid: str, src: Path,
         return dst
     except OSError:
         return None
+
+# ---------- 反查兜底（2026-09-11 用户要求） ----------
+# 场景：任务在后台完成、或会话产物目录为空时，UI 结果区不该拿不到成片。
+# 做法：session 目录查不到 → 用**本会话记录过的 prompt_id** 去 workflows/*/job.json 反查任务目录，
+#       取其产物（job.json.videos 优先，其次该任务目录里最新的 mp4）。
+# 注意：这里**重新定义** latest_final（模块尾覆盖），所以所有 `from session_outputs import latest_final`
+#       的调用方（UI 结果区、下载列表）自动获得兜底，不必改 UI 代码。
+_latest_final_local = latest_final
+
+
+def _session_prompt_ids(repo: Path, cid: str) -> list:
+    """从会话 jsonl 里抽出出现过的任务号（UUID）。"""
+    import json as _json, re as _re
+    out = []
+    try:
+        f = Path(repo) / 'logs' / 'agent_chats' / ('%s.jsonl' % cid)
+        if not f.is_file():
+            return out
+        txt = f.read_text(encoding='utf-8', errors='replace')
+        for m in _re.findall(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}', txt):
+            if m not in out:
+                out.append(m)
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+def _product_of_task(repo: Path, task_dir: Path) -> Path:
+    import json as _json
+    try:
+        job = _json.loads((task_dir / 'job.json').read_text(encoding='utf-8-sig')) or {}
+        vids = job.get('videos') or []
+        for v in reversed(vids):
+            p = Path(str(v))
+            if not p.is_absolute():
+                p = Path(repo) / 'outputs' / p.name
+            if p.is_file():
+                return p
+    except Exception:  # noqa: BLE001
+        pass
+    cands = sorted((task_dir).glob('*.mp4'), key=lambda x: x.stat().st_mtime, reverse=True)
+    return cands[0] if cands else None
+
+
+def latest_final(repo: Path, cid: str):  # noqa: F811 —— 带反查兜底的新实现
+    p = _latest_final_local(repo, cid)
+    if p is not None:
+        return p
+    try:
+        for pid in reversed(_session_prompt_ids(repo, cid)):
+            for jobf in sorted(Path(repo).glob('workflows/*/job.json')):
+                try:
+                    import json as _json2
+                    if pid not in jobf.read_text(encoding='utf-8', errors='replace'):
+                        continue
+                except Exception:  # noqa: BLE001
+                    continue
+                got = _product_of_task(repo, jobf.parent)
+                if got is not None:
+                    return got
+    except Exception:  # noqa: BLE001
+        pass
+    return None
