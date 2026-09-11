@@ -43,6 +43,18 @@ class EngineError(RuntimeError):
     """引擎层错误（配置缺失 / 地址不可达 / 契约不符）。"""
 
 
+def _as_dict(text: str) -> dict:
+    """引擎回包 → dict。**不是 JSON 对象就抛 ValueError**（调用方按「引擎答歪了」处理）。
+
+    为什么必须挡：引擎可能回数组 / 字符串 / 空体，那样后续 d.get(...) 会抛 AttributeError
+    直接穿出去，把整条编排打成「异常」——与适配层「绝不抛异常」的承诺不符（单测已覆盖）。
+    """
+    obj = json.loads(text or "{}")
+    if not isinstance(obj, dict):
+        raise ValueError("引擎返回的不是 JSON 对象，而是 %s" % type(obj).__name__)
+    return obj
+
+
 def _first(d: dict, *names) -> str:
     """按顺序取第一个非空值（同一份配置的三套历史命名都认）。"""
     for n in names:
@@ -130,13 +142,13 @@ class Engine:
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
                                      headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as r:      # noqa: S310
-            return json.loads(r.read().decode("utf-8", "replace") or "{}")
+            return _as_dict(r.read().decode("utf-8", "replace"))
 
     def _get(self, url, timeout=60) -> dict:
         headers = {"Authorization": "Bearer " + self.api_key} if self.api_key else {}
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as r:      # noqa: S310
-            return json.loads(r.read().decode("utf-8", "replace") or "{}")
+            return _as_dict(r.read().decode("utf-8", "replace"))
 
     @staticmethod
     def _fail(detail, **kw) -> dict:
@@ -156,6 +168,8 @@ class Engine:
             return self._fail("HTTP %s：%s" % (e.code, body[:200]), status_code=e.code)
         except (urllib.error.URLError, OSError, ValueError) as e:
             return self._fail("%s: %s" % (type(e).__name__, str(e)[:200]))
+        if not isinstance(d, dict):        # 双保险：消费端只认 JSON 对象
+            return self._fail("引擎回包不是 JSON 对象：%s" % type(d).__name__)
         job_id = AgentClient._safe_job_id(d.get("job_id") or d.get("task_id") or d.get("id"))
         video = str(d.get("video_url") or d.get("video") or d.get("url") or "")
         if not job_id and video:            # 同步直返型引擎：一次调用就给成片
@@ -178,6 +192,8 @@ class Engine:
             return self._fail("HTTP %s" % e.code, status_code=e.code)
         except (urllib.error.URLError, OSError, ValueError) as e:
             return self._fail("%s: %s" % (type(e).__name__, str(e)[:160]))
+        if not isinstance(d, dict):        # 双保险：消费端只认 JSON 对象
+            return self._fail("引擎回包不是 JSON 对象：%s" % type(d).__name__)
         status = str(d.get("status") or d.get("state") or "").strip().lower()
         video = str(d.get("video_url") or d.get("video") or d.get("url") or d.get("output") or "")
         err = str(d.get("error") or d.get("message") or "")
@@ -185,7 +201,20 @@ class Engine:
 
     # ---------- 提交 → 轮询 → 取回 ----------
     def run(self, directive: dict, *, on_event=None, fetch: bool = True) -> dict:
-        """跑完一段：提交 → 轮询 → 取回成片。返回结构化结果，绝不抛异常。"""
+        """跑完一段：提交 → 轮询 → 取回成片。返回结构化结果，**绝不抛异常**。"""
+        try:
+            return self._run_inner(directive, on_event=on_event, fetch=fetch)
+        except Exception as e:                                  # noqa: BLE001
+            rec = {"idx": (directive or {}).get("idx"), "kind": "", "ok": False,
+                   "job_id": "", "status": "", "video_url": "", "file": "",
+                   "error": "适配层异常：%s: %s" % (type(e).__name__, str(e)[:160]),
+                   "elapsed": 0.0}
+            self.calls.append(rec)
+            if on_event:
+                on_event("done", rec)
+            return rec
+
+    def _run_inner(self, directive: dict, *, on_event=None, fetch: bool = True) -> dict:
         t0 = time.time()
         request = dict(directive.get("request") or {})
         rec = {"idx": directive.get("idx"), "kind": request.get("kind"), "ok": False,

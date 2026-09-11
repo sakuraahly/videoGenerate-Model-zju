@@ -433,6 +433,115 @@ class TestEngine:
         assert any(s.status == 'error' and s.action == 'engine_shot' for s in st.trace)
 
 
+
+
+# ── 引擎适配层：错误路径（全部离线，注入假 HTTP）──────────────────────────────
+class TestEngineEdges:
+    """边界与失败路径：HTTP 错、脏 JSON、脏任务号、状态永远未知、SSRF 取回。
+
+    这些路径以前只在"真出事"时才走到，属于最该有回归覆盖的地方。
+    """
+
+    def _eng(self, **kw):
+        from studio.harness.engine import Engine
+        return Engine("http://h/v1/jobs", "http://h/v1/jobs", kw.pop("key", ""),
+                      poll=0.01, timeout=kw.pop("timeout", 2), **kw)
+
+    def test_submit_http_500_is_reported(self):
+        import urllib.error
+        e = self._eng()
+
+        def boom(*a, **kw):
+            raise urllib.error.HTTPError("http://h", 500, "server error", {}, None)
+        e._post = boom
+        r = e.submit({"kind": "t2v"})
+        assert r["ok"] is False and "500" in r["error"] and r["status_code"] == 500
+
+    def test_submit_dirty_json_does_not_raise(self):
+        e = self._eng()
+
+        def boom(*a, **kw):
+            raise ValueError("Expecting value: line 1 column 1 (char 0)")
+        e._post = boom
+        r = e.submit({"kind": "t2v"})
+        assert r["ok"] is False and r["error"]
+
+    def test_engine_returning_json_array_is_reported(self):
+        """引擎回数组/字符串（不是 JSON 对象）时不能抛 AttributeError 穿出去。"""
+        e = self._eng()
+        e._post = lambda *a, **kw: ["not", "an", "object"]
+        r = e.submit({"kind": "t2v"})
+        assert r["ok"] is False and "JSON 对象" in r["error"]
+
+    def test_run_survives_unexpected_exception(self):
+        """适配层任何意外都落成结构化失败（绝不把异常抛给编排层）。"""
+        e = self._eng()
+        e.submit = lambda *a, **kw: (_ for _ in ()).throw(KeyError("boom"))
+        r = e.run({"idx": 3, "request": {"kind": "t2v"}})
+        assert r["ok"] is False and r["idx"] == 3 and "适配层异常" in r["error"]
+
+    def test_submit_missing_job_id_is_reported(self):
+        e = self._eng()
+        e._post = lambda *a, **kw: {"status": "accepted"}
+        r = e.submit({"kind": "t2v"})
+        assert r["ok"] is False and "job_id" in r["error"]
+
+    def test_job_id_path_traversal_is_rejected(self):
+        e = self._eng()
+        for bad in ("../../etc/passwd", "a/b", "x" * 80, "", "job id"):
+            assert e.query(bad)["ok"] is False, bad
+
+    def test_poll_unknown_status_forever_hits_timeout_honestly(self):
+        e = self._eng(timeout=30)
+        e._post = lambda *a, **kw: {"job_id": "abc123"}
+        e._get = lambda *a, **kw: {"status": "weird"}
+        e.timeout = 1
+        r = e.run({"idx": 0, "request": {"kind": "t2v"}}, fetch=False)
+        assert r["ok"] is False and "超时" in r["error"] and r["status"] == "weird"
+
+    def test_failed_status_carries_engine_message(self):
+        e = self._eng()
+        e._post = lambda *a, **kw: {"job_id": "abc123"}
+        e._get = lambda *a, **kw: {"status": "failed", "error": "显存不足"}
+        r = e.run({"idx": 0, "request": {"kind": "t2v"}}, fetch=False)
+        assert r["ok"] is False and "显存不足" in r["error"]
+
+    def test_completed_without_video_url_is_not_ok(self):
+        e = self._eng()
+        e._post = lambda *a, **kw: {"job_id": "abc123"}
+        e._get = lambda *a, **kw: {"status": "completed"}
+        r = e.run({"idx": 0, "request": {"kind": "t2v"}}, fetch=False)
+        assert r["ok"] is False and "没有给成片地址" in r["error"]
+
+    def test_fetch_refuses_metadata_url(self):
+        e = self._eng()
+        assert e.fetch("http://169.254.169.254/latest/meta-data/") == ""
+        assert e.fetch("file:///etc/passwd") == ""
+
+    def test_submit_without_base_url_is_reported(self):
+        from studio.harness.engine import Engine
+        r = Engine("", "", "").submit({"kind": "t2v"})
+        assert r["ok"] is False and "ENGINE_BASE_URL" in r["error"]
+
+    def test_probe_reports_bad_path(self):
+        import urllib.error
+        e = self._eng()
+
+        def boom(*a, **kw):
+            raise urllib.error.HTTPError("http://h", 404, "not found", {}, None)
+        e._post = boom
+        p = e.probe()
+        assert p["configured"] is True and p["reachable"] is False and "404" in p["detail"]
+
+    def test_run_never_raises_on_engine_exception(self):
+        e = self._eng()
+
+        def boom(*a, **kw):
+            raise RuntimeError("引擎内部炸了")
+        e._post = boom
+        r = e.run({"idx": 0, "request": {"kind": "t2v"}})
+        assert r["ok"] is False and "RuntimeError" in r["error"]
+
 # ── 生产包 ──────────────────────────────────────────────────────────────────
 class TestKit:
     def _st(self):

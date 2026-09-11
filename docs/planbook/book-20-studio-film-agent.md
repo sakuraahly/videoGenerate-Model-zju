@@ -289,7 +289,7 @@ L3 空间真机       浏览器，零配置                → 评委视角（�
 ### 8.2 L1
 
 ~~~bash
-py -3 -m pytest tests -q                        # 全量（当前 323 passed / 1 skipped）
+py -3 -m pytest tests -q                        # 全量（2026-09-11 核验：506 passed / 1 skipped）
 py -3 -m pytest tests/test_studio_harness.py -q # 新增
 py -3 runs/consistency_check.py
 ~~~
@@ -415,6 +415,6 @@ MODE:     plan（默认）/ engine（探测到可用引擎）
 | **P3 超分/音频/字幕指令层** | ✅ 完成 | `studio/rules/post.py` + 生产包 post.md / film.srt；accept.md 增加后期与成片规格验收 |
 | **P4 交付物** | ✅ 主体完成（Notebook 可选未做） | 创作手记 v2 · README/接口说明（新增协议 C）/快速上手/config.yaml 已同步 · 页面制片看板 + 「模型配置」面板 + 「🚀 出片」已上线 · **创空间 v3.5 已部署并 Running**（Space 仓库 67a94c4；线上实测看板 53389 字符 + 生产包 zip 18317B） |
 
-**测试事实（2026-09-11）**：`py -3 -m pytest tests -q` → **486 passed, 1 skipped**；
+**测试事实（2026-09-11 复核）**：`py -3 -m pytest tests -q` → **506 passed, 1 skipped**；
 `py -3 studio/selfcheck.py` → `SELFCHECK: OK ｜ RULES OK ｜ HARNESS OK ｜ KIT OK ｜ ENGINE OK ｜ MODE plan`；
 `py -3 tests/e2e_studio_film.py --inject fail` → `STUDIO_E2E_OK`（含一次自动改写重试）。
