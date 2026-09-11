@@ -44,6 +44,7 @@ MiniMax H3（Hailuo-03）**视频生成自动化工具集**：输入场景描述
 | 10c | `docs/planbook/book-18-quality-prompts-and-clarity.md` | **已实施完成**：质量提示词固化（Q+/Q- 每轮注入+防漂移断言）+ 语音/文字清晰度加强（取舍表已定；听测通过） | 已归档 |
 | 10d | `docs/history/pending-tasks-implementation.md` | **待做任务·实现规格（当前定稿）**：S1-S13 各任务现状/实现/验证/风险/回滚 + 约束事实表（供外部 AI 审核与实施；审核应答演变见 `docs/history/pending-tasks-changelog.md`） | 待实施 |
 | 10d′ | `docs/planbook/book-19-execution-ready.md` | **执行就绪计划书（19 审后）**：执行总纲/打开门禁/执行顺序与规格索引/统一验收判据/资源纪律/回滚/执行记录模板 | 实施执行者（按序动工前必读） |
+| 10d″ | `docs/planbook/book-20-studio-film-agent.md` | **计划·待批准（2026-09-11）**：创空间「电影 Agent」改造——把 studio/ 从单步工具调用器改成赛制定义的多 Agent Harness（编剧/分镜/导演/质检/剪辑 + 状态机 + 自评重试 + 合规闸门 + 可观测 trace）；含三层测试方案与引擎网关要求 | 待用户批准 |
 | 10e | `docs/history/pending-tasks-changelog.md` | **审核应答与修订历史（§14-§19 及后续轮次）**：仅供追溯，不指导实施 | 存档 |
 | 10f | `docs/handoff/handoff-2026-09-05-L-tasks.md` | **book-14 L1–L5 交接（已完成批次）**：独立执行 Agent 规格与坑速查 | 已归档 |
 | 11 | `docs/guides/dev-workflow.md` / `skills/dev-workflow.md` | **变更与交付工作流**：执行→修改→测试→自测通过→写入文档→双端核对→git 提交（含如何操作） | 所有改动者（改任何文件前必读） |

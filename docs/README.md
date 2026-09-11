@@ -25,7 +25,7 @@ docs/
 │   ├── session-summary.md           2026-09-05 前状态快照 + 20.x 轮次审计志
 │   ├── reference-2026-09-04.md / implementation-status-2026-09-04.md / optimization-plan-2026-09-04.md
 │   └── pending-tasks-changelog.md / pending-tasks-implementation.md   （S 系列审计/实现长卷）
-├── planbook/                计划书（book-00..19；进度看 book-19 §1 状态表）
+├── planbook/                计划书（book-00..20；进度看 book-19 §1 状态表）
 ├── agent-reading/           qwen agent 参考文档（read_doc 自动列出；改后 agent 重启生效）
 ├── agent-communication/     评审/协议/协作记录
 ├── reports/                 项目报告（如中期进展报告）
