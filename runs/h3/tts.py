@@ -89,8 +89,48 @@ def _sanitize_script(text: str) -> str:
     return t
 
 
-def _voice_key(voice: str) -> str:
-    """音色短名键（本地参考样本文件名）：全名→短名；未知→xiaoxiao。"""
+# 中文音色 / 英文音色（2026-09-11 修复：模型曾给中文台词配英文音色、或用英文念中文）
+_ZH_VOICES = ("xiaoxiao", "yunxi")
+_EN_VOICES = ("aria", "en-aria", "daler", "christopher")
+
+
+def match_voice_to_text(text: str, voice: str) -> str:
+    """按**文本语言**校正音色：中文台词配中文音色、英文台词配英文音色。
+
+    规则：
+      · 文本里中日韩字符占比 ≥ 20% → 视作中文：若音色是英文音色，替换为中文音色
+        （原本是英文男声 → yunxi，其余 → xiaoxiao）；
+      · 文本几乎全拉丁 → 视作英文：若音色是中文音色，替换为 aria（中文男声 yunxi → daler，若已登记）；
+      · voice 传 "auto"/空 → 直接按文本语言选。
+    返回可能被替换后的音色短名；替换时打印一行提示（不静默改参数）。
+    """
+    v = str(voice or "").strip().lower()
+    t = str(text or "")
+    if not t.strip():
+        return v or "xiaoxiao"
+    cjk = sum(1 for ch in t if "\u4e00" <= ch <= "\u9fff" or "\u3040" <= ch <= "\u30ff")
+    letters = sum(1 for ch in t if ch.isascii() and ch.isalpha())
+    is_zh = (cjk / max(1, cjk + letters)) >= 0.2
+    if v in ("", "auto", "h3", "native"):
+        return "xiaoxiao" if is_zh else "aria"
+    if is_zh and v in _EN_VOICES:
+        new = "yunxi" if ("daler" in v or "christopher" in v) else "xiaoxiao"
+        print(f"[音色校正] 台词是中文，音色 {v} 是英文音色 → 改用 {new}", flush=True)
+        return new
+    if (not is_zh) and v in _ZH_VOICES and letters >= 4:
+        new = "daler" if v == "yunxi" else "aria"
+        print(f"[音色校正] 台词是英文，音色 {v} 是中文音色 → 改用 {new}", flush=True)
+        return new
+    return v
+
+
+def _voice_key(voice: str, text: str = "") -> str:
+    """音色短名键（本地参考样本文件名）：全名→短名；未知→xiaoxiao。
+
+    传入 text 时会先做「音色 ↔ 语言」匹配（见 match_voice_to_text）。
+    """
+    if text:
+        voice = match_voice_to_text(text, voice)
     v = str(voice or "")
     for k, full in VOICE_ALIASES.items():
         if v == full:
@@ -126,7 +166,7 @@ def synth_local(text: str, out: Path, voice: str = DEFAULT_VOICE) -> float:
     if not Path(LOCAL_TTS_PY).is_file():
         raise ValueError(f"本地 TTS 环境缺失: {LOCAL_TTS_PY}（spark: python3 -m venv ~/ai/tts-venv "
                          f"&& pip install f5-tts modelscope && 下载魔搭 AI-ModelScope/F5-TTS）")
-    key = _voice_key(voice)
+    key = _voice_key(voice, text)
     ref_wav = _REF_DIR / f"{key}.wav"
     ref_txt = _REF_DIR / f"{key}.txt"
     if not ref_wav.is_file() or not ref_txt.is_file():
@@ -159,7 +199,7 @@ def synth_cosy(text: str, out: Path, voice: str = DEFAULT_VOICE,
     if not Path(COSY_TTS_PY).is_file():
         raise ValueError(f"CosyVoice2 环境缺失: {COSY_TTS_PY}（spark: python3 -m venv ~/ai/cosy-venv "
                          f"+ cosyvoice-src(源码) + 魔搭 iic/CosyVoice2-0.5B + 依赖链）")
-    key = _voice_key(voice)
+    key = _voice_key(voice, text)
     ref_wav = _REF_DIR / f"{key}.wav"
     ref_txt = _REF_DIR / f"{key}.txt"
     if not ref_wav.is_file() or not ref_txt.is_file():
