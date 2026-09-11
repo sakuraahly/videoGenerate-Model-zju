@@ -330,6 +330,103 @@ class TestCritic:
         assert 'CRITIC:' in rep['summary'] and 0 <= rep['score'] <= 10
 
 
+# ── 引擎适配层（P2：真出片） ────────────────────────────────────────────────
+class _FakeEngine:
+    """假引擎：不联网，只验 Harness 与引擎之间的契约（模式、回传、失败如实上报）。"""
+
+    def __init__(self, fail_idx=(), sync=False):
+        self.fail_idx = set(fail_idx)
+        self.sync = sync
+
+    def available(self):
+        return True
+
+    def describe(self):
+        return '假引擎（测试用）'
+
+    def summary(self, batch=None):
+        out = {'configured': True, 'host': 'fake', 'available': True, 'describe': self.describe()}
+        if batch:
+            out.update({'done': batch['done'], 'failed': batch['failed'],
+                        'summary': batch['summary'], 'rows': batch['rows']})
+        return out
+
+    def run_batch(self, directives, *, on_event=None, stop_on_fail=False, limit=0):
+        rows = []
+        for d in (directives or [])[:limit or None]:
+            ok = d['idx'] not in self.fail_idx
+            rows.append({'idx': d['idx'], 'kind': d['request']['kind'], 'ok': ok,
+                         'job_id': 'fake-%s' % d['idx'], 'status': 'completed' if ok else 'failed',
+                         'video_url': 'http://127.0.0.1:1/v.mp4' if ok else '',
+                         'file': '/tmp/shot_%02d.mp4' % d['idx'] if ok else '',
+                         'error': '' if ok else '假引擎：故意失败', 'elapsed': 0.1})
+        done = [r for r in rows if r['ok']]
+        return {'rows': rows, 'done': len(done), 'failed': len(rows) - len(done),
+                'ok': bool(rows) and len(done) == len(rows),
+                'files': [r['file'] for r in done],
+                'summary': '引擎出片：成功 %d 段 / 失败 %d 段（共 %d 段）'
+                           % (len(done), len(rows) - len(done), len(rows))}
+
+
+class TestEngine:
+    def test_not_available_without_both_urls(self):
+        from studio.harness.engine import Engine
+        assert Engine('http://h/v1/jobs', '', '').available() is False
+        assert Engine('http://h/v1/jobs', 'http://h/v1/jobs', '').available() is True
+        assert Engine.from_overrides({}).available() is False
+
+    def test_describe_is_honest_when_unconfigured(self):
+        from studio.harness.engine import Engine
+        assert '仅生产计划' in Engine('', '', '').describe()
+
+    def test_submit_reports_http_error_without_raising(self):
+        from studio.harness.engine import Engine
+        import urllib.error
+        eng = Engine('http://h/v1/jobs', 'http://h/v1/jobs', 'k')
+
+        def boom(*a, **kw):
+            raise urllib.error.HTTPError('http://h', 404, 'not found', {}, None)
+        eng._post = boom
+        r = eng.submit({'kind': 't2v'})
+        assert r['ok'] is False and '404' in r['error']
+
+    def test_query_rejects_bad_job_id(self):
+        from studio.harness.engine import Engine
+        eng = Engine('http://h/v1/jobs', 'http://h/v1/jobs')
+        assert eng.query('../../etc/passwd')['ok'] is False
+
+    def test_run_sync_engine_returns_video(self):
+        from studio.harness.engine import Engine
+        eng = Engine('http://h/v1/jobs', 'http://h/v1/jobs')
+        eng._post = lambda *a, **kw: {'video_url': 'http://h/v.mp4'}
+        r = eng.run({'idx': 0, 'request': {'kind': 't2v'}}, fetch=False)
+        assert r['ok'] is True and r['video_url'].endswith('v.mp4')
+
+    def test_summary_never_leaks_key(self):
+        from studio.harness.engine import Engine
+        s = Engine('http://user:pw@h/v1/jobs', 'http://h/v1/jobs', 'SECRET').summary()
+        assert 'SECRET' not in json.dumps(s) and 'pw' not in json.dumps(s)
+
+    def test_harness_runs_with_engine_and_reports_delivery(self):
+        st = _run(engine=_FakeEngine())
+        assert st.mode == 'engine' and st.state == S.DELIVER
+        eng = st.delivery['engine']
+        assert eng['done'] == len(st.shots) and eng['failed'] == 0
+        assert st.roles['editor']['status'] == 'ok'
+        assert any(s.action == 'engine_shot' for s in st.trace)
+
+    def test_harness_stays_in_plan_without_engine(self):
+        st = _run()
+        assert st.mode == 'plan' and st.state == S.READY
+
+    def test_engine_failure_is_reported_not_hidden(self):
+        st = _run(engine=_FakeEngine(fail_idx=(1,)))
+        eng = st.delivery['engine']
+        assert eng['failed'] == 1 and '失败' in eng['advice']
+        assert st.state == S.DELIVER          # 失败段不阻断交付，但会被如实标注
+        assert any(s.status == 'error' and s.action == 'engine_shot' for s in st.trace)
+
+
 # ── 生产包 ──────────────────────────────────────────────────────────────────
 class TestKit:
     def _st(self):

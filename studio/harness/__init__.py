@@ -9,6 +9,6 @@
     st.board()          # 制片看板（页面直接渲染）
     st.to_dict()        # 全量（含 trace）
 """
-from . import brain, critic, guards, roles, state      # noqa: F401
+from . import brain, critic, engine, guards, kit, roles, state      # noqa: F401
 
-__all__ = ['state', 'roles', 'critic', 'guards', 'brain']
+__all__ = ['state', 'roles', 'critic', 'guards', 'brain', 'kit', 'engine']

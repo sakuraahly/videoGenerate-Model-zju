@@ -419,12 +419,55 @@ def run_editor(st: _st.StoryState, will_have_kit: bool = True) -> dict:
     return delivery
 
 
+# ══ 6) 执行与交付：接了引擎就真出片（P2） ════════════════════════════════════
+def run_engine(st: _st.StoryState, eng, *, limit: int = 0, on_event=None) -> dict:
+    """把导演产出的生产指令逐段交给**访客自带**的引擎，并把成片回传。
+
+    这一步是"空间零算力"红线之外的部分：算力、费用、画质全在引擎侧，
+    空间只负责提交、轮询、取回与如实上报（成功几段、失败几段、为什么失败）。
+    """
+    if st.state == _st.KIT:
+        st.enter(_st.ENGINE)
+    t0 = time.perf_counter()
+    st.role_status('editor', 'running')
+    st.log('editor', 'engine_submit', status='info', via='engine',
+           detail='开始逐段提交到引擎：%s' % eng.describe(),
+           data={'host': (eng.summary() or {}).get('host', '')})
+    batch = eng.run_batch(st.directives, on_event=on_event, limit=limit)
+    for row in batch.get('rows') or []:
+        st.log('editor', 'engine_shot', status='ok' if row.get('ok') else 'error', via='engine',
+               detail='第 %s 段 %s（%ss）%s'
+                      % (row.get('idx'), '已成片' if row.get('ok') else '失败',
+                         row.get('elapsed') or 0,
+                         ('：' + str(row.get('error'))) if row.get('error') else ''),
+               data={k: row.get(k) for k in ('idx', 'kind', 'job_id', 'status', 'video_url',
+                                             'file', 'error', 'elapsed')})
+    st.delivery['engine'] = eng.summary(batch)
+    st.delivery['engine']['advice'] = _dl.resume_advice(
+        [r.get('idx') for r in (batch.get('rows') or []) if not r.get('ok')],
+        len(st.directives),
+        [r.get('idx') for r in (batch.get('rows') or []) if r.get('ok')])
+    st.role_status('editor', 'ok' if batch.get('ok') else 'warn',
+                   summary='%s ｜ %s' % (batch.get('summary'), st.roles['editor'].get('summary') or ''),
+                   ms=_now_ms(t0))
+    st.log('editor', 'engine_done', status='ok' if batch.get('ok') else 'warn', via='engine',
+           ms=_now_ms(t0), detail=batch.get('summary') or '')
+    st.enter(_st.DELIVER)
+    st.log('editor', 'deliver', status='info',
+           detail='交付：成片 %d 段 + 生产包%s'
+                  % (batch.get('done') or 0,
+                     '（失败 %d 段已如实标注）' % (batch.get('failed') or 0)
+                     if batch.get('failed') else ''))
+    return batch
+
+
 # ══ 编排主循环 ═══════════════════════════════════════════════════════════════
 def run_harness(brief: str, *, style: str = 'cinematic', target_seconds: float = 30.0,
                 cast_mode: str = 'solo', resolution: str = '', seed: str = '',
                 anchor: bool = False, assets_licensed: bool = False,
                 brain: Brain = None, max_retry: int = DEFAULT_MAX_RETRY,
-                want_kit: bool = True, kit_builder=None) -> _st.StoryState:
+                want_kit: bool = True, kit_builder=None,
+                engine=None, engine_limit: int = 0, on_event=None) -> _st.StoryState:
     """一次「一句话出片」的完整编排；返回 StoryState（看板 / trace 都在里面）。
 
     零 key 也能跑完（规则引擎档）；接了大脑则每个角色都能被真模型扮演，Critic 判分择优。
@@ -461,10 +504,18 @@ def run_harness(brief: str, *, style: str = 'cinematic', target_seconds: float =
         will_kit = bool(want_kit and kit_builder is not None)
         run_editor(st, will_have_kit=will_kit)
 
-        st.mode = 'plan'
-        st.enter(_st.READY)
-        st.log('orchestrator', 'ready', status='info',
-               detail='方案就绪（未接引擎）：%s' % ('生产包见下' if will_kit else '仅分镜与指令'))
+        engine_ready = bool(engine is not None
+                            and getattr(engine, 'available', lambda: False)())
+        if engine_ready:
+            st.mode = 'engine'
+            run_engine(st, engine, limit=engine_limit, on_event=on_event)
+            st.log('orchestrator', 'ready', status='info',
+                   detail='已接入引擎并出片：%s' % (st.delivery.get('engine', {}).get('summary') or ''))
+        else:
+            st.mode = 'plan'
+            st.enter(_st.READY)
+            st.log('orchestrator', 'ready', status='info',
+                   detail='方案就绪（未接引擎）：%s' % ('生产包见下' if will_kit else '仅分镜与指令'))
 
         if will_kit:
             # 打包放在**最后**：trace.json 里必须是完整轨迹（含这一步本身），不能是残的
@@ -503,8 +554,11 @@ def plan_request(form: dict = None, brain: Brain = None, **kw) -> _st.StoryState
     for k in ('anchor', 'assets_licensed', 'want_kit'):
         if k in form and k not in kw:
             kw[k] = bool(form[k])
+    if form.get('engine') is not None and 'engine' not in kw:
+        kw['engine'] = form['engine']
     return run_harness(brain=brain, **kw)
 
 
 __all__ = ['ROLES', 'ROLE_KEYS', 'run_harness', 'plan_request', 'run_storywriter',
-           'run_shotplanner', 'run_prelint', 'run_director', 'run_critic', 'run_editor']
+           'run_shotplanner', 'run_prelint', 'run_director', 'run_critic', 'run_editor',
+           'run_engine']

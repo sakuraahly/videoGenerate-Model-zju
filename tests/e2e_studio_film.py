@@ -72,15 +72,32 @@ class InjectBrain(B.Brain):
         }
 
 
+def make_engine(**kw):
+    """按环境变量/入参造一个引擎（没配就是 None = 仅生产计划档）。"""
+    import os as _os
+    from studio.harness.engine import Engine
+    ov = {'ENGINE_BASE_URL': kw.get('base') or _os.environ.get('ENGINE_BASE_URL', ''),
+          'ENGINE_STATUS_URL': kw.get('status') or _os.environ.get('ENGINE_STATUS_URL', ''),
+          'ENGINE_API_KEY': kw.get('key') or _os.environ.get('ENGINE_API_KEY', '')}
+    if not ov['ENGINE_BASE_URL']:
+        return None
+    return Engine.from_overrides(ov, poll=float(kw.get('poll') or 1.0),
+                                 timeout=int(kw.get('timeout') or 120))
+
+
 def run_e2e(brief: str, *, target_seconds: float = 30.0, cast_mode: str = 'solo',
-            inject: str = '', kit_dir: str = '', run_plan: bool = False) -> dict:
+            inject: str = '', kit_dir: str = '', run_plan: bool = False,
+            use_engine: bool = False, engine=None, engine_limit: int = 0) -> dict:
     brain = InjectBrain() if inject == 'fail' else None
+    eng = engine if engine is not None else (make_engine() if use_engine else None)
     st = R.run_harness(brief, target_seconds=target_seconds, cast_mode=cast_mode,
-                       brain=brain, kit_builder=K.build_kit)
+                       brain=brain, kit_builder=K.build_kit,
+                       engine=eng, engine_limit=engine_limit)
     out = {'state': st.state, 'errors': st.errors, 'shots': len(st.shots),
            'retries': st.retries, 'roles': {k: v['status'] for k, v in st.roles.items()},
            'score': (st.critic or {}).get('score'), 'kit': st.kit.get('name'),
-           'kit_bytes': st.kit.get('bytes')}
+           'kit_bytes': st.kit.get('bytes'), 'mode': st.mode,
+           'engine': (st.delivery or {}).get('engine') or {}}
     if kit_dir and st.kit_blob:
         out['kit_path'] = K.save_kit(st.kit_blob, kit_dir)
         out['plan'] = json.loads(st.kit_blob['files']['plan.json'])
@@ -110,6 +127,13 @@ def _print_report(rep: dict) -> None:
                 shot['idx'], shot['frames'], shot['seconds'],
                 ('台词：' + shot['line']['text']) if shot.get('line') else '静默',
                 (shot['prompt'] or '')[:56]))
+    eng = rep.get('engine') or {}
+    if rep.get('mode') == 'engine':
+        print('引擎：%s' % eng.get('summary'))
+        for row in eng.get('rows') or []:
+            print('  [%s] %s ｜ job=%s ｜ %ss ｜ %s' % (
+                row.get('idx'), '成片' if row.get('ok') else '失败', row.get('job_id'),
+                row.get('elapsed'), row.get('file') or row.get('error')))
     if rep.get('run_plan_rc') is not None:
         print('run_plan.py 退出码：%s' % rep['run_plan_rc'])
         print((rep.get('run_plan_tail') or '').strip()[-800:])
@@ -126,21 +150,25 @@ def main(argv=None) -> int:
     ap.add_argument('--inject', default='', choices=['', 'fail'],
                     help='fail = 注入第 2 段台词写进画面提示词的错误，验证自动改写重试')
     ap.add_argument('--kit-dir', default='/tmp/studio_e2e')
+    ap.add_argument('--engine', action='store_true',
+                    help='用 Harness 自己的引擎适配层真出片（需要 ENGINE_* 环境变量）')
+    ap.add_argument('--engine-limit', type=int, default=0, help='只跑前 N 段（省时间）')
     ap.add_argument('--run-plan', action='store_true',
                     help='用生产包里的 run_plan.py 真的跑一遍（需要 ENGINE_* 环境变量）')
     ap.add_argument('--json', action='store_true')
     args = ap.parse_args(argv)
 
     rep = run_e2e(args.brief, target_seconds=args.seconds, cast_mode=args.cast,
-                  inject=args.inject, kit_dir=args.kit_dir, run_plan=args.run_plan)
+                  inject=args.inject, kit_dir=args.kit_dir, run_plan=args.run_plan,
+                  use_engine=args.engine, engine_limit=args.engine_limit)
     if args.json:
         print(json.dumps(rep, ensure_ascii=False, indent=2))
     else:
         _print_report(rep)
 
     problems = []
-    if rep['state'] != S.READY:
-        problems.append('状态机没有走到 READY：%s %s' % (rep['state'], rep['errors']))
+    if rep['state'] not in (S.READY, S.DELIVER):
+        problems.append('状态机没有走到 READY/DELIVER：%s %s' % (rep['state'], rep['errors']))
     if not rep['kit']:
         problems.append('没有生成生产包')
     if rep['shots'] < 3:
@@ -154,8 +182,14 @@ def main(argv=None) -> int:
             problems.append('改写后段均分仍然过低：%s' % rep['score'])
     if args.run_plan and rep.get('run_plan_rc') not in (0, 2):
         problems.append('run_plan.py 退出码异常：%s' % rep.get('run_plan_rc'))
-    if not os.environ.get('ENGINE_BASE_URL') and args.run_plan:
-        problems.append('--run-plan 需要 ENGINE_BASE_URL / ENGINE_STATUS_URL')
+    if not os.environ.get('ENGINE_BASE_URL') and (args.run_plan or args.engine):
+        problems.append('--run-plan / --engine 需要 ENGINE_BASE_URL / ENGINE_STATUS_URL')
+    if args.engine and rep.get('mode') != 'engine':
+        problems.append('配了引擎但 MODE 不是 engine：%s' % rep.get('mode'))
+    if args.engine:
+        eng = rep.get('engine') or {}
+        if not eng.get('done'):
+            problems.append('引擎一段都没出片：%s' % eng.get('summary'))
 
     if problems:
         for p in problems:
