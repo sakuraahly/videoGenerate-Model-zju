@@ -433,6 +433,36 @@ def _task_folder_for_prompt(project_dir: Path, prompt_id: str) -> Optional[Path]
     return None
 
 
+def _breakpoint_is_stale(project_dir: Path, prompt_id: str) -> bool:
+    """断点是否已陈旧（该任务其实**已完成**）：任务记录 state=completed，或本机已有产物。
+
+    背景（2026-09-11 现场）：watcher 的 --resume 中途被杀（服务重启）→ 进程已执行
+    save_root_state（记 remote_path）但没跑到结尾的 clear_root_state → last_job.json 残留
+    → 之后**每一次新生成**都被"检测到上次任务尚未完成"拦死（界面表现为"点了没反应"）。
+    这里用项目自己的任务审计记录判断：任务确实完成了就不是真断点，清掉放行。
+    """
+    pid = str(prompt_id or "").strip()
+    if not pid:
+        return False
+    try:
+        tf = _task_folder_for_prompt(Path(project_dir), pid)
+        if tf is not None:
+            job = jobstate.read_json(jobstate.task_job_path(Path(project_dir), tf)) or {}
+            if str(job.get("state") or "") == "completed":
+                return True
+    except OSError:
+        pass
+    # 兜底：质量看板已有该任务的本机产物（只会在产物落盘后登记）= 已完成
+    try:
+        from h3 import quality as _q
+        if any(str(r.get("prompt_id") or "") == pid
+               for r in _q.load(Path(project_dir))):
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
 def _read_text_source(text: Optional[str], path: Optional[Path],
                       stage_default: Optional[Path], what: str) -> str:
     """文本取值优先级：--xx 文本 > --xx-file > 阶段默认文件 > ''。"""
@@ -1022,11 +1052,19 @@ def main(argv: Optional[list] = None) -> int:
     # 仅在“即将开新任务”时才拦截遗留断点；带 --resume 的续传不受影响
     if (not resume_id and _has_new_task_args(args)
             and root_state.get("prompt_id") and not args.force_new):
-        _err("检测到上次任务尚未完成（断点存在: "
-             f"{root_state.get('prompt_id')}）。若上次任务只是超时/中断，"
-             "可直接无参数重跑自动续传继续等待；若确要开新任务，请先删除 "
-             f"{jobstate.root_state_path(project_dir)}，或加 --force-new 强制新开。")
-        return EXIT_DETERMINISTIC
+        _old_pid = str(root_state.get("prompt_id") or "")
+        if _breakpoint_is_stale(project_dir, _old_pid):
+            # 陈旧断点（任务其实已经完成）自动清理放行——否则残留断点会把后续所有
+            # 新生成都拦死，用户看到的就是"点了没反应"（2026-09-11 现场）
+            jobstate.clear_root_state(project_dir)
+            _log_event(f"stale_breakpoint_cleared prompt_id={_old_pid}")
+            print(f"[提示] 清理陈旧断点 {_old_pid}（该任务已完成），继续开新任务。", flush=True)
+        else:
+            _err("检测到上次任务尚未完成（断点存在: "
+                 f"{_old_pid}）。若上次任务只是超时/中断，"
+                 "可直接无参数重跑自动续传继续等待；若确要开新任务，请先删除 "
+                 f"{jobstate.root_state_path(project_dir)}，或加 --force-new 强制新开。")
+            return EXIT_DETERMINISTIC
 
     stage_id = "t2v"
     wf: Optional[dict] = None

@@ -195,11 +195,20 @@ def place_output(repo: Path, cid: str, src: Path,
 #   * 产物只落在 <repo>/outputs/，没人再执行 place_output。
 # 做法：会话档 <cid>.jsonl 里出现过 prompt_id（模型汇报/工具输出都会复述）→
 #   在 workflows/*/job.json 里反查命中该任务 → 取该任务的**本机产物**。
-# 产物来源（按可靠性排序）：
-#   a) job.json.output_file（任务完成时 h3_submit 写入，ComfyUI 侧文件名）→ outputs/<name>
-#   b) 该任务自己的运行日志的 LOCAL_OUTPUT 行（h3_submit 直跑落盘处）
-#   c) 提到该 prompt_id 的运行日志的 LOCAL_OUTPUT 行（job.json 缺 log_file 的老任务）
-#   d) 任务目录里的 mp4（最老的形态）
+# 产物来源（按可靠性排序，2026-09-11 spark 真机实测口径）：
+#   a) job.json.output_file（任务完成时 h3_submit 写入）→ outputs/<name>
+#      ⚠ 它是 **ComfyUI 侧的文件名**（如 MiniMax_H3_00363_.mp4）；本机副本会被
+#        _next_output_name 改名成 outputs/video_N.mp4 → 本机通常**不存在**，只是候选之一；
+#   b) 该任务自己的运行日志（job.json.log_file 的 basename → <repo>/logs/<name>）里的
+#      **产物事件行**：local_output file=video_N.mp4 / tts_done file=video_N_pp.mp4 /
+#      postprocess_done / mix_ref_done / upscale_done ……
+#      —— 这是本机唯一可靠的产物出处（实测形态）。注意 h3_submit 的
+#      print("LOCAL_OUTPUT: …") 走的是**子进程 stdout**，被 run_script / watcher 的
+#      capture_output 吞掉，**不会进日志文件**；真正落进日志的是 _log_event 写的
+#      这些 key=value 行（handoff §2.1 "只扫 LOCAL_OUTPUT 行" 的假设在真机上不成立）。
+#   c) logs/quality.jsonl 里该 prompt_id 的记录（append-only，pid→本机文件名直接映射）
+#   d) 提到该 prompt_id 的运行日志（job.json 缺 log_file 的老任务）
+#   e) 任务目录里的 mp4（最老的形态）
 # 铁律：
 #   * job.json.videos/audios 是**输入**参考素材（resume 恢复用，见 h3_submit
 #     record_task_start / --resume 的 _jv 分支），绝不可当成成品回传——
@@ -212,6 +221,14 @@ _LOG_SCAN_LIMIT = 60                               # 反查日志上限（按 mt
 _MEDIA_EXTS = VIDEO_EXTS + ('.png', '.jpg', '.jpeg', '.webp')
 _REVERSE_TTL = 5.0                                 # 反查结果记忆（UI 定时刷新用）
 _reverse_cache: dict = {}
+
+# 「成品」判定：这些事件名/文件名标记代表已过配音/字幕/后期的终版（UI 回传的就是它）
+_FINAL_EVENTS = ('tts_done', 'tts_out', 'postprocess_done', 'mix_ref_done', 'mix_done',
+                 'attach_done', 'upscale_done', 'final_done')
+_FINAL_HINTS = ('_final', '_pp', '_mix', 'tts')
+# 运行日志产物事件行：<event> file=<name> [k=v ...]（h3_submit 全链统一格式）
+_EVENT_FILE_RE = None   # 惰性编译（见 _products_from_log）
+_QUALITY_JSONL = ('logs', 'quality.jsonl')
 
 
 def _session_prompt_ids(repo: Path, cid: str) -> list:
@@ -248,17 +265,33 @@ def _task_log_paths(repo: Path, task_dir: Path, job: dict) -> list:
             Path(task_dir) / name]                 # 历史形态：日志曾与任务同目录
 
 
-def _outputs_from_log(repo: Path, log_path) -> list:
-    """运行日志里的 LOCAL_OUTPUT 行 → 本机产物路径（相对路径按项目根解析）。
+def _products_from_log(repo: Path, log_path) -> list:
+    """任务运行日志 → 本机产物候选 [(路径, 层级)]；层级 0=成品（配音/后期后），1=队列直出。
 
-    用「整行取值」而不是非空白分词：产物名可能含空格/中文（用户提示词命名）。
+    认这些行（都由 _log_event 写进日志文件）：
+      * local_output file=video_N.mp4 bytes=…（直跑落盘）
+      * tts_done / postprocess_done / mix_ref_done / upscale_done … file=video_N_pp.mp4（成品）
+      * LOCAL_OUTPUT: outputs/video_N.mp4（老的 stdout 行，若哪天被写进日志也认；
+        用整行取值而不是非空白分词——产物名可能含空格/中文）
     """
+    global _EVENT_FILE_RE
     import re as _re
+    # 只认**白名单事件名**（其他行不可能误伤；新事件未登记= 不认，宁漏不错）。不能用贪心前缀：
+    # 日志行前有 [时间戳] py: 前缀，贪心前缀会把事件名吞成单个字母。
+    if _EVENT_FILE_RE is None:
+        _EVENT_FILE_RE = _re.compile(
+            r'\b(%s)\s+file=(\S+)' % '|'.join(('local_output',) + _FINAL_EVENTS))
     out: list = []
     try:
         text = Path(log_path).read_text(encoding='utf-8', errors='replace')
     except OSError:
         return out
+    for m in _EVENT_FILE_RE.finditer(text):
+        event, name = m.group(1).lower(), m.group(2).strip()
+        if Path(name).suffix.lower() not in _MEDIA_EXTS:
+            continue
+        out.append((Path(repo) / 'outputs' / Path(name).name,
+                    0 if event in _FINAL_EVENTS else 1))
     for m in _re.finditer(r'LOCAL_OUTPUT:\s*(.+?)\s*$', text, _re.MULTILINE):
         raw = m.group(1).strip().strip('"').strip("'")
         if not raw:
@@ -266,27 +299,67 @@ def _outputs_from_log(repo: Path, log_path) -> list:
         p = Path(raw)
         if p.suffix.lower() not in _MEDIA_EXTS:
             continue
-        out.append(p if p.is_absolute() else Path(repo) / p)
+        out.append((p if p.is_absolute() else Path(repo) / p, 1))
     return out
 
 
-def _newest_existing(cands: list):
-    """候选中挑真实存在且 mtime 最新的一个（同任务多产物=取最后落盘的终版）。"""
-    best, best_t = None, -1.0
+def _products_from_quality(repo: Path, prompt_id: str) -> list:
+    """logs/quality.jsonl 里该 prompt_id 的记录 → [(outputs/<name>, 1)]。
+
+    质量看板是 append-only 的 pid→本机文件名直接映射（h3_submit 落盘时登记），
+    运行日志丢了/轮转过时仍可定位；按 pid 精确匹配，不会串任务。
+    """
+    pid = str(prompt_id or '').strip()
+    if not pid:
+        return []
+    import json as _json
+    out: list = []
+    try:
+        f = Path(repo).joinpath(*_QUALITY_JSONL)
+        if not f.is_file():
+            return out
+        with open(f, encoding='utf-8', errors='replace') as fh:
+            for line in fh:
+                if pid not in line:
+                    continue
+                try:
+                    rec = _json.loads(line) or {}
+                except Exception:  # noqa: BLE001
+                    continue
+                if str(rec.get('prompt_id') or '') != pid:
+                    continue
+                name = Path(str(rec.get('path') or '')).name
+                if name and Path(name).suffix.lower() in _MEDIA_EXTS:
+                    out.append((Path(repo) / 'outputs' / name, 1))
+    except OSError:
+        return out
+    return out
+
+
+def _pick_product(cands: list):
+    """候选中挑一个真实存在的产物：**成品优先**（层级 0 / 成品命名），同级取最新。
+
+    同任务常有多份（队列直出 video_N.mp4 + 配音合并 video_N_pp.mp4；重跑还有 N+1…），
+    回传给用户的必须是终版而不是队列直出。
+    """
+    best, best_key = None, None
     for c in cands:
-        c = Path(c)
+        p, tier = (c if isinstance(c, (tuple, list)) else (c, 1))
+        p = Path(p)
         try:
-            if not c.is_file():
+            if not p.is_file():
                 continue
         except OSError:
             continue
-        t = _mtime(c)
-        if t > best_t:
-            best, best_t = c, t
+        if tier != 0 and any(k in p.stem.lower() for k in _FINAL_HINTS):
+            tier = 0                       # 命名即成品（_pp/_final/_mix/tts）
+        key = (int(tier), -_mtime(p), p.name)
+        if best_key is None or key < best_key:
+            best, best_key = p, key
     return best
 
 
-def _product_of_task(repo: Path, task_dir: Path):
+def _product_of_task(repo: Path, task_dir: Path, prompt_id: str = ''):
     """取某任务的成品路径（本机文件；找不到返回 None）。只认输出，不认输入素材。"""
     import json as _json
     job: dict = {}
@@ -295,17 +368,19 @@ def _product_of_task(repo: Path, task_dir: Path):
     except Exception:  # noqa: BLE001
         job = {}
     cands: list = []
-    # a) 完成时写入的 output_file（ComfyUI 侧文件名，本机副本在 outputs/）
+    # a) 完成时写入的 output_file（ComfyUI 侧文件名；本机副本常被改名，故只是候选之一）
     name = Path(str(job.get('output_file') or '')).name
     if name:
-        cands.append(Path(repo) / 'outputs' / name)
-    # b) 任务自己的日志
+        cands.append((Path(repo) / 'outputs' / name, 1))
+    # b) 任务自己的运行日志的产物事件行（真机唯一可靠出处：local_output / tts_done …）
     for lf in _task_log_paths(repo, task_dir, job):
-        cands.extend(_outputs_from_log(repo, lf))
-    got = _newest_existing(cands)
+        cands.extend(_products_from_log(repo, lf))
+    # c) 质量看板：pid → 本机文件名（运行日志缺失时的直连映射）
+    cands.extend(_products_from_quality(repo, str(job.get('prompt_id') or prompt_id)))
+    got = _pick_product(cands)
     if got is not None:
         return got
-    # c) 最老形态兜底：任务目录里的 mp4
+    # d) 最老形态兜底：任务目录里的 mp4
     try:
         vids = sorted(task_dir.glob('*.mp4'), key=_mtime, reverse=True)
     except OSError:
@@ -356,12 +431,12 @@ def _reverse_scan(repo: Path, cid: str):
     """真正的反查：会话档 prompt_id（新→旧）→ 任务 job.json / 任务日志 → 成品文件。"""
     for pid in reversed(_session_prompt_ids(repo, cid)):
         for jobf in _job_files_for(repo, pid):
-            got = _product_of_task(repo, jobf.parent)
+            got = _product_of_task(repo, jobf.parent, pid)
             if got is not None:
                 return got
-        # job.json 缺失/无 output_file/log_file 的老任务：靠本任务日志里的 LOCAL_OUTPUT
+        # job.json 缺失/无 output_file/log_file 的老任务：靠本任务日志里的产物事件行
         for lf in _logs_for_prompt(repo, pid):
-            got = _newest_existing(_outputs_from_log(repo, lf))
+            got = _pick_product(_products_from_log(repo, lf))
             if got is not None:
                 return got
     return None

@@ -1868,6 +1868,14 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                                             text = _tw.build_notify_message(
                                                 "run_timeout", pid, elapsed=el)
                                     if ekey and not _tw.p1_was(cid, pid):
+                                        # 去重前置（2026-09-11 现场修复）：原来 --resume 在去重门**之外**，
+                                        # 每个 15s 轮询周期都会把同一个已完成任务重下 + 重跑 TTS，
+                                        # 实测 5 分钟生成 5 份重复产物（video_620..624_pp.mp4），
+                                        # 结果区也被反复顶掉。已有处理记录 → 连取片一起跳过（注释里的「幂等」即本意）。
+                                        key = _tw.notify_key(cid, pid, ekey)
+                                        if key in notified:
+                                            continue
+                                        notified.add(key)
                                         # 产物落盘保障（2026-09-06 现场问题：send 提前结束时任务完成
                                         # 但无人 resume → 视频只在 ComfyUI output，spark 项目 outputs 缺失）。
                                         # watcher 接管路径=注入前先 resume（幂等；失败不阻断通知）。
@@ -1893,11 +1901,8 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                                                 continue
                                         except Exception:  # noqa: BLE001
                                             pass
-                                        key = _tw.notify_key(cid, pid, ekey)
-                                        if key not in notified:
-                                            notified.add(key)
-                                            _tw._log_tw("p1_inject_single cid=%s pid=%s ev=%s" % (cid, pid[:8], ekey))
-                                            _inject_notify(cid, text)
+                                        _tw._log_tw("p1_inject_single cid=%s pid=%s ev=%s" % (cid, pid[:8], ekey))
+                                        _inject_notify(cid, text)
                                 elif task.get("type") == "batch":
                                     r = _tw.poll_batch(str(task.get("manifest") or ""))
                                     st = r.get("status")
