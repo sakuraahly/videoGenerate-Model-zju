@@ -51,6 +51,8 @@ _pending_batch_id: str | None = None  # 当前待发送批次的 batch_id
 _gal_previews: list = []  # 兼容旧引用（保留）
 _gal_by_cid: dict = {}  # book-16：预览按会话隔离（cid -> list）
 _TURN_TOOL_LOGS: list = []  # §15d 真实性校验：本轮工具调用审计（(name, output)），run_turn 每轮重置
+RESULTS_POLL_SEC = 5  # 结果区自动回传轮询间隔（2026-09-11）：后台完成/服务重启后无需用户操作
+_RESULTS_SHOWN: dict = {}  # cid -> (预览值, 下载列表)：轮询时值没变就不回写（不打断视频播放）
 
 
 # ---------------------------------------------------------------- 状态栏 HTML 常量
@@ -1001,32 +1003,70 @@ def _up_status_for(cid: str) -> str:
     return UP_IDLE
 
 
-def _results_update(cid: str):
+def _results_update(cid: str, quiet: bool = False):
     """§15d 会话结果区刷新：gr.Video 预览最新成片 + gr.File 全部产物下载；空态提示。
 
     与 _pool_update 同模式：每个 send yield / 会话加载时调用（cid 为会话 id）。
+    2026-09-11 修复「生成好的任务没有自动回传到 UI 界面」：
+      * 刷新前先 adopt_outputs()——后台完成（--submit-only / watcher 接管 / 服务重启后
+        会话上下文丢失）的任务，产物只在 <repo>/outputs/，这里反查出来**回写**会话目录
+        （Gradio 只服务 allowed_paths 内的文件，不回写会「查得到、放不出来」）；
+      * 会话目录为空但反查命中时**也要显示**：原实现 `if not vids: return "暂无结果"`
+        把反查结果整个丢掉——这就是回传断链的最后一公里；
+      * 预览位只放视频（成品是图片等非视频时退回最新视频，不把 png 塞给 gr.Video）；
+      * quiet=True（定时器轮询口径）：展示值没变就返回 no-op，避免每轮重载视频打断播放。
     """
     import gradio as _gr
     try:
         from runs.h3.session_outputs import latest_final as _soc_latest_final
-        vids = _soc_session_videos(Path(PROJECT_ROOT), cid)      # 成品在前
-        if not vids:
-            return (_gr.update(value=None, label='本轮结果视频（暂无结果）'),
-                    _gr.update(value=None, label='本轮结果文件（暂无）'))
-        files = _soc_session_files(Path(PROJECT_ROOT), cid)
-        _final = _soc_latest_final(Path(PROJECT_ROOT), cid)
+        from runs.h3.session_outputs import adopt_outputs as _soc_adopt
+        repo = Path(PROJECT_ROOT)
+        _soc_adopt(repo, cid)                     # 反查兜底 + 回写（幂等；失败不影响展示）
+        vids = _soc_session_videos(repo, cid)     # 成品在前
+        _final = _soc_latest_final(repo, cid)
+        if _final is not None and not Path(_final).is_file():
+            _final = None
+        files = [str(p) for p in _soc_session_files(repo, cid)]
         # 2026-09-10 用户要求：回传/下载给用户的必须是**成品**（配音/字幕/后期后的终版），
         # 不是队列直出产物；成品由 session_outputs.mark_final 打标，此处优先展示。
-        if _final is not None and Path(_final).is_file():
-            _rest = [p for p in files if Path(p).resolve() != Path(_final).resolve()]
-            _downloads = [str(_final)] + [str(p) for p in _rest]
-            return (_gr.update(value=str(_final), label='本轮结果视频（成品 · 含配音/字幕）'),
-                    _gr.update(value=_downloads, label='本轮结果文件（成品在第一个）'))
-        return (_gr.update(value=str(vids[0]), label='本轮结果视频（预览 · 最新）'),
-                _gr.update(value=[str(p) for p in files],
-                           label='本轮结果文件（下载）'))
+        if _final is not None:
+            _rf = Path(_final).resolve()
+            files = [str(_final)] + [f for f in files if Path(f).resolve() != _rf]
+        _preview = None
+        if _final is not None and Path(_final).suffix.lower() in VID_EXT:
+            _preview = str(_final)
+        elif vids:
+            _preview = str(vids[0])
+        if _preview:
+            _v_label = ('本轮结果视频（成品 · 含配音/字幕）' if _preview == (str(_final) if _final else '')
+                        else '本轮结果视频（预览 · 最新）')
+            _f_label = ('本轮结果文件（成品在第一个）' if _final is not None
+                        else '本轮结果文件（下载）')
+            out = (_gr.update(value=_preview, label=_v_label),
+                   _gr.update(value=files or None, label=_f_label))
+        else:
+            out = (_gr.update(value=None, label='本轮结果视频（暂无结果）'),
+                   _gr.update(value=files or None,
+                              label='本轮结果文件（下载）' if files else '本轮结果文件（暂无）'))
+        if quiet and _RESULTS_SHOWN.get(str(cid)) == (_preview, tuple(files)):
+            return _gr.update(), _gr.update()     # 无变化 → no-op（定时轮询不打断播放）
+        _RESULTS_SHOWN[str(cid)] = (_preview, tuple(files))
+        return out
     except Exception:  # noqa: BLE001
         return _gr.update(), _gr.update()
+
+
+def _poll_results(cid: str):
+    """结果区**自动回传**轮询（2026-09-11）：后台任务完成/服务重启后无需用户操作。
+
+    旧实现只在 send 的 yield 与加载会话时刷新：任务若在本轮结束后才完成，
+    页面会一直停在「暂无结果」，必须用户再发一句话才看得到成片。
+    """
+    import gradio as _gr
+    cid = str(cid or '') or str(_current_cid or '')
+    if not cid:
+        return _gr.update(), _gr.update()
+    return _results_update(cid, quiet=True)
 
 
 def _shared_for_cid(cid: str) -> list:
@@ -1600,6 +1640,14 @@ def run_app(port: int = 7860, share: bool = False) -> None:
             res_files = gr.File(label='本轮结果文件（暂无）', file_count='multiple',
                                 interactive=False, scale=1)
         gr.Markdown('_结果区：本会话产出的成片自动出现在上方（预览+下载）；加载历史会话可查该会话产物。_')
+        # 2026-09-11：结果区自动回传轮询——任务在轮次结束后才完成、或服务重启后会话
+        # 上下文丢失时，页面无需用户操作也会自己把成片拉出来（见 _poll_results）。
+        if hasattr(gr, 'Timer'):
+            _res_timer = gr.Timer(RESULTS_POLL_SEC)
+            _res_timer.tick(_poll_results, [cid_state], [res_video, res_files])
+        else:  # 兼容旧版 Gradio（无 gr.Timer）：用 load 的 every 轮询
+            demo.load(_poll_results, [cid_state], [res_video, res_files],
+                      every=RESULTS_POLL_SEC)
         note_md = gr.Markdown('_…_')
 
         out = [chatbot, status_html, note_md, hist_dd, cid_state, hist_state]
@@ -1826,11 +1874,16 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                                         if ekey == "done":
                                             try:
                                                 import subprocess as _sp, sys as _sys2
+                                                # 2026-09-11 修复「生成好了却回传不到页面」：
+                                                # watcher 的 --resume 必须带上本会话 cid，否则
+                                                # h3_submit._session_place 读不到 VIDEOGEN_SESSION_CID
+                                                # 直接返回，产物只落在 outputs/ 不进会话结果区。
+                                                _env = {**os.environ, 'VIDEOGEN_SESSION_CID': str(cid)}
                                                 _sp.run([_sys2.executable,
                                                          os.path.join(PROJECT_ROOT, 'runs', 'h3_submit.py'),
                                                          '--resume', pid],
                                                         capture_output=True, timeout=300,
-                                                        cwd=PROJECT_ROOT)
+                                                        cwd=PROJECT_ROOT, env=_env)
                                             except Exception:  # noqa: BLE001
                                                 pass
                                         # 用户已停止/切换会话（stop_event 置位）→ 不注入（用户已接管）
@@ -1893,7 +1946,8 @@ def run_app(port: int = 7860, share: bool = False) -> None:
     print(f'历史会话目录: {CHATS_DIR}')
     # 预览白名单：Gradio 默认只服务临时目录文件，需放行素材镜像/归档目录
     allowed = [str(THUMBS_DIR), str(_comfy_input_dir() / 'user_uploads'),
-               str(UPLOADS_DIR), str(CHATS_DIR)]  # §15d：会话产物目录（results 区预览/下载）
+               str(UPLOADS_DIR), str(CHATS_DIR),           # §15d：会话产物目录（results 区预览/下载）
+               str(Path(PROJECT_ROOT) / 'outputs')]         # 反查兜底命中 outputs/ 时也能直接预览
     threading.Thread(target=_notify_watcher, daemon=True, name="p1-notify-watcher").start()
 
     def _watcher_supervisor():
