@@ -256,6 +256,15 @@ class TestRoles:
         assert int(st.critic.get('rounds') or 0) <= 1
         assert st.retries <= len(st.shots)
 
+    def test_injected_bad_shot_triggers_bounded_retry(self):
+        """L2 反馈闭环：第 2 段台词被写进画面提示词 → Critic 判错 → 自动改写 → 重试通过。"""
+        sys.path.insert(0, str(ROOT / 'tests'))
+        import e2e_studio_film as e2e
+        rep = e2e.run_e2e('十二分钟', target_seconds=30.0, inject='fail')
+        assert rep['state'] == S.READY, rep['errors']
+        assert rep['retries'] >= 1, '注入了错误却没有触发自动改写重试'
+        assert rep['score'] >= 6.0
+
     def test_plan_request_from_form(self):
         st = R.plan_request({'brief': 'x', 'target_seconds': '30', 'cast_mode': 'duo',
                              'anchor': True})
@@ -307,6 +316,14 @@ class TestCritic:
         shot = self._shot(cast=['幽灵角色'], silent=True)
         new, fixes = C.rewrite_shot(shot, {'characters': {'A': 'd'}})
         assert new['cast'] == [] and fixes
+
+    def test_hard_issue_vetoes_pass(self):
+        """硬伤一票否决：分数够高也不算过（否则"台词进画面"会被放过）。"""
+        shot = self._shot(prompt='a robot walks then turns, the robot says 我们还有十二分钟, '
+                                 'camera: wide static, lighting: cold light, audio: room tone')
+        r = C.score_shot(shot, {'characters': {}}, {'params': {'resolution': '480p'},
+                                                    'command': 'x', 'ref_slots': []})
+        assert r['errors'] >= 1 and r['pass'] is False
 
     def test_score_all_summary(self):
         rep = C.score_all([self._shot()], {'characters': {}})

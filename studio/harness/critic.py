@@ -149,8 +149,11 @@ def score_shot(shot: dict, story: dict = None, directive: dict = None) -> dict:
     got['executability'] = max(0.0, got['executability'])
 
     score = round(sum(WEIGHTS[k] * got[k] for k in WEIGHTS), 2)
-    return {'idx': shot.get('idx'), 'score': score, 'pass': score >= PASS_SCORE,
-            'detail': {k: round(v, 2) for k, v in got.items()}, 'issues': issues}
+    # 硬伤（error）一票否决：分数再高也不能算过 —— 否则"有引号/台词进画面"会被放过
+    hard = [i for i in issues if i['level'] == 'error']
+    return {'idx': shot.get('idx'), 'score': score, 'pass': score >= PASS_SCORE and not hard,
+            'detail': {k: round(v, 2) for k, v in got.items()}, 'issues': issues,
+            'errors': len(hard)}
 
 
 def score_all(shots: list, story: dict = None, directives: list = None) -> dict:
