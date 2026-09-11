@@ -7,6 +7,8 @@
   commands.md    每段的命令行等价形式（给用本机 GPU 的人）
   run_plan.py    一条命令跑完全片（提交→轮询→取回→拼接→验收，可断点续跑）
   accept.md      验收规则（规则验收 + 引擎侧可选 VLM 检查项 + 诚实边界）
+  post.md        后期指令（超分/插帧/混音/字幕：命令与参数，**空间内不执行**）
+  film.srt       字幕原文（台词表直出，不经 ASR，无错别字）
   trace.json     全程决策轨迹（5 角色分工与重试的证据）
   README.md      怎么用、需要什么、每步耗时、失败怎么续跑
 
@@ -21,6 +23,7 @@ import zipfile
 from datetime import datetime
 
 from ..rules import frames as _fr
+from ..rules import post as _post
 from . import state as _st
 
 KIT_FORMAT = 'film-agent/kit@1'
@@ -344,13 +347,22 @@ def _accept_md(st: _st.StoryState) -> str:
         L += ['### 第 %d 段' % d['idx'], ''] + ['- [ ] %s' % a for a in (d.get('accept') or [])] + ['']
     L += ['## 三、引擎侧可选检查（空间内不判帧，交给执行方）', '']
     L += ['- [ ] %s' % v for v in VLM_CHECKLIST] + ['']
-    L += ['## 四、成片规格验收（run_plan.py 有 ffprobe 时会写进 out/accept.json）', '',
+    L += ['## 四、后期与成片规格（命令见 post.md）', '',
+          '- [ ] 超分/插帧按 post.md 执行（合成清晰度要如实标注）',
+          '- [ ] 混音：台词清楚、环境声不盖台词、响度约 -16 LUFS',
+          '- [ ] 字幕用 film.srt（台词原文，不经 ASR）', '',
+          '## 五、成片规格验收（run_plan.py 有 ffprobe 时会写进 out/accept.json）', '',
           '- [ ] 每段帧数与 plan.json 一致（±0 帧）',
           '- [ ] 整片时长 = 各段之和',
           '- [ ] 无文字/字幕/水印残留',
           '- [ ] 台词段口型同步、静默段无唇动',
           '- [ ] 片尾含 AI 生成声明', '']
     return '\n'.join(L)
+
+
+def _post_md(st: _st.StoryState) -> str:
+    """后期指令（超分/插帧/混音/字幕）—— 只出指令，空间内不执行。"""
+    return _post.post_markdown(st)
 
 
 def _readme(st: _st.StoryState) -> str:
@@ -367,6 +379,8 @@ def _readme(st: _st.StoryState) -> str:
          '| `commands.md` | 逐段命令行等价形式（自带本机 GPU 的人用这个） |',
          '| `run_plan.py` | 一条命令跑完全片（提交→轮询→取回→拼接→验收，可断点续跑） |',
          '| `accept.md` | 验收规则（规则验收 + 引擎侧可选检查） |',
+         '| `post.md` | 后期指令：超分/插帧/混音/字幕的命令与参数（空间内不执行） |',
+         '| `film.srt` | 字幕原文（台词表直出，不经 ASR，无错别字） |',
          '| `trace.json` | 决策轨迹：5 个角色分别做了什么、重试了几轮 |',
          '| `README.md` | 本文件 |', '',
          '## 怎么用', '',
@@ -409,6 +423,8 @@ def build_kit(st: _st.StoryState) -> dict:
         'commands.md': _commands_md(st),
         'run_plan.py': RUN_PLAN_PY,
         'accept.md': _accept_md(st),
+        'post.md': _post_md(st),
+        'film.srt': _post.srt_from_shots(st.shots),
         'README.md': _readme(st),
         'trace.json': json.dumps({
             'format': KIT_FORMAT, 'brief': st.brief, 'state': st.state, 'mode': st.mode,
@@ -434,8 +450,8 @@ def build_kit(st: _st.StoryState) -> dict:
     return {'name': name, 'files': files, 'zip_bytes': zip_bytes, 'summary': summary}
 
 
-ORDER = ('plan.json', 'jobs.jsonl', 'commands.md', 'run_plan.py', 'accept.md', 'trace.json',
-         'README.md')
+ORDER = ('plan.json', 'jobs.jsonl', 'commands.md', 'run_plan.py', 'accept.md', 'post.md',
+         'film.srt', 'trace.json', 'README.md')
 
 
 def make_zip(files: dict) -> bytes:

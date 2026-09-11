@@ -435,8 +435,8 @@ class TestKit:
     def test_kit_has_all_files(self):
         st = self._st()
         assert set(st.kit_blob['files']) == {'plan.json', 'jobs.jsonl', 'commands.md',
-                                             'run_plan.py', 'accept.md', 'trace.json',
-                                             'README.md'}
+                                             'run_plan.py', 'accept.md', 'post.md',
+                                             'film.srt', 'trace.json', 'README.md'}
         assert st.kit['summary'].startswith('生产包') and st.kit['bytes'] > 1000
 
     def test_zip_is_valid_and_plan_matches_shots(self):
@@ -489,6 +489,33 @@ class TestKit:
     def test_zip_bytes_are_deterministic(self):
         files = {'plan.json': '{}', 'README.md': 'x'}
         assert K.make_zip(files) == K.make_zip(files)
+
+    def test_kit_includes_post_instructions_and_srt(self):
+        """P3：后期指令层（超分/音频/字幕）与字幕原文都在包里。"""
+        st = self._st()
+        post = st.kit_blob['files']['post.md']
+        for kw in ('超分', '混音', '字幕', 'RealESRGAN', '空间内**不执行**'):
+            assert kw in post, kw
+        srt = st.kit_blob['files']['film.srt']
+        lines = [s for s in st.shots if s['line']]
+        if lines:
+            assert lines[0]['line']['text'] in srt
+            assert '-->' in srt
+
+    def test_srt_timeline_matches_shot_lengths(self):
+        st = self._st()
+        from studio.rules import post as P
+        shots = [{'idx': 0, 'seconds': 4.0, 'line': None},
+                 {'idx': 1, 'seconds': 6.0, 'line': {'text': '你好', 'voice': 'xiaoxiao'}}]
+        srt = P.srt_from_shots(shots)
+        assert '00:00:04,000 --> ' in srt and '你好' in srt
+
+    def test_upscale_plan_is_honest(self):
+        from studio.rules import post as P
+        p = P.upscale_plan('480p', mode='4x', source_size=(864, 480))
+        assert p['target_size'] == (3456, 1920)
+        assert '合成' in p['honest_note']
+        assert P.upscale_plan('480p', mode='none')['scale'] == 1
 
     def test_board_kit_card_is_json_safe(self):
         st = self._st()
