@@ -1378,10 +1378,20 @@ def run_app(port: int = 7860, share: bool = False) -> None:
                     # §15d（2026-09-08 现场）：提交真实性校验——声称已提交/TASK_SUBMITTED 但本轮没有任何
                     # 提交类工具调用且工具输出无 TASK_SUBMITTED 证据 → 判定虚构，作废本回复（防模型伪造提交）。
                     if final_text and ('TASK_SUBMITTED' in str(final_text).upper() or '已提交' in final_text):
-                        _real_submit = any(
-                            (n in ('run_script', 'call_comfyui', 'batch_submit'))
-                            and ('TASK_SUBMITTED' in str(o).upper())
-                            for n, o in _TURN_TOOL_LOGS)
+                        # 2026-09-11 修正：证据面放宽——
+                        #   ① 任何工具输出里出现 TASK_SUBMITTED / prompt_id 都算真实提交（原来只认三个工具名，
+                        #      走 --submit-only 或别的入口会被误判成"虚构提交"，用户实际遇到过）；
+                        #   ② 本会话此前已确认过的任务号，后续轮次复述（点"继续"）不再判虚构。
+                        import re as _re_s
+                        _tids = set()
+                        for _n, _o in _TURN_TOOL_LOGS:
+                            _s = str(_o).upper()
+                            if 'TASK_SUBMITTED' in _s or 'PROMPT_ID' in _s:
+                                _tids.update(_re_s.findall(r'[a-f0-9\-]{36}', str(_o).lower()))
+                        _seen_prev = globals().setdefault('_SEEN_SUBMITS', set())
+                        _said = set(_re_s.findall(r'[a-f0-9\-]{36}', str(final_text).lower()))
+                        _real_submit = bool(_tids) or bool(_said & _seen_prev)
+                        _seen_prev |= _tids | (_said & _seen_prev)
                         if not _real_submit:
                             final_text = ('⚠️ 本轮未发现真实提交：系统未检测到任何生成/提交工具调用成功，'
                                          '刚刚出现的 TASK_SUBMITTED 串不可信，请不要等待。'

@@ -161,7 +161,9 @@ def _finalize_local_outputs(project_dir, remote_paths, gp=None, prompt_id="") ->
             shutil.copy2(src, dst)
             local_files.append(dst)
             print(f"LOCAL_OUTPUT: outputs/{dst.name}", flush=True)
-            _session_place(project_dir, dst)
+            # 回传兜底（2026-09-11）：无论走哪条提交路径（含 --submit-only 后台完成），
+            # 落盘即标记为成品 → UI 结果区一定能取到（此前只认成品链那几处，后台完成的任务会"有产物没回传"）
+            _session_place(project_dir, dst, final=True)
             _log_event(f"local_output file={dst.name} bytes={dst.stat().st_size}")
             # book-13 P0#6：完成回执带 ffprobe 实测（PROBE 行，无条件）；book-12 B2/T3：产物参数回归守卫（gp 可用时）
             import subprocess as _sp
