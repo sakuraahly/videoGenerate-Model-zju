@@ -19,6 +19,7 @@
 """
 import copy
 import io
+import json
 import sys
 import urllib.error
 import zipfile
@@ -449,6 +450,43 @@ def test_board_stream_with_engine_runs_segments():
     last = boards[-1]
     assert last['mode'] == 'engine'
     assert last['cards']['delivery']['engine']['done'] == last['counts']['shots']
+
+
+def test_board_stream_rebuilds_kit_with_engine_evidence():
+    """出片后重打生产包：zip 里的 trace.json 必须含 engine 步骤与成片结果。
+
+    否则「🚀 出片」之后下载到的 zip 只有规划证据，评审看不到"真的出过片"这一段。
+    """
+    class _Eng:
+        def available(self):
+            return True
+
+        def describe(self):
+            return '假引擎'
+
+        def summary(self, batch=None):
+            out = {'configured': True, 'host': 'fake', 'available': True}
+            if batch:
+                out.update(batch)
+            return out
+
+        def run(self, directive, *, on_event=None, fetch=True):
+            row = {'idx': directive['idx'], 'kind': 't2v', 'ok': True, 'job_id': 'jj',
+                   'status': 'completed', 'video_url': 'http://h/v.mp4', 'file': '',
+                   'error': '', 'elapsed': 0.1}
+            if on_event:
+                on_event('done', row)
+            return row
+
+    hold = {}
+    out = list(studio_app.board_stream({'brief': BRIEF, 'target_seconds': 20},
+                                       cfg={'engine_base': 'https://e/v1'},
+                                       engine=_Eng(), hold=hold))
+    assert out[-1][0]['mode'] == 'engine'
+    trace = json.loads(hold['kit_blob']['files']['trace.json'])
+    actions = [s['action'] for s in trace['steps']]
+    assert 'engine_shot' in actions and 'build_kit' in actions
+    assert trace['mode'] == 'engine'
 
 
 def test_delivery_panel_renders_engine_results():

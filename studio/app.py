@@ -1116,6 +1116,27 @@ def board_stream(form: dict, cfg: dict = None, limit: int = 0, model: str = '',
             except Exception:                                 # noqa: BLE001
                 pass
         yield st.board(), None, None
+
+    # 出片结束后**重打一次生产包**：包里 trace.json 必须含 engine 步骤与成片结果，
+    # 否则下载到的 zip 只有"规划证据"，评审看不到"真出片"这一段（诚实性优先于省一次打包）。
+    kit_builder = kit_builder_of()
+    if kit_builder is not None:
+        try:
+            full = kit_builder(st)
+            if isinstance(full, dict) and full.get('files'):
+                st.kit_blob = full
+                st.kit = full.get('summary') or {}
+                st.log('editor', 'build_kit', detail='出片后重打生产包：%s'
+                       % (st.kit.get('summary') or ''),
+                       data={'files': list(full.get('files') or {}), 'rebuilt': True})
+                if isinstance(hold, dict):
+                    hold['kit_blob'] = full
+        except Exception as e:                                # noqa: BLE001
+            st.log('editor', 'build_kit', status='warn',
+                   detail='出片后重打生产包失败（%s）→ 仍交付规划阶段那一份'
+                          % type(e).__name__)
+    if isinstance(hold, dict):
+        hold['board'] = st.board()
     yield st.board(), None, None
 
 
