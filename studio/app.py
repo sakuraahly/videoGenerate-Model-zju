@@ -1511,16 +1511,16 @@ def build_app(show: dict):
                 with gr.Accordion("🎛 模型配置（可选）—— 大脑 / 引擎", open=False):
                     gr.Markdown("_都不填也能用：内置规则引擎会给出完整剧本 / 分镜 / 生产包。_"
                                 "凭据只在本次会话内存里，不落盘、不进日志。")
-                    hpreset = gr.Dropdown(label="服务商预设（自动填 Base URL 与模型名，可改）",
+                    hpreset = gr.Dropdown(label="服务商预设",
                                           choices=harness_provider_choices(),
                                           value=harness_provider_choices()[0])
                     with gr.Row():
-                        hbase = gr.Textbox(label="Base URL（OpenAI 兼容）", scale=3,
+                        hbase = gr.Textbox(label="Base URL", scale=3,
                                            placeholder="例：https://api-inference.modelscope.cn/v1")
-                        hmodel = gr.Textbox(label="模型名（可手填）", scale=2,
+                        hmodel = gr.Textbox(label="模型名", scale=2,
                                             placeholder="例：deepseek-ai/DeepSeek-V4-Pro")
                     with gr.Row():
-                        hkey = gr.Textbox(label="API Key（你自己的 · 只在本会话内存里）", type="password",
+                        hkey = gr.Textbox(label="API Key", type="password",
                                           scale=3, placeholder="sk-...（不写盘、不进日志）")
                         htest_brain = gr.Button("🔌 测试连接", scale=1)
                     hbrain_out = gr.Markdown("")
@@ -1577,23 +1577,22 @@ def build_app(show: dict):
                 happly.click(_do_apply_cfg, HFULL_IN, [hcfg_notice, hcfg_sid, happly_out])
                 # ── 🎬 一句话出片（多 Agent Harness）──────────────────────────────
                 with gr.Row():
-                    hbrief = gr.Textbox(label="一句话（越具体越好：人物 / 处境 / 情绪）", scale=4,
+                    hbrief = gr.Textbox(label="一句话", scale=4,
                                         placeholder="例：一个陪伴机器人，永远同意你说的一切")
                     hstyle = gr.Dropdown(choices=HARNESS_STYLES, value=HARNESS_STYLES[0],
                                          label="风格", scale=1)
-                    hsec = gr.Number(value=45, label="目标时长（秒）", precision=0, scale=1)
+                    hsec = gr.Number(value=45, label="时长（秒）", precision=0, scale=1)
                 with gr.Row():
                     hcast = gr.Radio(choices=HARNESS_CAST_MODES, value=HARNESS_CAST_MODES[0],
-                                     label="阵容（solo 独角戏 / duo 双人）", scale=2)
+                                     label="阵容", scale=2)
                     hres = gr.Dropdown(choices=HARNESS_RESOLUTIONS, value="480p", label="画幅", scale=1)
-                    hanchor = gr.Checkbox(value=True, label="跨镜头锁定同一张脸（一致性锚点）", scale=2)
-                    hlic = gr.Checkbox(value=False, label="我有权使用我上传的素材", scale=2)
+                    hanchor = gr.Checkbox(value=True, label="锁定同一张脸", scale=2)
+                    hlic = gr.Checkbox(value=False, label="素材已授权", scale=2)
                 with gr.Row():
-                    hrun = gr.Button("🎬 生成制片方案（零算力）", variant="primary", scale=3)
-                    hrun_eng = gr.Button("🚀 出片（用我配置的引擎真出片）", variant="primary", scale=3)
+                    hrun = gr.Button("🎬 生成方案", variant="primary", scale=3)
+                    hrun_eng = gr.Button("🚀 出片", variant="primary", scale=3)
                     hkit_dl = gr.DownloadButton("⬇️ 下载生产包（zip）", value=None, scale=2)
-                    hlimit = gr.Number(value=0, label="出片段数（0=全部；先出 1 段试水更省时间）",
-                                       precision=0, scale=1)
+                    hlimit = gr.Number(value=0, label="出片段数（0=全部）", precision=0, scale=1)
                     hclear = gr.Button("🧹 清空", scale=1)
                 gr.Markdown("_「🚀 出片」会调用你配置的引擎（算力与费用在你那一侧）。_")
                 hkit_note = gr.Markdown(KIT_IDLE_MD)
