@@ -23,6 +23,9 @@ config/doc_state.json
 # 素材上传收件箱（机器资产；由 upload_watch/界面上传生成）
 uploads/
 
+# 本地临时工作区（提交信息、冒烟脚本、解包验证等，绝不入库）
+.dsh-tmp/
+
 # 断点/运行期状态文件（断点重连与单实例锁用，运行期临时生成）
 last_prompt_id.txt
 last_job.json
