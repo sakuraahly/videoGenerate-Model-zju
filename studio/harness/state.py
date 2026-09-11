@@ -213,6 +213,7 @@ class StoryState:
             'cards': {
                 'script': self.script,
                 'shots': self.shots,
+                'directives': self.directives,     # 每段完整生产指令（请求体/命令行/验收规则）
                 'prelint': self.prelint,
                 'critic': self.critic,
                 'kit': self.kit,

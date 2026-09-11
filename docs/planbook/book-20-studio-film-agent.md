@@ -237,7 +237,8 @@ production_kit/
 | 文件 | 改动 |
 |---|---|
 | studio/rules/（新） | lint.py（搬 story_lint）/ frames.py（帧网格）/ voice.py（语言-音色）/ prompts.py（词库组装）/ roles.py（5 角色提示文本）/ delivery.py（交付规范）/ templates.py（分镜模板库，**新增**，无 LLM 保底） |
-| studio/harness/（新） | state.py（StoryState + 状态机，搬 story_film）/ roles.py（角色调度）/ critic.py（规则轨质检）/ guards.py（真实性校验/假完成拦截）/ kit.py（生产包组装） |
+| studio/harness/（新） | state.py（StoryState + 状态机，搬 story_film）/ roles.py（五角色 + 主循环 run_harness）/ critic.py（规则轨质检 + 自动改写）/ guards.py（真实性校验/假完成拦截）/ brain.py（三档大脑接入）/ engine.py（**P2 新增**：访客自带引擎适配层，复用 agent_client 加固）/ kit.py（生产包组装，含 post.md 与 film.srt） |
+| studio/rules/post.py（新，P3） | 后期指令层：超分（RealESRGAN 4x-UltraSharp，参数取自 S13 超分链实测）/ 插帧（RIFE 48fps 或 ffmpeg minterpolate）/ 混音口径 / SRT 原文直出 —— **空间内只出指令不执行** |
 | studio/selfcheck.py（新） | 编排链自检：规则完整性 + 状态机冒烟 + trace 可导出 + 生产包可生成 + 可选引擎探测 → MODE |
 | studio/agent_client.py | **保留**；新增：适配 Harness 的 submit/query 抽象方法；**保留并强化「模型配置」面板**（服务商预设 + 模型类型/名 + 测试连接 + 会话内存作用域） |
 | studio/app.py | Agent Tab 增「🎬 一键出片（生成生产包）」+ **制片看板** + trace/生产包下载 + 合规勾选；**「模型配置」面板置顶常驻**（未配置时给显眼提示 + 一键展开，规格见 §2.4）；能力 Tab 增边界图与 MODE |
@@ -400,4 +401,20 @@ MODE:     plan（默认）/ engine（探测到可用引擎）
 | 7 | 实施顺序 | **P0（规则引擎做厚 + Harness 骨架）→ P1（生产包 + 质检闭环 + selfcheck）→ 创作手记初版 → P2（外部引擎/模型接入）→ P3（超分/音频/字幕）→ P4（交付物）** | 用户 v6 |
 | 8 | 生产包是否带 run_plan.py | **带**（"可复制系统"的最强证据） | 本册建议，随 P1 落地 |
 
-**当前状态**：计划已定案，**待开工**；开工从 P0 起，P0 完成后 pages 即可看到「一句话 → 剧本卡 + 分镜表 + 预检结果」。
+**当前状态**：计划已定案并**已开工**；P0/P1/P2/P3 已落地（见 §14），P4 收尾中。
+
+---
+
+## 14. 实施进度（滚动更新 · 以代码与测试为准）
+
+| 阶段 | 状态 | 事实（可核对） |
+|---|---|---|
+| **P0 规则引擎 + Harness 骨架** | ✅ 完成 | `studio/rules/`（frames/prompts/voice/templates/lint/roles/delivery）· `studio/harness/`（state/roles/critic/guards/brain/kit/engine）· 零 key 一句话 → 看板（剧本卡/分镜表/预检）+ 每段"照做就能拍"（提示词/帧数秒数/是否说话+台词/锚点/参考图槽位/验收规则） |
+| **P1 生产包 + 质检闭环 + selfcheck** | ✅ 完成 | 生产包 9 个文件 zip（plan/jobs/commands/run_plan/accept/post.md/film.srt/trace/README）· Critic 规则轨判分（硬伤一票否决）→ 自动改写 → 有界重试 · `studio/selfcheck.py` 四段自检 → MODE · trace 导出 · **创作手记初版已写** |
+| **P2 引擎可选接入** | ✅ 完成（代码 + mock 引擎 L2） | `studio/harness/engine.py`：提交 → 轮询 → 取回；失败/超时如实上报；`run_harness(engine=…)` 走 ENGINE → DELIVER，成片回传 + 交付清单；`tests/e2e_studio_film.py --engine` 跑通 3 段全绿。**真机（真实引擎地址）尚未验证** —— 需要访客自带引擎或平台视频模型接口 |
+| **P3 超分/音频/字幕指令层** | ✅ 完成 | `studio/rules/post.py` + 生产包 post.md / film.srt；accept.md 增加后期与成片规格验收 |
+| **P4 交付物** | 🚧 进行中 | 创作手记已出初版（待补 P2/P3 实测结果）· README/接口说明/快速上手/config.yaml 待同步 · 页面制片看板与「模型配置」面板在改 · Notebook 可选 |
+
+**测试事实（2026-09-11）**：`py -3 -m pytest tests -q` → **486 passed, 1 skipped**；
+`py -3 studio/selfcheck.py` → `SELFCHECK: OK ｜ RULES OK ｜ HARNESS OK ｜ KIT OK ｜ ENGINE OK ｜ MODE plan`；
+`py -3 tests/e2e_studio_film.py --inject fail` → `STUDIO_E2E_OK`（含一次自动改写重试）。

@@ -351,29 +351,28 @@ class _FakeEngine:
                         'summary': batch['summary'], 'rows': batch['rows']})
         return out
 
-    def run_batch(self, directives, *, on_event=None, stop_on_fail=False, limit=0):
-        rows = []
-        for d in (directives or [])[:limit or None]:
-            ok = d['idx'] not in self.fail_idx
-            rows.append({'idx': d['idx'], 'kind': d['request']['kind'], 'ok': ok,
-                         'job_id': 'fake-%s' % d['idx'], 'status': 'completed' if ok else 'failed',
-                         'video_url': 'http://127.0.0.1:1/v.mp4' if ok else '',
-                         'file': '/tmp/shot_%02d.mp4' % d['idx'] if ok else '',
-                         'error': '' if ok else '假引擎：故意失败', 'elapsed': 0.1})
-        done = [r for r in rows if r['ok']]
-        return {'rows': rows, 'done': len(done), 'failed': len(rows) - len(done),
-                'ok': bool(rows) and len(done) == len(rows),
-                'files': [r['file'] for r in done],
-                'summary': '引擎出片：成功 %d 段 / 失败 %d 段（共 %d 段）'
-                           % (len(done), len(rows) - len(done), len(rows))}
+    def run(self, directive, *, on_event=None, fetch=True):
+        """对齐真 Engine.run 的接口（Harness 是逐段调用它的）。"""
+        idx = directive['idx']
+        ok = idx not in self.fail_idx
+        row = {'idx': idx, 'kind': directive['request']['kind'], 'ok': ok,
+               'job_id': 'fake-%s' % idx, 'status': 'completed' if ok else 'failed',
+               'video_url': 'http://127.0.0.1:1/v.mp4' if ok else '',
+               'file': '/tmp/shot_%02d.mp4' % idx if ok else '',
+               'error': '' if ok else '假引擎：故意失败', 'elapsed': 0.1}
+        if on_event:
+            on_event('done', row)
+        return row
 
 
 class TestEngine:
-    def test_not_available_without_both_urls(self):
+    def test_available_needs_submit_url_only(self):
+        """只配提交地址也算可用（同步直返型引擎）；但**绝不读环境变量**充数。"""
         from studio.harness.engine import Engine
-        assert Engine('http://h/v1/jobs', '', '').available() is False
-        assert Engine('http://h/v1/jobs', 'http://h/v1/jobs', '').available() is True
+        assert Engine('', 'http://h/v1/jobs', '').available() is False
+        assert Engine('http://h/v1/jobs', '', '').available() is True
         assert Engine.from_overrides({}).available() is False
+        assert Engine.from_overrides({'ENGINE_BASE_URL': 'http://h/v1/jobs'}).available() is True
 
     def test_describe_is_honest_when_unconfigured(self):
         from studio.harness.engine import Engine
@@ -394,6 +393,13 @@ class TestEngine:
         from studio.harness.engine import Engine
         eng = Engine('http://h/v1/jobs', 'http://h/v1/jobs')
         assert eng.query('../../etc/passwd')['ok'] is False
+
+    def test_run_without_status_url_reports_honestly(self):
+        from studio.harness.engine import Engine
+        eng = Engine('http://h/v1/jobs', '', '')
+        eng._post = lambda *a, **kw: {'job_id': 'j1'}
+        r = eng.run({'idx': 0, 'request': {'kind': 't2v'}}, fetch=False)
+        assert r['ok'] is False and 'ENGINE_STATUS_URL' in r['error']
 
     def test_run_sync_engine_returns_video(self):
         from studio.harness.engine import Engine

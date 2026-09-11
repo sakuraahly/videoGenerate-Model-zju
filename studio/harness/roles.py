@@ -420,21 +420,42 @@ def run_editor(st: _st.StoryState, will_have_kit: bool = True) -> dict:
 
 
 # ══ 6) 执行与交付：接了引擎就真出片（P2） ════════════════════════════════════
-def run_engine(st: _st.StoryState, eng, *, limit: int = 0, on_event=None) -> dict:
+def run_engine(st: _st.StoryState, eng, *, limit: int = 0, on_event=None,
+               on_row=None) -> dict:
     """把导演产出的生产指令逐段交给**访客自带**的引擎，并把成片回传。
 
     这一步是"空间零算力"红线之外的部分：算力、费用、画质全在引擎侧，
     空间只负责提交、轮询、取回与如实上报（成功几段、失败几段、为什么失败）。
+
+    on_row(st, row)：每段结束后回调一次 —— 页面用它**边跑边刷新看板**（不必等全片跑完）。
+    逐段写 st.delivery['engine']，所以任何时刻中断，看板上都是"已经跑到的真实进度"。
     """
-    if st.state == _st.KIT:
+    st.mode = 'engine'          # 真的接了引擎并开始出片 → MODE 立刻变（页面据此显示"真出片"）
+    if st.state in (_st.KIT, _st.READY):
         st.enter(_st.ENGINE)
     t0 = time.perf_counter()
     st.role_status('editor', 'running')
     st.log('editor', 'engine_submit', status='info', via='engine',
            detail='开始逐段提交到引擎：%s' % eng.describe(),
            data={'host': (eng.summary() or {}).get('host', '')})
-    batch = eng.run_batch(st.directives, on_event=on_event, limit=limit)
-    for row in batch.get('rows') or []:
+    rows = []
+    items = list(st.directives or [])
+    if limit:
+        items = items[:int(limit)]
+
+    def _snapshot():
+        done = [r for r in rows if r.get('ok')]
+        failed = [r for r in rows if not r.get('ok')]
+        return {'rows': rows, 'done': len(done), 'failed': len(failed),
+                'ok': bool(rows) and not failed,
+                'files': [r.get('file') for r in done if r.get('file')],
+                'summary': '引擎出片：成功 %d 段 / 失败 %d 段（共 %d 段，总 %d 段）'
+                           % (len(done), len(failed), len(rows), len(st.directives or []))}
+
+    st.delivery['engine'] = eng.summary(_snapshot())
+    for d in items:
+        row = eng.run(d, on_event=on_event)
+        rows.append(row)
         st.log('editor', 'engine_shot', status='ok' if row.get('ok') else 'error', via='engine',
                detail='第 %s 段 %s（%ss）%s'
                       % (row.get('idx'), '已成片' if row.get('ok') else '失败',
@@ -442,11 +463,18 @@ def run_engine(st: _st.StoryState, eng, *, limit: int = 0, on_event=None) -> dic
                          ('：' + str(row.get('error'))) if row.get('error') else ''),
                data={k: row.get(k) for k in ('idx', 'kind', 'job_id', 'status', 'video_url',
                                              'file', 'error', 'elapsed')})
-    st.delivery['engine'] = eng.summary(batch)
+        st.delivery['engine'] = eng.summary(_snapshot())     # 逐段落地：中断也看得到真实进度
+        if on_row:
+            try:
+                on_row(st, row)
+            except Exception:                                  # noqa: BLE001
+                pass
+    batch = _snapshot()
     st.delivery['engine']['advice'] = _dl.resume_advice(
-        [r.get('idx') for r in (batch.get('rows') or []) if not r.get('ok')],
-        len(st.directives),
-        [r.get('idx') for r in (batch.get('rows') or []) if r.get('ok')])
+        [r.get('idx') for r in rows if not r.get('ok')], len(st.directives),
+        [r.get('idx') for r in rows if r.get('ok')])
+    st.delivery['claims'] = _g.honest_claims(st)          # 档位变了，话术边界跟着变
+    st.delivery['honest_notes'] = _dl.honest_notes(st.mode, bool(rows))
     st.role_status('editor', 'ok' if batch.get('ok') else 'warn',
                    summary='%s ｜ %s' % (batch.get('summary'), st.roles['editor'].get('summary') or ''),
                    ms=_now_ms(t0))
@@ -521,7 +549,18 @@ def run_harness(brief: str, *, style: str = 'cinematic', target_seconds: float =
             # 打包放在**最后**：trace.json 里必须是完整轨迹（含这一步本身），不能是残的
             step = st.log('editor', 'build_kit', detail='组装可执行生产包（%d 段）' % len(st.shots))
             step.ms = _now_ms(t0)
-            full = kit_builder(st)
+            try:
+                full = kit_builder(st)
+            except Exception as e:                             # noqa: BLE001
+                # 打包失败不能让整条链白跑，但**也不能继续宣称有生产包**（诚实降级）
+                step.status = 'error'
+                step.detail = '生产包打包失败：%s: %s' % (type(e).__name__, str(e)[:160])
+                self_notes = st.delivery.setdefault('notes', [])
+                self_notes.append('生产包打包失败（%s），本次只交付分镜表与逐段指令。'
+                                  % type(e).__name__)
+                st.delivery['kit_failed'] = True
+                st.role_status('editor', 'warn', summary='生产包打包失败，已降级为分镜表 + 逐段指令')
+                return st
             st.kit_blob = full
             # 看板只放 JSON 安全的摘要（zip 字节不能进看板/JSON 组件）
             st.kit = full.get('summary') or {k: v for k, v in full.items()
@@ -536,6 +575,13 @@ def run_harness(brief: str, *, style: str = 'cinematic', target_seconds: float =
                                                  st.kit.get('summary') or ''))
     except _st.StateError as e:
         st.log('orchestrator', 'state_error', status='error', detail=str(e))
+    except Exception as e:                                     # noqa: BLE001
+        # 任何意外都不能把整页打挂，更不能假装成功：如实记下来，看板照常渲染
+        st.log('orchestrator', 'crashed', status='error',
+               detail='编排异常：%s: %s' % (type(e).__name__, str(e)[:200]))
+        for key in ROLE_KEYS:
+            if (st.roles.get(key) or {}).get('status') in ('pending', 'running'):
+                st.role_status(key, 'error', summary='未完成（编排异常中断）')
     return st
 
 
