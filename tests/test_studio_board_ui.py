@@ -100,7 +100,7 @@ def _opener_boom(exc):
 @pytest.mark.parametrize('blank', [None, {}, [], 'board', 0])
 def test_blank_board_renders_without_crash(blank):
     html = studio_app.board_html(blank)
-    assert isinstance(html, str) and '制片方案' in html
+    assert isinstance(html, str) and '生成方案' in html
     for name in PANELS:
         out = getattr(studio_app, name)(blank)
         assert isinstance(out, str) and out
@@ -122,7 +122,7 @@ def test_empty_brief_board_is_renderable():
     board = studio_app.plan_board({'brief': ''})
     html = studio_app.board_html(board)
     assert board['state'] in ('BLOCKED', 'ERROR')
-    assert '制片看板' in html and '被闸门拦住' in html
+    assert '被闸门拦住' in html
     assert '访客没有输入任何一句话' in html
 
 
@@ -220,21 +220,20 @@ def test_trace_rows_equal_trace_length(board):
 # ── 6) 未配置 key → 规则引擎模式（显眼提示）─────────────────────────────────
 def test_notice_says_rule_engine_when_no_key():
     md = studio_app.config_notice_md({})
-    assert '规则引擎模式（零 key）' in md
-    assert '未配置也能用：规则引擎会给出完整剧本/分镜/生产包' in md
-    assert '仅生产计划' in md and '不跑视频模型' in md
+    assert '规则引擎' in md and '零 key' in md
+    assert '生产包' in md and '未配置' in md
     assert 'sk-' not in md                                     # 绝不回显任何密钥
 
 
 def test_notice_switches_when_key_filled():
     md = studio_app.config_notice_md(studio_app.cfg_of_form('https://api.deepseek.com/v1',
                                                             'deepseek-chat', 'sk-secret-123'))
-    assert '访客自带模型' in md and 'deepseek-chat' in md
+    assert '已配置' in md and 'deepseek-chat' in md
     assert 'sk-secret-123' not in md                           # key 绝不进页面文案
-    assert '规则引擎模式' not in md
+    assert '零 key' not in md
     eng = studio_app.config_notice_md(studio_app.cfg_of_form('', '', '',
                                                              'https://engine.example.com/v1'))
-    assert '真出片' in eng
+    assert '出片' in eng and '已配置' in eng
 
 
 def test_cfg_memory_is_session_scoped():
@@ -354,9 +353,9 @@ def test_plan_board_returns_full_renderable_board():
     assert set(board['roles']) == set(harness_roles.ROLE_KEYS)
     assert board['cards']['shots'] and board['cards']['script'] and board['cards']['delivery']
     html = studio_app.board_html(board)
-    for needle in ('制片看板', '角色分工', '剧本卡', '分镜表', '预检面板', '质检面板', '决策轨迹', '交付说明'):
+    for needle in ('角色分工', '剧本卡', '分镜表', '质检', '决策轨迹', '交付说明'):
         assert needle in html
-    assert '规则引擎模式（零 key）' in html                     # 顶部状态条的大脑档位
+    assert '零 key' in html                                    # 顶部状态条的大脑档位
 
 
 def test_delivery_panel_lists_production_kit():
@@ -402,7 +401,7 @@ def test_notice_engine_wording_is_honest():
     """配了引擎要说明"点哪个按钮才会真出片"，不能含糊成"自动帮你出片"。"""
     md = studio_app.config_notice_md(studio_app.cfg_of_form('', '', '',
                                                             'https://engine.example.com/v1'))
-    assert '真出片' in md and '不会碰你的引擎' in md
+    assert '出片' in md and '算力与费用在你那一侧' in md
 
 
 def test_build_engine_needs_submit_url_only():

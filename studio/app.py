@@ -474,31 +474,25 @@ def board_status_html(board, model: str = '') -> str:
     pct = max(0, min(100, int(prog.get('percent') or 0)))
     state = str(b.get('state') or '-')
     skind = 'ok' if state in ('READY', 'DONE') else ('error' if state in ('BLOCKED', 'ERROR') else 'running')
-    mkind = 'ok' if str(b.get('mode')) == 'engine' else 'info'
     counts = board_counts(b)
-    cnt = ' ｜ '.join('%s %s' % (k, v) for k, v in (
-        ('段', counts.get('shots')), ('指令', counts.get('directives')), ('台词', counts.get('lines')),
-        ('重试', counts.get('retries')), ('错误', counts.get('errors')), ('告警', counts.get('warnings'))))
+    engine = str(b.get('mode')) == 'engine'
+    chips = ' ｜ '.join([
+        _badge(b.get('state_label') or state, skind),
+        '进度 %d%%' % pct,
+        _badge(brain_tier_label(b.get('brain'), model), 'info'),
+        _badge('真出片' if engine else '仅生产计划', 'ok' if engine else 'info'),
+        '%s 段' % (counts.get('shots') or 0),
+        '%.1fs' % (int(b.get('elapsed_ms') or 0) / 1000.0),
+    ])
     err = ''
     if b.get('error'):
         err = ('<div style="color:%s;margin-top:6px">❌ 编排异常：%s</div>'
                % (_RED, _esc(_clip(b.get('error'), 300))))
     return (
         '<div style="%s">'
-        '<div style="font-size:15px;font-weight:700">🎬 制片看板 %s '
-        '<span style="%s">state=%s</span></div>'
-        '<div style="margin-top:6px">进度 <b>%d%%</b> '
-        '<span style="%s">（%s/%s 个状态）</span></div>'
-        '<div style="height:10px;background:#e9ecef;border-radius:6px;overflow:hidden;margin-top:4px">'
-        '<div style="height:100%%;width:%d%%;background:#0d6efd"></div></div>'
-        '<div style="margin-top:8px">大脑档位：%s ｜ MODE：%s ｜ 耗时 %s ms</div>'
-        '<div style="margin-top:6px;%s">一句话：%s ｜ %s</div>%s</div>'
-        % (_ST_BOX, _badge(b.get('state_label') or state, skind), _ST_MUTED, _esc(state),
-           pct, _ST_MUTED, prog.get('done', 0), prog.get('total', 0), pct,
-           _badge(brain_tier_label(b.get('brain'), model), 'info'),
-           _badge(b.get('mode_label') or b.get('mode') or '-', mkind),
-           int(b.get('elapsed_ms') or 0), _ST_MUTED,
-           _esc(_clip(b.get('brief') or '（空）', 120)), _esc(cnt), err))
+        '<div style="font-size:15px;font-weight:700">%s</div>'
+        '<div style="margin-top:6px">%s</div>%s</div>'
+        % (_ST_BOX, _esc(_clip(b.get('brief') or '（空）', 120)), chips, err))
 
 
 # ── 2) 角色分工卡（多 Agent 分工 + 调度状态的证据面板）────────────────────────
@@ -540,7 +534,7 @@ def board_script_html(board) -> str:
     """剧本卡：片名/主题/设定/风格/角色卡表/台词表/音色依据。"""
     sc = board_card(board, 'script')
     if not sc:
-        return _panel_html('📖 剧本卡（编剧 Agent）',
+        return _panel_html('📖 剧本卡',
                            '<span style="%s">还没有剧本：先点「🎬 生成制片方案（零算力）」。</span>'
                            % _ST_MUTED)
     chars = sc.get('characters') if isinstance(sc.get('characters'), dict) else {}
@@ -583,7 +577,7 @@ def board_script_html(board) -> str:
     body = (meta + setting
             + '<div style="margin-top:6px;font-weight:600">角色卡</div>' + char_tbl
             + '<div style="margin-top:6px;font-weight:600">台词表</div>' + line_tbl)
-    return _panel_html('📖 剧本卡（编剧 Agent：一句话 → 剧本 JSON）', body)
+    return _panel_html('📖 剧本卡', body)
 
 
 # ── 4) 分镜表（照做就能拍 / 照做就能验）───────────────────────────────────────
@@ -693,7 +687,7 @@ def board_prelint_html(board) -> str:
     """预检（花算力之前的规则闸门）：errors 红、warnings 黄、stats 一行；干净就绿。"""
     pl = board_card(board, 'prelint')
     if not pl:
-        return _panel_html('🚦 预检面板（质检 Agent · 规则闸门）',
+        return _panel_html('🚦 预检',
                            '<span style="%s">还没预检：先点「🎬 生成制片方案（零算力）」。</span>' % _ST_MUTED)
     errs = [str(e) for e in (pl.get('errors') or []) if str(e).strip()]
     warns = [str(w) for w in (pl.get('warnings') or []) if str(w).strip()]
@@ -719,7 +713,7 @@ def board_prelint_html(board) -> str:
     body = (head + ('<div style="margin-top:6px;%s">%s</div>' % (_ST_MUTED, _esc(st_txt)))
             + err_html + warn_html
             + ('<div style="margin-top:6px;%s">%s</div>' % (_ST_MUTED, _esc(pl.get('summary') or ''))))
-    return _panel_html('🚦 预检面板（质检 Agent · 规则闸门：不合格先改，不浪费算力）', body)
+    return _panel_html('🚦 预检', body)
 
 
 # ── 6) 质检面板 ──────────────────────────────────────────────────────────────
@@ -727,7 +721,7 @@ def board_critic_html(board) -> str:
     """质检（Critic）：段均分 / 最低分 / 改写轮数 + 每段分数与 issues（含 fix 建议）。"""
     cr = board_card(board, 'critic')
     if not cr:
-        return _panel_html('🧪 质检面板（Critic：0-10 规则轨）',
+        return _panel_html('🧪 质检',
                            '<span style="%s">还没质检：先点「🎬 生成制片方案（零算力）」。</span>' % _ST_MUTED)
     rows = []
     for row in (cr.get('shots') or []):
@@ -752,7 +746,7 @@ def board_critic_html(board) -> str:
     extra = ('段均 %.2f/10 ｜ 最低 %.2f ｜ 改写 %s 轮 ｜ 硬伤 %s'
              % (float(cr.get('score') or 0), float(cr.get('min_score') or 0),
                 cr.get('rounds', 0), cr.get('errors', 0)))
-    return _panel_html('🧪 质检面板（Critic：规则轨打分 + 自动改写重试）',
+    return _panel_html('🧪 质检',
                        _table(['段', '分数', '结论', '五维明细', '问题与修改建议'], rows), extra)
 
 
@@ -764,7 +758,7 @@ def board_trace_html(board) -> str:
     """
     trace = board_trace(board)
     if not trace:
-        return _panel_html('🧭 决策轨迹（反馈闭环与可观测）',
+        return _panel_html('🧭 决策轨迹',
                            '<span style="%s">还没有轨迹：先点「🎬 生成制片方案（零算力）」。</span>' % _ST_MUTED)
     rows = []
     for t in trace:
@@ -778,7 +772,7 @@ def board_trace_html(board) -> str:
                _ST_TD, _esc(t.get('role')), _ST_TD, _esc(t.get('action')),
                _ST_TD, _status_badge(t.get('status')), _ST_TD, _esc(t.get('via')),
                _ST_TD, int(t.get('ms') or 0), _ST_TD, _esc(_clip(t.get('detail'), 300))))
-    return _panel_html('🧭 决策轨迹（谁在什么时候做了什么、结果如何）',
+    return _panel_html('🧭 决策轨迹',
                        _table(['#', '状态机', '角色', '动作', '结果', '档位', '耗时', '说明'], rows),
                        '%d 步 ｜ 这份表就是 trace.json 的页面版' % len(trace))
 
@@ -789,7 +783,7 @@ def board_delivery_html(board) -> str:
     dl = board_card(board, 'delivery')
     kit = board_card(board, 'kit')
     if not dl and not kit:
-        return _panel_html('📦 交付说明（剪辑 Agent）',
+        return _panel_html('📦 交付说明',
                            '<span style="%s">还没有交付清单：先点「🎬 生成制片方案（零算力）」。'
                            '<br>%s</span>' % (_ST_MUTED, _esc(BOUNDARY_NOTE)))
     claims = dl.get('claims') if isinstance(dl.get('claims'), dict) else {}
@@ -867,35 +861,66 @@ def board_delivery_html(board) -> str:
         body.append('<div style="margin-top:6px;font-weight:600">诚实说明</div>%s'
                     % _ul(list(dl['honest_notes'])))
     body.append('<div style="margin-top:6px;%s">红线：%s</div>' % (_ST_MUTED, _esc(BOUNDARY_NOTE)))
-    return _panel_html('📦 交付说明（剪辑 Agent：清单 + 声明 + 话术边界）', ''.join(body))
+    return _panel_html('📦 交付说明', ''.join(body))
+
+
+# ── 8.5) 折叠块 + 预检/质检结论行（页面只显示"有没有问题"，详情点开看）──────────
+def _fold(title: str, body: str, open_: bool = False) -> str:
+    """默认收起的详情块：页面留白给主表，证据点一下就有（评审要看的都在里面）。"""
+    return ('<details%s style="%s;margin-top:8px">'
+            '<summary style="cursor:pointer;font-weight:600;font-size:14px">%s</summary>'
+            '<div style="margin-top:6px">%s</div></details>'
+            % (' open' if open_ else '', _ST_BOX, _esc(title), body))
+
+
+def board_gate_html(board) -> str:
+    """预检 + 质检的**结论行**：没问题一行绿的；有问题才逐条列出来。"""
+    b = board_dict(board)
+    pre = board_card(b, 'prelint') or {}
+    cri = board_card(b, 'critic') or {}
+    rows = []
+    for e in (pre.get('errors') or [])[:8]:
+        rows.append('<div style="color:%s">❌ %s</div>' % (_RED, _esc(e)))
+    for w in (pre.get('warnings') or [])[:6]:
+        rows.append('<div style="color:%s">⚠️ %s</div>' % (_AMBER, _esc(w)))
+    for r in (cri.get('shots') or []):
+        for i in (r.get('issues') or []):
+            if i.get('level') == 'error':
+                rows.append('<div style="color:%s">❌ 第 %s 段：%s</div>'
+                            % (_RED, _esc(r.get('idx')), _esc(i.get('msg'))))
+    score = cri.get('score')
+    if rows:
+        head = ('<b>预检 / 质检：%d 条待处理</b>' % len(rows))
+    elif score is not None:
+        head = ('<b style="color:%s">✅ 预检通过 · 质检 %s/10</b>'
+                % (_GREEN, _esc(score)))
+    else:
+        head = '<b style="color:%s">✅ 预检通过</b>' % _GREEN
+    more = len(rows) - 9
+    tail = ('<div style="%s">…另有 %d 条</div>' % (_ST_MUTED, more)) if more > 0 else ''
+    return '<div style="%s">%s%s%s</div>' % (_ST_BOX, head, ''.join(rows), tail)
 
 
 # ── 9) 看板整页（UI 只调用这一个函数）────────────────────────────────────────
 def board_html(board, model: str = '') -> str:
-    """看板整页 HTML = 状态条 + 角色卡 + 剧本 + 分镜 + 预检 + 质检 + 轨迹 + 交付。"""
+    """看板：状态 + 结论 + 分镜表（主表）＋ 其余证据默认折叠。"""
     b = board_dict(board)
     if not b:
-        return ('<div style="%s">%s</div>'
-                % (_ST_BOX, '还没有制片方案：写一句话（例：一个陪伴机器人，永远同意你说的一切），'
-                            '点「🎬 生成制片方案（零算力）」—— 规则引擎档约 1 秒出完整剧本/分镜/'
-                            '预检/质检/轨迹/交付清单，<b>不需要任何 key，也不占任何 GPU</b>。'))
+        return ('<div style="%s">写一句话，点「🎬 生成方案」。</div>' % _ST_BOX)
     return ''.join([
         board_status_html(b, model=model),
-        board_roles_html(b),
-        board_script_html(b),
+        board_gate_html(b),
         board_shots_html(b),
-        board_prelint_html(b),
-        board_critic_html(b),
-        board_trace_html(b),
-        board_delivery_html(b),
+        _fold('角色分工与决策轨迹（5 个 Agent 分别做了什么）',
+              board_roles_html(b) + board_trace_html(b)),
+        _fold('剧本与台词', board_script_html(b)),
+        _fold('质检明细', board_critic_html(b)),
+        _fold('生产包与交付', board_delivery_html(b)),
     ])
 
 
 #: 生产包还没生成时的那行提示（页面初始态）
-KIT_IDLE_MD = ('_生产包（zip）生成后会出现在这里（点右边「⬇️ 下载生产包」取走）：'
-               'plan.json / jobs.jsonl / commands.md / run_plan.py / accept.md / post.md / '
-               'film.srt / trace.json / README.md。_\n\n'
-               '**还没有生产包：点「🎬 生成制片方案（零算力）」后这里会出现可下载的 zip。**_')
+KIT_IDLE_MD = '_还没有生产包：生成方案后即可下载（9 个文件，含分镜表/指令/验收/字幕/轨迹）。_'
 
 
 def kit_note_md(board, zip_path: str = '') -> str:
@@ -1229,23 +1254,12 @@ def config_notice_md(cfg: dict = None) -> str:
     cfg = dict(cfg or {})
     has_brain = bool(str(cfg.get('llm_base') or '').strip() and str(cfg.get('llm_key') or '').strip())
     has_engine = bool(str(cfg.get('engine_base') or '').strip())
-    if has_brain:
-        brain_line = ('✅ **大脑已配置**（访客自带）→ 当前档位：**访客自带模型（LLM_*）**：%s\n\n'
-                      '_规则引擎仍会同时产出一版，由 Critic 判分择优 —— 模型不行也拍得成。_'
-                      % ('`%s`' % str(cfg.get('llm_model') or '（未填模型名，用默认）')))
-    else:
-        brain_line = ('⚠️ **未配置也能用：规则引擎会给出完整剧本/分镜/生产包** —— 现在就是'
-                      '**『规则引擎模式（零 key）』**：不填任何 key 也能跑完整条状态机'
-                      '（5 角色分工 / 预检闸门 / 质检打分 / 决策轨迹 / 交付清单）。')
-    engine_line = ('🎬 **引擎已配置** → MODE = **真出片**：点「🚀 出片」即逐段提交到'
-                   '上面的引擎，成片与算力都在你自己那边；点「🎬 生成制片方案」仍只做规划与质检，'
-                   '不会碰你的引擎（可先用它看方案再决定要不要花钱出片）。' if has_engine else
-                   '🎬 **引擎未配置** → MODE = **仅生产计划**（交付可复制的生产包；%s）' % BOUNDARY_NOTE)
-    return ('**🎛 模型配置（我的密钥）** —— 仅本会话内存：不落盘、不进日志\n\n%s\n\n%s\n\n'
-            '_🤖 大脑（通用大模型 API，决定"怎么拍"）+ 🎥 引擎（视频生成模型 API，真正出片）'
-            '都在你自己那边；本空间只做编排、质检与可执行生产包。'
-            '生效优先级：**页面填写 > 空间环境变量 > 内置规则引擎**，实际档位以看板顶部状态条为准。_'
-            % (brain_line, engine_line))
+    brain_line = ('🧠 大脑：**已配置**（%s）'
+                  % ('`%s`' % str(cfg.get('llm_model') or '默认模型')) if has_brain else
+                  '🧠 大脑：**规则引擎**（零 key）')
+    engine_line = ('🎥 引擎：**已配置** → 点「🚀 出片」即逐段出片（算力与费用在你那一侧）'
+                   if has_engine else '🎥 引擎：**未配置** → 只出生产计划 + 可下载的生产包')
+    return '%s ｜ %s' % (brain_line, engine_line)
 
 
 def _chat_url(base: str) -> str:
@@ -1484,28 +1498,19 @@ def build_app(show: dict):
 
     # Gradio 6.x：theme 从 Blocks 移到 launch()
     with gr.Blocks(title=show["title"]) as demo:
-        gr.Markdown(f"## 🎬 {show['title']}\n\n{show['tagline']}")
+        gr.Markdown(f"### 🎬 {show['title']}")
 
         with gr.Tabs():
-            with gr.Tab("🤖 Agent 对话"):
-                gr.Markdown("### 直接说需求：agent 自己选工具、定参数、调外部生成接口")
-
+            with gr.Tab("🎬 一句话出片"):
                 # ── 🎛 模型配置（我的密钥）—— Agent Tab 顶部常驻 ──────────────────
                 # 定案：面板保留、默认可见可填、填了立即生效；**不**做"为安全而拦截"的额外动作。
                 # 作用域只有一条：仅本会话内存（模块级 _CFG_MEM + 锁；不落盘、不进日志、不 print）。
                 # 未配置时这一行必须显眼：让评审第一眼就知道"没有 key 也拿得到完整产出"。
                 hcfg_notice = gr.Markdown(config_notice_md({}))
                 hcfg_sid = gr.State("")     # 只放不透明会话 id；key 只在服务端内存
-                with gr.Accordion("🎛 模型配置（我的密钥）—— 🤖 大脑（可选）· 🎥 引擎（可选·真出片）",
-                                  open=True):
-                    gr.Markdown(
-                        "**🤖 大脑 · 调用 API 的 key**：填了就由你自己的通用大模型扮演 5 个角色"
-                        "（不填也完全可用：内置规则引擎给出完整剧本/分镜/生产包）。\n\n"
-                        "**🎥 引擎 · 可选，真出片**：填 `ENGINE_BASE_URL` 才会真正出片；"
-                        "不填 = MODE 仅生产计划（交付可复制的生产包）。\n\n"
-                        "🔒 这两组凭据**只在本次会话的进程内存**里使用：不落盘、不进日志、不打印，"
-                        "随会话回收；换会话/刷新页面请重填。本面板服务于下面的「🎬 一句话出片"
-                        "（多 Agent Harness）」；「🤖 Agent 对话」的密钥仍可填在下方「🔑 我的密钥」。")
+                with gr.Accordion("🎛 模型配置（可选）—— 大脑 / 引擎", open=False):
+                    gr.Markdown("_都不填也能用：内置规则引擎会给出完整剧本 / 分镜 / 生产包。_"
+                                "凭据只在本次会话内存里，不落盘、不进日志。")
                     hpreset = gr.Dropdown(label="服务商预设（自动填 Base URL 与模型名，可改）",
                                           choices=harness_provider_choices(),
                                           value=harness_provider_choices()[0])
@@ -1518,9 +1523,8 @@ def build_app(show: dict):
                         hkey = gr.Textbox(label="API Key（你自己的 · 只在本会话内存里）", type="password",
                                           scale=3, placeholder="sk-...（不写盘、不进日志）")
                         htest_brain = gr.Button("🔌 测试连接", scale=1)
-                    hbrain_out = gr.Markdown("_点「🔌 测试连接」验证大脑通道：只发一条 ping"
-                                             "（max_tokens=8），不触发生成。_")
-                    with gr.Accordion("（可选）🎥 引擎 · 真出片：ENGINE_* 视频生成模型接口", open=False):
+                    hbrain_out = gr.Markdown("")
+                    with gr.Accordion("🎥 引擎（真出片）", open=False):
                         with gr.Row():
                             heng_base = gr.Textbox(label="ENGINE_BASE_URL", scale=3,
                                                    placeholder="例：https://your-engine.example.com/v1")
@@ -1529,11 +1533,10 @@ def build_app(show: dict):
                             heng_key = gr.Textbox(label="ENGINE_API_KEY", type="password", scale=3)
                             heng_model = gr.Textbox(label="引擎模型名（可留空）", scale=2)
                         htest_eng = gr.Button("🔌 测试引擎", size="sm")
-                        heng_out = gr.Markdown("_点「🔌 测试引擎」探活：GET/POST 到 ENGINE_BASE_URL"
-                                               "（没填 key 就不带 Authorization）。_")
+                        heng_out = gr.Markdown("")
                     with gr.Row():
                         happly = gr.Button("✅ 应用到本会话（立即生效）", size="sm")
-                        happly_out = gr.Markdown("_不点它也行：上面的测试与下面的生成都会立即生效。_")
+                        happly_out = gr.Markdown("")
 
                 # 配置面板的控件顺序 = cfg_of_form 的参数顺序（少一层翻译，少一处出错）
                 HCFG_IN = [hbase, hmodel, hkey, heng_base, heng_status, heng_key, heng_model]
@@ -1572,139 +1575,7 @@ def build_app(show: dict):
                             "✅ 已应用到本会话（只在本进程内存里；换会话/刷新请重填）")
 
                 happly.click(_do_apply_cfg, HFULL_IN, [hcfg_notice, hcfg_sid, happly_out])
-                try:
-                    from agent_client import AgentClient as _AC
-                    _st = _AC().status()
-                except Exception:  # noqa: BLE001
-                    _st = {"mode": "demo-planner", "tools": [], "brain": False, "engine": False,
-                           "model": "-", "system_prompt": "default"}
-                # 三态要说清楚：能不能出片只看视频接口，别拿"大脑已接"糊弄用户
-                if _st.get('engine'):
-                    _mode_txt = "✅ 已接入视频生成接口 —— 可以真实出片"
-                elif _st.get('brain'):
-                    _mode_txt = ("🧠 外置大脑已接入（决策由真实模型完成）；**视频生成接口未接** → "
-                                 "当前是演示预览，不做假动作")
-                else:
-                    _mode_txt = "🧪 规划演示模式（未配置外部接口：仍完整展示工具决策 + 请求体预览）"
-                _warn = _st.get('warnings') or []
-                _warn_md = ("\n\n> ⚠️ **配置自检**：\n" + "\n".join("> - " + w for w in _warn)) if _warn else ""
-                _chan = _st.get('brain_channel') or 'rule'
-                _brain_txt = {'agent-url': "✅ 平台 Agent（AGENT_URL）",
-                              'llm': "✅ 自建大脑（LLM_*：%s）" % _st.get('model'),
-                              'rule': "内置规则规划器（未配置大脑接口）"}.get(_chan, _chan)
-                gr.Markdown("**当前模式**：%s　|　**外置大脑**：%s　|　**视频生成接口**：%s%s"
-                            % (_mode_txt, _brain_txt,
-                               "已配置" if _st.get('engine') else "未配置", _warn_md))
-                _byok_txt = ('本空间**不提供**自带密钥：请在下面「🔑 我的密钥」里填你自己的（模型服务地址 + 模型名 + API Key）。'
-                             if not _st.get('env_fallback', True) else
-                             '本空间有一个默认大脑配置；**你也可以在下面「🔑 我的密钥」填自己的**，你自己的优先、且只在本会话内存里。')
-                gr.Markdown("**密钥来源**：%s" % _byok_txt)
-                gr.Markdown("**工具集**（agent 的手脚，全部走接口）：%s\n\n"
-                            "_本空间不部署模型：大脑由 `LLM_*` 接口控制，出片由 `ENGINE_*` 接口控制；"
-                            "接口清单见「能力与部署」页与仓库 studio/接口说明.md。_"
-                            % "、".join("`%s`" % t for t in (_st.get('tools') or [])))
-                with gr.Accordion("🔑 我的密钥（自带 API Key · 只在本会话·不上传不保存）", open=False):
-                    gr.Markdown(
-                        "🔒 **不想把 Key 交给本空间？** 用「零信任单页版」：Agent 跑在你的浏览器里，"
-                        "直接调用你填的服务，Key 不经过任何服务器 → "
-                        "<https://sakuraahly.github.io/videoGenerate-Model-zju/web/agent.html>\n\n"
-                        "填你自己的模型服务凭据即可用本工具；**本空间不代付、不共享任何密钥**。"
-                        " 密钥只随本次请求发到本进程内存里用于调用你指定的服务，"
-                        "**不写盘、不进日志**；换会话/刷新页面后请重填。留空则使用空间默认（若有）。")
-                    byok_preset = gr.Dropdown(label="① 选服务商（自动填地址与模型名）",
-                                              choices=provider_choices(), value=provider_choices()[0])
-                    with gr.Row():
-                        byok_base = gr.Textbox(label="② 模型服务地址（OpenAI 兼容）", scale=3,
-                                               placeholder="例：https://dashscope.aliyuncs.com/compatible-mode/v1")
-                        byok_model = gr.Textbox(label="模型名", scale=1, placeholder="例：qwen-plus")
-                    byok_key = gr.Textbox(label="③ 模型服务 API Key（你自己的）", type="password",
-                                          placeholder="sk-...（只在本会话内存里）")
-
-                    def _apply_preset(name):
-                        """选服务商 → 自动填地址与模型名（Key 仍要用户自己填）。"""
-                        base, model = PROVIDER_PRESETS.get(name, ('', ''))
-                        return gr.update(value=base), gr.update(value=model)
-
-                    byok_preset.change(_apply_preset, [byok_preset], [byok_base, byok_model])
-                    with gr.Accordion("（可选）视频生成接口 —— 你自己的", open=False):
-                        with gr.Row():
-                            byok_eng = gr.Textbox(label="ENGINE_BASE_URL", scale=3)
-                            byok_eng_key = gr.Textbox(label="ENGINE_API_KEY", type="password", scale=1)
-                        byok_eng_status = gr.Textbox(label="ENGINE_STATUS_URL（异步查询，可留空）")
-                    sess_id = gr.State("")     # 只存不透明会话 id；客户端与 key 只在服务端内存
-                with gr.Row():
-                    with gr.Column(scale=3):
-                        chatbot = gr.Chatbot(label="对话", height=330)  # Gradio 6.x 默认 messages 格式
-                        with gr.Row():
-                            msg = gr.Textbox(label="说点什么", scale=4,
-                                             placeholder="例：让参考图里的老人说一句“天冷了，快进屋坐坐吧。”"
-                                                         "／做一段雨夜老屋门口有猫的 5 秒镜头")
-                            send = gr.Button("发送", variant="primary", scale=1)
-                        with gr.Row():
-                            ex1 = gr.Button("示例·说话镜头", size="sm")
-                            ex2 = gr.Button("示例·5 秒镜头", size="sm")
-                            ex3 = gr.Button("示例·故事片", size="sm")
-                            clr = gr.Button("清空对话", size="sm")
-                    with gr.Column(scale=2):
-                        ref_img = gr.Image(label="参考图（说话镜头建议上传：人物形象）", type="filepath",
-                                           height=200)
-                        jobs_state = gr.State([])
-                        agent_video = gr.Video(label="本轮产物（若有）", interactive=False)
-                        jobs_md = gr.Markdown("_（本会话还没有任务：在下面说一句需求即可）_")
-                        refresh = gr.Button("🔄 刷新任务状态", size="sm")
-                        trace_md = gr.Markdown("_（这里会显示 agent 的工具调用轨迹）_")
-
-                TRACE_IDLE = "_（这里会显示 agent 的工具调用轨迹）_"
-                JOBS_IDLE = "_（本会话还没有任务：在下面说一句需求即可）_"
-                BYOK_IN = [byok_base, byok_model, byok_key, byok_eng, byok_eng_status, byok_eng_key]
-                STEP_IN = [msg, chatbot, ref_img, jobs_state, sess_id] + BYOK_IN
-                STEP_OUT = [chatbot, trace_md, agent_video, msg, jobs_state, jobs_md, sess_id]
-
-                def _ov_of(base, model, key, eng, eng_status, eng_key):
-                    """页面上的「我的密钥」→ 客户端 override（BYOK）。"""
-                    return {'LLM_BASE_URL': base, 'LLM_MODEL': model, 'LLM_API_KEY': key,
-                            'ENGINE_BASE_URL': eng, 'ENGINE_STATUS_URL': eng_status,
-                            'ENGINE_API_KEY': eng_key}
-
-                def _step(user_text, history, ref, jobs, sid, *byok):
-                    """UI 包装：调用模块级 agent_step（可单测）。
-
-                    BYOK + 会话隔离：State 只传 sid，客户端（含用户 key 与本会话台账）只活在服务端内存，
-                    并有 TTL/上限自动回收——不把含密钥的对象交给前端状态层。"""
-                    sid, cli = _session_client(sid, _ov_of(*byok))
-                    r = agent_step(user_text, history, image_path=ref, client=cli)
-                    jobs = list(jobs or [])
-                    if r.get('job'):
-                        jobs.append(r['job'])
-                    return (r['history'], r.get('trace') or TRACE_IDLE, r.get('video') or None,
-                            gr.update(value=""), jobs, jobs_table(jobs, cli), sid)
-
-                def _refresh(jobs, sid, *byok):
-                    try:
-                        sid, cli = _session_client(sid, _ov_of(*byok))
-                        return jobs_table(jobs, cli, refresh=True), jobs, sid
-                    except Exception:  # noqa: BLE001
-                        return jobs_table(jobs), jobs, sid
-
-                send.click(_step, STEP_IN, STEP_OUT)
-                msg.submit(_step, STEP_IN, STEP_OUT)
-                ex1.click(lambda h, r, j, s, *b: _step('让参考图里的老人说一句“天冷了，快进屋坐坐吧，外面风大。”',
-                                                       h, r, j, s, *b),
-                          [chatbot, ref_img, jobs_state, sess_id] + BYOK_IN, STEP_OUT)
-                ex2.click(lambda h, r, j, s, *b: _step('做一段雨夜老屋门口有猫望着门内暖光的 5 秒镜头', h, r, j, s, *b),
-                          [chatbot, ref_img, jobs_state, sess_id] + BYOK_IN, STEP_OUT)
-                ex3.click(lambda h, r, j, s, *b: _step('把“父子在病房道别”做成一段连贯的 3 段故事片', h, r, j, s, *b),
-                          [chatbot, ref_img, jobs_state, sess_id] + BYOK_IN, STEP_OUT)
-                refresh.click(_refresh, [jobs_state, sess_id] + BYOK_IN, [jobs_md, jobs_state, sess_id])
-                clr.click(lambda: ([], TRACE_IDLE, None, JOBS_IDLE, []), None,
-                          [chatbot, trace_md, agent_video, jobs_md, jobs_state])
-
                 # ── 🎬 一句话出片（多 Agent Harness）──────────────────────────────
-                gr.Markdown("### 🎬 一句话出片（多 Agent Harness）\n\n"
-                            "一句话 → **5 个 Agent 分工**（编剧 → 分镜 → 导演 → 质检 → 剪辑）→ "
-                            "剧本卡 · 分镜表（照做就能拍）· 预检闸门 · 质检打分 · 决策轨迹 · 交付清单。\n\n"
-                            "_零算力：本空间不跑任何模型（不推理、不下载权重、不连任何本机 GPU）；"
-                            "不填 key 走内置规则引擎，约 1 秒出结果。_")
                 with gr.Row():
                     hbrief = gr.Textbox(label="一句话（越具体越好：人物 / 处境 / 情绪）", scale=4,
                                         placeholder="例：一个陪伴机器人，永远同意你说的一切")
@@ -1724,9 +1595,7 @@ def build_app(show: dict):
                     hlimit = gr.Number(value=0, label="出片段数（0=全部；先出 1 段试水更省时间）",
                                        precision=0, scale=1)
                     hclear = gr.Button("🧹 清空", scale=1)
-                gr.Markdown("_「🎬 生成制片方案」只做规划与质检（零算力、不会碰你的引擎）；"
-                            "「🚀 出片」才会把每一段提交到**你配置的引擎**，逐段回传成片 —— "
-                            "算力与费用都在你这一侧。_")
+                gr.Markdown("_「🚀 出片」会调用你配置的引擎（算力与费用在你那一侧）。_")
                 hkit_note = gr.Markdown(KIT_IDLE_MD)
                 hboard = gr.HTML(board_html(None))
 
@@ -1788,6 +1657,121 @@ def build_app(show: dict):
                              [hbrief, hstyle, hsec, hcast, hres, hanchor, hlic, hboard,
                               hkit_dl, hkit_note])
 
+                # ── 旧版对话工具（H3 工作台；新流程用上面的「一句话出片」）──
+                with gr.Accordion("🤖 旧版对话工具（可选）", open=False):
+                    try:
+                        from agent_client import AgentClient as _AC
+                        _st = _AC().status()
+                    except Exception:  # noqa: BLE001
+                        _st = {"mode": "demo-planner", "tools": [], "brain": False, "engine": False,
+                               "model": "-", "system_prompt": "default"}
+                    # 三态要说清楚：能不能出片只看视频接口，别拿"大脑已接"糊弄用户
+                    if _st.get('engine'):
+                        _mode_txt = "✅ 已接入视频生成接口 —— 可以真实出片"
+                    elif _st.get('brain'):
+                        _mode_txt = ("🧠 外置大脑已接入（决策由真实模型完成）；**视频生成接口未接** → "
+                                     "当前是演示预览，不做假动作")
+                    else:
+                        _mode_txt = "🧪 规划演示模式（未配置外部接口：仍完整展示工具决策 + 请求体预览）"
+                    _warn = _st.get('warnings') or []
+                    _warn_md = ("\n\n> ⚠️ **配置自检**：\n" + "\n".join("> - " + w for w in _warn)) if _warn else ""
+                    _chan = _st.get('brain_channel') or 'rule'
+                    _brain_txt = {'agent-url': "✅ 平台 Agent（AGENT_URL）",
+                                  'llm': "✅ 自建大脑（LLM_*：%s）" % _st.get('model'),
+                                  'rule': "内置规则规划器（未配置大脑接口）"}.get(_chan, _chan)
+                    gr.Markdown("**当前模式**：%s%s" % (_mode_txt, _warn_md))
+
+                    with gr.Accordion("🔑 我的密钥（自带 API Key · 仅本会话内存）", open=False):
+                        byok_preset = gr.Dropdown(label="① 选服务商（自动填地址与模型名）",
+                                                  choices=provider_choices(), value=provider_choices()[0])
+                        with gr.Row():
+                            byok_base = gr.Textbox(label="② 模型服务地址（OpenAI 兼容）", scale=3,
+                                                   placeholder="例：https://dashscope.aliyuncs.com/compatible-mode/v1")
+                            byok_model = gr.Textbox(label="模型名", scale=1, placeholder="例：qwen-plus")
+                        byok_key = gr.Textbox(label="③ 模型服务 API Key（你自己的）", type="password",
+                                              placeholder="sk-...（只在本会话内存里）")
+
+                        def _apply_preset(name):
+                            """选服务商 → 自动填地址与模型名（Key 仍要用户自己填）。"""
+                            base, model = PROVIDER_PRESETS.get(name, ('', ''))
+                            return gr.update(value=base), gr.update(value=model)
+
+                        byok_preset.change(_apply_preset, [byok_preset], [byok_base, byok_model])
+                        with gr.Accordion("（可选）视频生成接口 —— 你自己的", open=False):
+                            with gr.Row():
+                                byok_eng = gr.Textbox(label="ENGINE_BASE_URL", scale=3)
+                                byok_eng_key = gr.Textbox(label="ENGINE_API_KEY", type="password", scale=1)
+                            byok_eng_status = gr.Textbox(label="ENGINE_STATUS_URL（异步查询，可留空）")
+                        sess_id = gr.State("")     # 只存不透明会话 id；客户端与 key 只在服务端内存
+                    with gr.Row():
+                        with gr.Column(scale=3):
+                            chatbot = gr.Chatbot(label="对话", height=330)  # Gradio 6.x 默认 messages 格式
+                            with gr.Row():
+                                msg = gr.Textbox(label="说点什么", scale=4,
+                                                 placeholder="例：让参考图里的老人说一句“天冷了，快进屋坐坐吧。”"
+                                                             "／做一段雨夜老屋门口有猫的 5 秒镜头")
+                                send = gr.Button("发送", variant="primary", scale=1)
+                            with gr.Row():
+                                ex1 = gr.Button("示例·说话镜头", size="sm")
+                                ex2 = gr.Button("示例·5 秒镜头", size="sm")
+                                ex3 = gr.Button("示例·故事片", size="sm")
+                                clr = gr.Button("清空对话", size="sm")
+                        with gr.Column(scale=2):
+                            ref_img = gr.Image(label="参考图（说话镜头建议上传：人物形象）", type="filepath",
+                                               height=200)
+                            jobs_state = gr.State([])
+                            agent_video = gr.Video(label="本轮产物（若有）", interactive=False)
+                            jobs_md = gr.Markdown("_（本会话还没有任务：在下面说一句需求即可）_")
+                            refresh = gr.Button("🔄 刷新任务状态", size="sm")
+                            trace_md = gr.Markdown("_（这里会显示 agent 的工具调用轨迹）_")
+
+                    TRACE_IDLE = "_（这里会显示 agent 的工具调用轨迹）_"
+                    JOBS_IDLE = "_（本会话还没有任务：在下面说一句需求即可）_"
+                    BYOK_IN = [byok_base, byok_model, byok_key, byok_eng, byok_eng_status, byok_eng_key]
+                    STEP_IN = [msg, chatbot, ref_img, jobs_state, sess_id] + BYOK_IN
+                    STEP_OUT = [chatbot, trace_md, agent_video, msg, jobs_state, jobs_md, sess_id]
+
+                    def _ov_of(base, model, key, eng, eng_status, eng_key):
+                        """页面上的「我的密钥」→ 客户端 override（BYOK）。"""
+                        return {'LLM_BASE_URL': base, 'LLM_MODEL': model, 'LLM_API_KEY': key,
+                                'ENGINE_BASE_URL': eng, 'ENGINE_STATUS_URL': eng_status,
+                                'ENGINE_API_KEY': eng_key}
+
+                    def _step(user_text, history, ref, jobs, sid, *byok):
+                        """UI 包装：调用模块级 agent_step（可单测）。
+
+                        BYOK + 会话隔离：State 只传 sid，客户端（含用户 key 与本会话台账）只活在服务端内存，
+                        并有 TTL/上限自动回收——不把含密钥的对象交给前端状态层。"""
+                        sid, cli = _session_client(sid, _ov_of(*byok))
+                        r = agent_step(user_text, history, image_path=ref, client=cli)
+                        jobs = list(jobs or [])
+                        if r.get('job'):
+                            jobs.append(r['job'])
+                        return (r['history'], r.get('trace') or TRACE_IDLE, r.get('video') or None,
+                                gr.update(value=""), jobs, jobs_table(jobs, cli), sid)
+
+                    def _refresh(jobs, sid, *byok):
+                        try:
+                            sid, cli = _session_client(sid, _ov_of(*byok))
+                            return jobs_table(jobs, cli, refresh=True), jobs, sid
+                        except Exception:  # noqa: BLE001
+                            return jobs_table(jobs), jobs, sid
+
+                    send.click(_step, STEP_IN, STEP_OUT)
+                    msg.submit(_step, STEP_IN, STEP_OUT)
+                    ex1.click(lambda h, r, j, s, *b: _step('让参考图里的老人说一句“天冷了，快进屋坐坐吧，外面风大。”',
+                                                           h, r, j, s, *b),
+                              [chatbot, ref_img, jobs_state, sess_id] + BYOK_IN, STEP_OUT)
+                    ex2.click(lambda h, r, j, s, *b: _step('做一段雨夜老屋门口有猫望着门内暖光的 5 秒镜头', h, r, j, s, *b),
+                              [chatbot, ref_img, jobs_state, sess_id] + BYOK_IN, STEP_OUT)
+                    ex3.click(lambda h, r, j, s, *b: _step('把“父子在病房道别”做成一段连贯的 3 段故事片', h, r, j, s, *b),
+                              [chatbot, ref_img, jobs_state, sess_id] + BYOK_IN, STEP_OUT)
+                    refresh.click(_refresh, [jobs_state, sess_id] + BYOK_IN, [jobs_md, jobs_state, sess_id])
+                    clr.click(lambda: ([], TRACE_IDLE, None, JOBS_IDLE, []), None,
+                              [chatbot, trace_md, agent_video, jobs_md, jobs_state])
+
+
+
             with gr.Tab("🎛 创作台"):
                 with gr.Row():
                     with gr.Column(scale=3):
@@ -1827,7 +1811,7 @@ def build_app(show: dict):
                             None, [prompt, images, resolution, seconds, voice_src, voice, subtitle, negative])
 
             with gr.Tab("🎞 样片墙"):
-                gr.Markdown("### 本机生成样片（点击播放）")
+                gr.Markdown("### 样片（本机 GPU 全链生成，用于对照画质上限）")
                 rows = [show["samples"][i:i + 3] for i in range(0, len(show["samples"]), 3)]
                 for row in rows:
                     with gr.Row():
@@ -1838,57 +1822,8 @@ def build_app(show: dict):
                                 gr.Markdown(f"**{s['title']}** — {s['desc']}")
                                 gr.Video(value=_asset(s["file"]), label=s["title"], interactive=False)
 
-            with gr.Tab("🧭 能力与部署"):
-                gr.Markdown("### 能力")
-                for pt in show["hero_points"]:
-                    gr.Markdown(f"- {pt}")
-                gr.Markdown("### 制作流程")
-                for t in show["flow_steps"]:
-                    gr.Markdown(f"- {t}")
-                gr.Markdown(f"""### 部署与「真实生成」
-| 档位 | 能做什么 |
-|---|---|
-| **免费 CPU（2vCPU/16G，本页默认）** | 展示与参数化演示（本页表单）；不产生真实生成任务 |
-| **GPU 硬件档（如 A10 24G）** | 空间内跑**轻量视频模型**（Wan2.1-1.3B / CogVideoX-2B 等）→ 页面上真实出片 |
-| **引擎网关（REMOTE_API）** | 表单直连你的本地大模型引擎（H3 全链：生成→台词→字幕→口型→ASR） |
 
-当前后端：**{backend.name}**。**形态①（已定案）：创空间只放 Agent，模型走外部 API**——
-在空间「设置 → 变量 / 密钥」里填这几项即可真实出片（不填=规划演示）：
-| 变量 | 说明 |
-|---|---|
-| `ENGINE_BASE_URL` / `ENGINE_API_KEY` | **视频生成模型接口**（预留口；旧名 `VIDEO_API_URL`/`VIDEO_API_KEY` 仍兼容） |
-| `ENGINE_STATUS_URL` | 可选，异步作业查询地址（旧名 `VIDEO_API_STATUS_URL`） |
-| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | **外置大脑**：OpenAI 兼容决策模型（不填=内置规则规划器）。例：DeepSeek 填 `https://api.deepseek.com` + `deepseek-chat`；平台 Agent 也可直接用 `AGENT_URL` |
-| `AGENT_URL` / `AGENT_TOKEN` | 可选：魔搭平台上「构建-发布」得到的 Agent 地址（**首选通道**，优先于 `LLM_*`） |
-| `TOOLSET` | 可选，暴露给大脑的工具子集（默认 all） |
-| `AGENT_SYSTEM_PROMPT`（或 `AGENT_SYSTEM_PROMPT_FILE`） | 可选，外置 system 提示：注入行业规则/铁律 |
-
-**Agent 的两半**：①**工具集** `generate_video` / `generate_talk` / `make_story_film` / `list_jobs` / `query_job` /
-`retry_job` / `resume_story` / `answer`（全部 HTTP，空间内无本机依赖）；②**外置大脑**（`AGENT_URL` 或 `LLM_*`，
-决定用哪个工具、什么参数）。两半齐备即为完整 Agent，缺大脑时用内置规则规划器兜底演示。
-
-**空间内等价实现的本地功能**：参考图上传与预览、请求体预览（演示模式）、任务面板与状态刷新、成片预览/下载、
-画布内字幕与拼接由引擎接口返回的成片直接承载（空间侧不做重编码，避免占用免费 CPU）。
-
-_{show['footer']}_""")
-                gr.Markdown(boundary_diagram_md())
-                gr.Markdown(mode_explain_md())
-                with gr.Row():
-                    _probe = gr.Button("🔌 测试外置大脑连接", size="sm")
-                _probe_out = gr.Markdown("_点上面的按钮验证「外置大脑」是否真的可用（只发一条极小请求，不触发生成）。_")
-
-                def _probe_click(sid, *byok):
-                    """一键自测：用**你自己填的密钥**验证大脑通道（百炼/DeepSeek/平台 Agent/自建 LLM 通用）。"""
-                    try:
-                        _sid, cli = _session_client(sid, _ov_of(*byok))
-                        return cli.selftest_text()
-                    except Exception as e:  # noqa: BLE001
-                        return "❌ 自测失败：%s" % str(e)[:200]
-
-                _probe.click(_probe_click, [sess_id] + BYOK_IN, [_probe_out])
-
-        gr.Markdown(f"\n---\n_空间版本 v3.5（2026-09-11 · 多 Agent Harness「一句话出片」制片看板 + 🎛 模型配置面板（BYOK·仅会话内存）；"
-                    f"沿用 v3.4：Agent=工具集+外置大脑、服务商预设、零信任单页、密钥 TTL 回收、大脑调用限流）_")
+        gr.Markdown("_v3.5 · 用法与接口见仓库 studio/README.md 与 studio/接口说明.md_")
     return demo
 
 
